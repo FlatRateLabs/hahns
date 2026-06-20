@@ -10,6 +10,19 @@ and critical warnings — then keeps nothing.
 It ships as a **bookmarklet** (just a bookmark) so it needs no install, no admin
 rights, and no IT approval on locked-down shop machines.
 
+## Get it / share it
+Live setup page: **https://rvanpolen89.github.io/hahns/**
+
+Send techs that link. They open it, drag the **H.A.H.N.S** button to their
+bookmarks bar, and they're done — nothing installs.
+
+## Shipping an update
+1. Edit `src/helper.js` (or `src/template.html`).
+2. `node tools/build.js` — regenerates `dist/` and `docs/` with a fresh build stamp.
+3. `git commit -am "..." && git push` — GitHub Pages redeploys in ~1 minute.
+4. Tell techs to **re-drag** the bookmark from the link (the panel's build stamp
+   confirms they have the latest).
+
 ## Privacy by design
 - Runs entirely in your browser. No server, no network calls, no analytics.
 - Only reads text ELSA has already displayed to you.
