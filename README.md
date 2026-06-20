@@ -25,14 +25,12 @@ bookmarks bar, and they're done — nothing installs.
 ## Privacy by design
 - Runs entirely in your browser. No server, no network calls, no analytics.
 - Only reads text ELSA has already displayed to you.
-- Saves no files and copies no manual content anywhere. Close it and it's gone.
+- Saves no files.
 
 ## Using it
 1. Open `dist/HAHNS.html` in Chrome or Edge.
 2. Drag the **H.A.H.N.S** wrench button onto your bookmarks bar.
 3. On any ELSA procedure page, click the bookmark — the wrench panel appears.
-4. The paste box on that page is a fallback for pages the bookmark can't read
-   (e.g. content inside a cross-origin frame), and a way to try it with no login.
 
 ## Project layout
 - `src/helper.js` — all the logic: page reading, the five extraction patterns,
