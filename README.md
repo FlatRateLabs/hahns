@@ -7,8 +7,7 @@ you already have open in ELSA (via vw-now.com) and lists the things you need for
 the job — torque specs, one-time-use parts, fluids & capacities, special tools,
 and critical warnings — then keeps nothing.
 
-It ships as a **bookmarklet** (just a bookmark) so it needs no install, no admin
-rights, and no IT approval on locked-down shop machines.
+It ships as a **bookmarklet** (just a bookmark) so there's nothing to install.
 
 ## Get it / share it
 Live setup page: **https://rvanpolen89.github.io/hahns/**
