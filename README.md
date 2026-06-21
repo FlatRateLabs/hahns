@@ -3,7 +3,7 @@
 **H**ardware, **A**dvisories, **H**ighlights, & **N**avigation **S**pecialist (mascot: "Hahns")
 
 A no-install browser helper for VW technicians. It reads the repair procedure
-you already have open in ELSA (via vw-now.com) and lists the things you need for
+you already have open in ELSA2GO and lists the things you need for
 the job — torque specs, one-time-use parts, fluids & capacities, special tools,
 and critical warnings.
 
