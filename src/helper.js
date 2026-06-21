@@ -518,9 +518,9 @@
     ".hd .hbtn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".wrap.min{max-height:none}" +
     ".wrap.min .sub,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft{display:none}" +
-    ".sub{font-size:11px;color:#5a6b8c;padding:7px 13px;background:#eef1f6;display:flex;align-items:center;gap:6px}" +
-    ".bld{margin-left:auto;font-size:10px;color:#9aa3b2;white-space:nowrap;cursor:pointer}" +
-    ".bld:hover{color:#5a6b8c;text-decoration:underline}" +
+    ".sub{padding:6px 13px;background:#eef1f6;display:flex;align-items:center}" +
+    ".bld{font-size:11px;color:#5a6b8c;white-space:nowrap;cursor:pointer}" +
+    ".bld:hover{color:#001e50;text-decoration:underline}" +
     ".jobbar{padding:9px 13px;border-bottom:1px solid #eee;display:flex;gap:7px;align-items:center}" +
     ".job{flex:1;min-width:0;font:600 14px inherit;color:#001e50;border:1px solid #dfe4ee;border-radius:8px;padding:8px 10px;outline:none;background:#fff}" +
     ".job::placeholder{color:#b3b9c4;font-weight:400}" +
@@ -595,8 +595,6 @@
         (embed ? "" : '<button data-act="min" class="hbtn" title="' + (mini ? "Expand" : "Minimize") + '">' + svg(mini ? "M7 7h10v10H7z" : "M6 12h12") + "</button>") +
         '<button data-act="close" title="Close">&#10005;</button></div>' +
       '<div class="sub">' +
-        '<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:#5a6b8c;stroke-width:2"><path d="M6 11V8a6 6 0 0 1 12 0v3"/><rect x="4" y="11" width="16" height="9" rx="2"/></svg>' +
-        "Read from this page · nothing saved, nothing sent" +
         '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span></div>" +
       '<div class="jobbar">' +
         '<input class="job" type="text" placeholder="Job title — e.g. Rear Brakes" value="' + esc(r.__title || "") + '">' +
