@@ -799,7 +799,7 @@
     var hdr = "", cands = [], picked = [];
     try { hdr = detectTitle(document); } catch (e) {}
     try { cands = gatherImages(document); picked = pickDiagrams(cands); } catch (e) {}
-    return "H.A.H.N.S diagnostic — build " + BUILD + "\n" +
+    return "H.A.H.N.S diagnostic — version " + BUILD + "\n" +
       "flags: B=read as bold, H=recognised as a part heading\n" +
       "detected page header: \"" + hdr + "\"\n" +
       "large images on page: " + cands.length + " · diagrams kept: " + picked.length +

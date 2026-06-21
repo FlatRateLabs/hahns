@@ -12,8 +12,14 @@ const path = require("path");
 
 const root = path.join(__dirname, "..");
 
-// a human-readable build id so you can confirm which version is live
-const build = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
+// ---- version ----
+// Bump this when you ship. While testing, keep the "-alpha" tag.
+//   tiny fix -> 0.1.1   new feature -> 0.2.0   stable release -> 1.0.0
+const VERSION = "0.1.0-alpha";
+
+// shown in the panel + setup page: "v0.1.0-alpha · 2026-06-20 21:53 UTC"
+const date = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
+const build = "v" + VERSION + " · " + date;
 
 const helper = fs.readFileSync(path.join(root, "src/helper.js"), "utf8").replace(/__BUILD__/g, build);
 const template = fs.readFileSync(path.join(root, "src/template.html"), "utf8").replace(/__BUILD__/g, build);
