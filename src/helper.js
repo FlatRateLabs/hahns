@@ -17,6 +17,8 @@
 
   // build id, stamped in by tools/build.js so you can confirm which version is live
   var BUILD = "__BUILD__";
+  // where techs re-grab the latest (used by the "check for latest" link)
+  var SITE_URL = "https://flatratelabs.github.io/hahns/";
 
   // the segments captured by the last scan, kept so the build stamp can dump a
   // diagnostic of exactly what the page-walk saw (helps tune against real pages)
@@ -521,6 +523,8 @@
     ".sub{padding:6px 13px;background:#eef1f6;display:flex;align-items:center}" +
     ".bld{font-size:11px;color:#5a6b8c;white-space:nowrap;cursor:pointer}" +
     ".bld:hover{color:#001e50;text-decoration:underline}" +
+    ".upd{margin-left:auto;font-size:11px;color:#185fa5;text-decoration:none;white-space:nowrap}" +
+    ".upd:hover{text-decoration:underline}" +
     ".jobbar{padding:9px 13px;border-bottom:1px solid #eee;display:flex;gap:7px;align-items:center}" +
     ".job{flex:1;min-width:0;font:600 14px inherit;color:#001e50;border:1px solid #dfe4ee;border-radius:8px;padding:8px 10px;outline:none;background:#fff}" +
     ".job::placeholder{color:#b3b9c4;font-weight:400}" +
@@ -595,7 +599,8 @@
         (embed ? "" : '<button data-act="min" class="hbtn" title="' + (mini ? "Expand" : "Minimize") + '">' + svg(mini ? "M7 7h10v10H7z" : "M6 12h12") + "</button>") +
         '<button data-act="close" title="Close">&#10005;</button></div>' +
       '<div class="sub">' +
-        '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span></div>" +
+        '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span>" +
+        '<a class="upd" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Opens the H.A.H.N.S page so you can compare versions">check for latest &#8599;</a></div>' +
       '<div class="jobbar">' +
         '<input class="job" type="text" placeholder="Job title — e.g. Rear Brakes" value="' + esc(r.__title || "") + '">' +
         '<button class="newjob" data-act="newjob" title="Clear everything and start a new job">New job</button>' +
