@@ -26,6 +26,7 @@
 - **`dist/`** — build output for local use (`HAHNS.html`, `bookmarklet.txt`).
 - **`docs/`** — build output served by GitHub Pages (`index.html`, `bookmarklet.txt`, `.nojekyll`).
 - **`README.md`** — user-facing readme (NOTE: the owner sometimes edits this directly on GitHub web UI — always `git pull --rebase` before pushing).
+- **`CHANGELOG.md`** — plain-language, user-facing record of what changed per version (newest on top, grouped Added/Changed/Fixed/Removed). Version headings match the build stamp. Add an entry whenever you bump `VERSION` / ship user-visible changes.
 - **`.gitignore`** — excludes `.claude/`, `.DS_Store`, `node_modules/`.
 - **`.claude/launch.json`** — preview server config (runs `tools/serve.js`).
 
@@ -123,6 +124,7 @@ When starting a new session:
 
 ## Critical workflow reminders
 - After editing `src/helper.js`: run `node --check src/helper.js`, then `node tools/build.js`. A mismatched quote silently makes `window.VWJB` undefined.
+- When bumping `VERSION` or shipping user-visible changes, add a `CHANGELOG.md` entry (newest on top). Keep the "in progress" heading for the working branch; rename it to the release date when merged to `main`.
 - Editing `src/helper.js` or `src/template.html` requires a rebuild — never hand-edit `dist/` or `docs/`.
 - To publish: rebuild → `git pull --rebase` → commit → push. Confirm the live site picks up the new build stamp.
 - Tell the user to **hard-refresh + re-drag** the bookmark after any deployed change.
