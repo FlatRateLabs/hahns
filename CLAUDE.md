@@ -13,6 +13,8 @@
   - `vwjb_job_v1` — the running job (collected specs, tools, diagram URLs, title).
   - `vwjb_pos_v1` — remembered panel position.
   - `vwjb_min_v1` — minimized (collapsed) state.
+  - **Exit** (the panel ✕, with a confirm dialog) clears all three of the above.
+  - **One** `localStorage` key, `vwjb_seen_ver_v1` — the last version a tech saw "What's new" for, so the changelog pops up once per update. Stores **only a version string** (e.g. `0.1.1-alpha`), never job/ELSA content, so it doesn't weaken the privacy posture; persists across tabs by design (that's the point).
 - **Hosting / deployment:** Static. Source repo **github.com/FlatRateLabs/hahns** (public). Hosted on **GitHub Pages** from the **`/docs`** folder of `main`. Live setup page (share this with techs): **https://flatratelabs.github.io/hahns/**. Pages auto-redeploys ~1 min after push.
 - **Authentication:** None in the tool. It only reads pages the tech has already logged into. (A Google-Authenticator/TOTP auto-fill feature was explored and **shelved** — see Design Decisions / Known Constraints.)
 - **Third-party services / APIs:** **None at runtime** (deliberate, for privacy/licensing). GitHub Pages is used only for hosting. `gh` CLI (installed via Homebrew, authed as `rvanpolen89`) is used for repo/Pages management from the dev machine.
@@ -20,8 +22,8 @@
 # Folder Structure
 
 - **`src/helper.js`** — THE BRAIN. All logic: DOM walking, spec extraction, component numbering, panel rendering, sessionStorage, drag, print, diagnostics. Exposes `window.VWJB`. Edit here.
-- **`src/template.html`** — the setup/demo page template. Contains placeholders the build replaces: `__BOOKMARKLET__` (the `javascript:` URL), `__HELPER__` (raw helper.js for the live demo box), `__BUILD__` (the version stamp). Includes the draggable install button, a working paste-box demo, the prominent "Current version" box, and an update/hard-refresh note.
-- **`tools/build.js`** — the build. Reads `src/`, stamps the version, generates: `dist/HAHNS.html`, `dist/bookmarklet.txt`, `docs/index.html`, `docs/bookmarklet.txt`, `docs/.nojekyll`. **Holds the `VERSION` constant.**
+- **`src/template.html`** — the setup/demo page template. Contains placeholders the build replaces: `__BOOKMARKLET__` (the `javascript:` URL), `__HELPER__` (raw helper.js for the live demo box), `__BUILD__` (the version stamp), `__CHANGELOG__` (rendered changelog HTML for the bottom "What's new" card). Includes the draggable install button, a working paste-box demo, the prominent "Current version" box, an update/hard-refresh note, and the "What's new" section.
+- **`tools/build.js`** — the build. Reads `src/`, stamps the version, generates: `dist/HAHNS.html`, `dist/bookmarklet.txt`, `docs/index.html`, `docs/bookmarklet.txt`, `docs/.nojekyll`. **Holds the `VERSION` constant.** Also **renders `CHANGELOG.md` to HTML** (`renderChangelog`, a tiny markdown subset) and injects it into the page (`__CHANGELOG__`) and the bookmarklet (helper's `__CHANGELOG_HTML__` as a JS string, `__VERSION__` as the bare version). So the app's "What's new" needs no network — the changelog is baked in.
 - **`tools/serve.js`** — tiny no-cache static dev server (port 8755) for local preview. Default route serves `dist/HAHNS.html`.
 - **`dist/`** — build output for local use (`HAHNS.html`, `bookmarklet.txt`).
 - **`docs/`** — build output served by GitHub Pages (`index.html`, `bookmarklet.txt`, `.nojekyll`).
@@ -44,7 +46,7 @@
 - **Naming:** `camelCase` functions/vars; `SCREAMING_CASE`/`PascalCase` module constants (`SECTIONS`, `BUILD`, `VERSION`, `STORE_KEY`, `TRASH`, `IMG_ICON`, `SITE_URL`). sessionStorage keys are `vwjb_*_v1`.
 - **Error handling:** Wrap all DOM access, cross-origin frame access, `sessionStorage`, clipboard, and `getComputedStyle` in `try/catch` and **degrade gracefully** — never throw into the host page. Cross-origin iframes silently skipped.
 - **Security / privacy (CRITICAL — this is the product's promise):** No runtime network calls. No saving manual content to files. Only the small extracted working list + UI state in sessionStorage (volatile). Diagrams stored **by URL reference, not copied**. Shadow DOM isolation. Always preserve this posture; flag any change that would send/store data.
-- **Performance:** Designed around a single user-initiated "Scan page" click, so per-scan DOM walking + `getComputedStyle` is acceptable. Keep the bookmarklet self-contained (current payload ~70 KB — fine for bookmark URLs).
+- **Performance:** Designed around a single user-initiated "Scan page" click, so per-scan DOM walking + `getComputedStyle` is acceptable. Keep the bookmarklet self-contained (current payload ~80 KB — fine for bookmark URLs; the baked-in changelog grows it over time, so trim the app changelog to recent versions if it ever balloons).
 - **Verification:** No automated test suite. Verify with (a) `node --check src/helper.js` for syntax, (b) a Node eval harness (`global.window={}; eval(helper); window.VWJB...`) for logic, and (c) the browser preview. ALWAYS `node --check` after editing `helper.js` — a stray quote silently breaks `window.VWJB`.
 
 # Product Requirements

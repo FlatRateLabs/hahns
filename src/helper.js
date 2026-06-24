@@ -17,6 +17,13 @@
 
   // build id, stamped in by tools/build.js so you can confirm which version is live
   var BUILD = "__BUILD__";
+  // bare version (e.g. "0.1.1-alpha") + the rendered changelog, both baked in at
+  // build time from CHANGELOG.md so "What's new" works with no network call
+  var APP_VERSION = "__VERSION__";
+  var CHANGELOG_HTML = __CHANGELOG_HTML__;
+  // remembers the last version a tech saw "What's new" for, so the popup shows
+  // once per update (only a version string — never any job/ELSA content)
+  var SEEN_KEY = "vwjb_seen_ver_v1";
   // where techs re-grab the latest (used by the "check for latest" link)
   var SITE_URL = "https://flatratelabs.github.io/hahns/";
 
@@ -549,6 +556,25 @@
     ".exyes:hover{background:#8f2626}" +
     ".exno{background:#fff;color:#001e50}" +
     ".exno:hover{background:#f3f6fb}" +
+    // "What's new" link in the sub bar + the changelog modal it opens
+    ".wnew{font-size:11px;color:#185fa5;text-decoration:none;white-space:nowrap;cursor:pointer;margin-left:12px}" +
+    ".wnew:hover{text-decoration:underline}" +
+    ".clmodal{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(0,8,30,.28);padding:18px}" +
+    ".clbox{background:#fff;border:1px solid #d4d4d4;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.3);width:380px;max-width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden}" +
+    ".clhd{display:flex;align-items:center;padding:13px 15px;background:#001e50;color:#fff}" +
+    ".clhd b{font-size:14px;font-weight:600;flex:1}" +
+    ".clhd button{background:transparent;border:0;color:#cdd7ea;cursor:pointer;font-size:14px;padding:3px 6px;border-radius:6px}" +
+    ".clhd button:hover{background:rgba(255,255,255,.15);color:#fff}" +
+    ".clbody{overflow-y:auto;padding:6px 16px 14px}" +
+    ".cl-ver{padding:12px 0;border-bottom:1px solid #eee}" +
+    ".cl-ver:last-child{border-bottom:0}" +
+    ".cl-ver h3{font-size:14px;color:#001e50;margin:4px 0 2px}" +
+    ".cl-status{font-weight:400;color:#5a6b8c;font-size:12px}" +
+    ".cl-intro{font-size:12px;color:#5a6b8c;margin:2px 0 6px}" +
+    ".cl-ver h4{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#185fa5;margin:9px 0 3px}" +
+    ".cl-ver ul{margin:0;padding-left:18px}" +
+    ".cl-ver li{font-size:12.5px;line-height:1.45;color:#26324a;margin:3px 0}" +
+    ".cl-ver code{background:#eef1f6;border-radius:4px;padding:0 4px;font-size:11.5px}" +
     ".body{overflow-y:auto;padding:4px 13px 13px}" +
     ".sec{padding:11px 0;border-bottom:1px solid #eee}" +
     ".sec:last-child{border-bottom:0}" +
@@ -611,6 +637,7 @@
         '<button data-act="close" title="Close">&#10005;</button></div>' +
       '<div class="sub">' +
         '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span>" +
+        '<a class="wnew" data-act="whatsnew" title="See what changed in this version">What\'s new</a>' +
         '<a class="upd" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Opens the H.A.H.N.S page so you can compare versions">check for latest &#8599;</a></div>' +
       '<div class="jobbar">' +
         '<input class="job" type="text" placeholder="Job title — e.g. Rear Brakes" value="' + esc(r.__title || "") + '">' +
@@ -857,6 +884,23 @@
     });
   }
 
+  // the "What's new" modal — baked-in changelog, shown in the Shadow DOM so it
+  // matches the panel and stays isolated from ELSA's CSS
+  function showChangelog(root) {
+    if (!root) return;
+    var ex = root.querySelector(".clmodal");
+    if (ex) { try { ex.remove(); } catch (e) {} }
+    var ov = document.createElement("div");
+    ov.className = "clmodal";
+    ov.innerHTML = '<div class="clbox"><div class="clhd"><b>What\'s new — H.A.H.N.S</b>' +
+      '<button class="clx" title="Close">&#10005;</button></div>' +
+      '<div class="clbody">' + CHANGELOG_HTML + "</div></div>";
+    root.appendChild(ov);
+    var close = function () { try { ov.remove(); } catch (e) {} };
+    ov.querySelector(".clx").addEventListener("click", close);
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+  }
+
   function renderInto(host, r, options) {
     options = options || {};
     var onRescan = options.onRescan;
@@ -986,6 +1030,8 @@
             } catch (e) {}
             host.remove();
           });
+        } else if (act === "whatsnew") {
+          showChangelog(root);
         } else if (act === "min") {
           setMin(!isMin());
           renderInto(host, r, options);
@@ -1096,6 +1142,16 @@
     // open showing the current job (blank if nothing collected yet) WITHOUT
     // auto-scanning — scanning the page is a deliberate "Scan page" click
     show(loadJob() || emptyResults());
+
+    // show "What's new" once after an update: compare the baked-in version to the
+    // last one this browser saw. Stores only the version string (no job/ELSA data);
+    // wrapped in try/catch since locked-down browsers can block localStorage.
+    try {
+      if (localStorage.getItem(SEEN_KEY) !== APP_VERSION) {
+        localStorage.setItem(SEEN_KEY, APP_VERSION);
+        showChangelog(host.__vwjbShadow);
+      }
+    } catch (e) {}
   }
 
   window.VWJB = { run: run, extract: extract, extractSegments: extractSegments,

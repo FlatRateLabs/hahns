@@ -31,6 +31,14 @@
   #demo{position:relative;min-height:40px;margin-top:16px}
   code{background:#eef1f6;border-radius:4px;padding:1px 5px;font-size:13px}
   .warn{background:#fff8e6;border:1px solid #f3e2b3;border-radius:10px;padding:11px 14px;font-size:13.5px;color:#6b5300;margin-top:14px}
+  .cl-ver{padding:14px 0;border-bottom:1px solid var(--line)}
+  .cl-ver:last-child{border-bottom:0}
+  .cl-ver h3{font-size:16px;color:var(--vw);margin:6px 0 2px}
+  .cl-status{font-weight:400;color:var(--muted);font-size:14px}
+  .cl-intro{font-size:13.5px;color:var(--muted);margin:2px 0 8px}
+  .cl-ver h4{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#185fa5;margin:12px 0 4px}
+  .cl-ver ul{margin:0;padding-left:20px}
+  .cl-ver li{margin:4px 0}
 </style>
 </head>
 <body>
@@ -132,6 +140,12 @@ Brake fluid: VW DOT 4, total approx. 1.0 l.
 WARNING: Brake fluid is poisonous - do not allow it to contact the eyes or skin.</textarea>
     <button class="btn" id="go">Sort the specs</button>
     <div id="demo"><div class="demo-host" id="demoHost"></div></div>
+  </div>
+
+  <div class="card">
+    <h2>What's new</h2>
+    <p class="hint">Every change to H.A.H.N.S, newest first. The version at the top matches the stamp shown in your panel — if they don't match, re-drag the bookmark above to update.</p>
+    __CHANGELOG__
   </div>
 
 </div>

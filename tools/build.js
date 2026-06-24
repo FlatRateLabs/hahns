@@ -21,8 +21,63 @@ const VERSION = "0.1.1-alpha";
 const date = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
 const build = "v" + VERSION + " · " + date;
 
-const helper = fs.readFileSync(path.join(root, "src/helper.js"), "utf8").replace(/__BUILD__/g, build);
-const template = fs.readFileSync(path.join(root, "src/template.html"), "utf8").replace(/__BUILD__/g, build);
+// ---- changelog ----
+// CHANGELOG.md is the single source. We render it to HTML at build time and bake
+// it into both the setup page and the bookmarklet — so the app never needs the
+// network to show "What's new" (keeps the no-network privacy posture).
+function clEsc(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function clInline(s) {
+  return clEsc(s)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+function renderChangelog(md) {
+  var lines = md.split(/\r?\n/);
+  var i = 0;
+  while (i < lines.length && lines[i].indexOf("## ") !== 0) i++;  // skip file header/intro
+  var html = '<div class="cl">';
+  var inList = false, openVer = false, curLi = null;
+  function closeLi() { if (curLi !== null) { html += "<li>" + clInline(curLi.trim()) + "</li>"; curLi = null; } }
+  function closeList() { closeLi(); if (inList) { html += "</ul>"; inList = false; } }
+  function closeVer() { closeList(); if (openVer) { html += "</div>"; openVer = false; } }
+  for (; i < lines.length; i++) {
+    var ln = lines[i];
+    if (ln.indexOf("## ") === 0) {
+      closeVer();
+      var t = ln.slice(3).trim().split(" — ");
+      var ver = t[0], status = t.length > 1 ? t.slice(1).join(" — ") : "";
+      html += '<div class="cl-ver"><h3>' + clInline(ver) +
+        (status ? ' <span class="cl-status">— ' + clInline(status) + "</span>" : "") + "</h3>";
+      openVer = true;
+      continue;
+    }
+    if (!openVer) continue;
+    if (ln.indexOf("### ") === 0) { closeList(); html += "<h4>" + clInline(ln.slice(4).trim()) + "</h4><ul>"; inList = true; continue; }
+    if (ln.indexOf("---") === 0) continue;
+    if (/^\s*-\s+/.test(ln)) { closeLi(); curLi = ln.replace(/^\s*-\s+/, ""); continue; }
+    if (/^\s+\S/.test(ln) && curLi !== null) { curLi += " " + ln.trim(); continue; }
+    var txt = ln.trim();
+    if (!txt) { closeLi(); continue; }
+    if (inList) { if (curLi !== null) curLi += " " + txt; continue; }
+    html += '<p class="cl-intro">' + clInline(txt) + "</p>";
+  }
+  closeVer();
+  return html + "</div>";
+}
+const changelogHtml = renderChangelog(fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8"));
+// JS string literal for the bookmarklet; < keeps "</script>" from breaking
+// the inline <script> on the setup page
+const changelogJs = JSON.stringify(changelogHtml).replace(/</g, "\\u003c");
+
+const helper = fs.readFileSync(path.join(root, "src/helper.js"), "utf8")
+  .replace(/__BUILD__/g, build)
+  .replace(/__VERSION__/g, VERSION)
+  .replace(/__CHANGELOG_HTML__/g, changelogJs);
+const template = fs.readFileSync(path.join(root, "src/template.html"), "utf8")
+  .replace(/__BUILD__/g, build)
+  .replace("__CHANGELOG__", changelogHtml);
 
 /* Light, safe whitespace trim for the bookmarklet payload — strips block
  * comments and collapses leading indentation. We deliberately avoid a real
