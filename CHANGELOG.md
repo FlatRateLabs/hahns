@@ -9,9 +9,9 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.1.1-alpha — in progress
+## v0.1.1-alpha — 2026-06-24
 
-Bug-fix cycle. Not yet live; still being tested on the `v0.1.1` branch.
+Bug-fix and polish cycle.
 
 ### Added
 - **Exit confirmation.** Clicking the panel's **✕** now asks "Are you sure you
