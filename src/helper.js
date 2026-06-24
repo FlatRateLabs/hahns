@@ -35,6 +35,7 @@
   var UPD_CHK_KEY = "vwjb_upd_chk_v1";   // sessionStorage flag: checked once this session
   var updateVersion = null;               // set to the newer version string when found
   var updateDismissed = false;            // tech closed the banner this session
+  var updateStatus = "not started";       // human-readable outcome, surfaced in the diagnostic dump
 
   // the segments captured by the last scan, kept so the build stamp can dump a
   // diagnostic of exactly what the page-walk saw (helps tune against real pages)
@@ -861,6 +862,7 @@
     try { hdr = detectTitle(document); } catch (e) {}
     try { cands = gatherImages(document); picked = pickDiagrams(cands); } catch (e) {}
     return "H.A.H.N.S diagnostic — version " + BUILD + "\n" +
+      "update check: " + updateStatus + "\n" +
       "flags: B=read as bold, H=recognised as a part heading\n" +
       "detected page header: \"" + hdr + "\"\n" +
       "large images on page: " + cands.length + " · diagrams kept: " + picked.length +
@@ -921,26 +923,38 @@
     ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
   }
 
-  // The ONE network call: once per session, fetch the published version.json and,
-  // if it names a newer build, flag it so the panel shows an "update available"
-  // banner. Everything is wrapped so a CSP block / offline / parse error just
-  // no-ops — the manual "check for latest" link remains the guaranteed fallback.
+  // The ONE network call: once per successful check per session, fetch the
+  // published version.json and, if it names a newer build, flag it so the panel
+  // shows an "update available" banner. Everything is wrapped so a CSP block /
+  // offline / parse error just no-ops — the manual "check for latest" link
+  // remains the guaranteed fallback. The outcome is recorded in updateStatus so
+  // the diagnostic dump can report what actually happened on locked-down machines.
   function checkForUpdate(onFound) {
     try {
-      if (sessionStorage.getItem(UPD_CHK_KEY)) return;  // already checked this session
-      sessionStorage.setItem(UPD_CHK_KEY, "1");
-    } catch (e) { /* private mode — just proceed once */ }
+      // a blocked/failed check does NOT spend the token, so we keep retrying on
+      // later opens until one succeeds; once it succeeds we stop for the session
+      if (sessionStorage.getItem(UPD_CHK_KEY)) { updateStatus = "skipped (already succeeded this session)"; return; }
+    } catch (e) { /* private mode — just proceed */ }
+    updateStatus = "checking…";
     try {
       fetch(VERSION_URL, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer" })
-        .then(function (res) { return res && res.ok ? res.json() : null; })
+        .then(function (res) {
+          if (!res || !res.ok) { updateStatus = "got a bad response (HTTP " + (res && res.status) + ")"; return null; }
+          try { sessionStorage.setItem(UPD_CHK_KEY, "1"); } catch (e) {}  // succeeded — stop checking this session
+          return res.json();
+        })
         .then(function (data) {
-          if (data && data.version && data.version !== APP_VERSION) {
+          if (!data) return;
+          if (data.version && data.version !== APP_VERSION) {
+            updateStatus = "update available: " + data.version;
             updateVersion = data.version;
             if (typeof onFound === "function") onFound();
+          } else {
+            updateStatus = "up to date (latest is " + (data.version || "?") + ")";
           }
         })
-        .catch(function () { /* blocked or offline — silent by design */ });
-    } catch (e) { /* fetch unavailable — silent */ }
+        .catch(function (err) { updateStatus = "blocked or offline: " + ((err && err.message) || err); });
+    } catch (e) { updateStatus = "fetch unavailable: " + ((e && e.message) || e); }
   }
 
   function renderInto(host, r, options) {
