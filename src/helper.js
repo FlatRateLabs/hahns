@@ -538,6 +538,17 @@
     ".cyes:hover{background:#fff5f5}" +
     ".cno{color:#001e50}" +
     ".cno:hover{background:#f3f6fb}" +
+    // exit confirmation modal (shown when the header X is clicked)
+    ".exitc{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(0,8,30,.28)}" +
+    ".exitbox{background:#fff;border:1px solid #d4d4d4;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.3);padding:18px 18px 14px;width:288px;max-width:86vw;text-align:left}" +
+    ".exittl{font-size:14px;font-weight:700;color:#001e50;margin:0 0 5px}" +
+    ".exitmsg{font-size:12.5px;color:#3a4a63;line-height:1.45;margin:0 0 14px}" +
+    ".exitbtns{display:flex;gap:8px;justify-content:flex-end}" +
+    ".exitbtns button{appearance:none;-webkit-appearance:none;font:600 12.5px inherit;padding:8px 14px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4}" +
+    ".exyes{background:#a32d2d;border-color:#a32d2d;color:#fff}" +
+    ".exyes:hover{background:#8f2626}" +
+    ".exno{background:#fff;color:#001e50}" +
+    ".exno:hover{background:#f3f6fb}" +
     ".body{overflow-y:auto;padding:4px 13px 13px}" +
     ".sec{padding:11px 0;border-bottom:1px solid #eee}" +
     ".sec:last-child{border-bottom:0}" +
@@ -952,7 +963,20 @@
       btn.addEventListener("click", function () {
         var act = btn.getAttribute("data-act");
         if (act === "close") {
-          host.remove();
+          // the job lives only in memory/sessionStorage, so closing discards it —
+          // guard against an accidental click with an explicit confirmation
+          var ov = document.createElement("div");
+          ov.className = "exitc";
+          ov.innerHTML = '<div class="exitbox">' +
+            '<p class="exittl">Are you sure you want to exit?</p>' +
+            '<p class="exitmsg">All collected job info will be lost.</p>' +
+            '<div class="exitbtns"><button class="exno">Cancel</button>' +
+            '<button class="exyes">Exit</button></div></div>';
+          root.appendChild(ov);
+          var closeOv = function () { try { ov.remove(); } catch (e) {} };
+          ov.querySelector(".exno").addEventListener("click", closeOv);
+          ov.addEventListener("click", function (e) { if (e.target === ov) closeOv(); });
+          ov.querySelector(".exyes").addEventListener("click", function () { host.remove(); });
         } else if (act === "min") {
           setMin(!isMin());
           renderInto(host, r, options);
