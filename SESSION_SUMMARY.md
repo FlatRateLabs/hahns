@@ -5,6 +5,42 @@ permanent project reference.
 
 ---
 
+## 2026-06-24 — v0.1.1-alpha bug-fix/polish cycle (shipped)
+
+**Current version:** `v0.1.1-alpha` (live). **Live:** https://flatratelabs.github.io/hahns/
+
+### Context
+- Owner briefly made the repo **private**, which took GitHub Pages offline (404).
+  Switched back to public; Pages had to be **re-enabled** via `gh api -X POST
+  repos/FlatRateLabs/hahns/pages -f source[branch]=main -f source[path]=/docs`.
+  Rule: on a free plan the repo must stay **public** for the Pages link to work.
+- Discussed commercialization: a bookmarklet can't hide its own source (it lives
+  in the bookmark), so a private repo protects history/discoverability, not the
+  code itself. Flagged the **ELSA content licensing** question before monetizing.
+
+### Shipped (branch `v0.1.1` → fast-forward merged to `main`)
+- **Exit confirmation** on the panel ✕ ("Are you sure you want to exit? All
+  collected job info will be lost." — Exit/Cancel modal in the Shadow DOM).
+- **Exit now clears all stored state** (`vwjb_job_v1`/`vwjb_pos_v1`/`vwjb_min_v1`);
+  previously closing only hid the panel and the job came back on re-open.
+- **CHANGELOG.md** added as the single source of truth (plain-language, newest on
+  top). `tools/build.js` now renders it to HTML (`renderChangelog`) and bakes it
+  into the page (`__CHANGELOG__`) and bookmarklet (`__CHANGELOG_HTML__`,
+  `__VERSION__`) — no network, posture preserved.
+- **"What's new"**: shown on the setup page under the Current-version box
+  (expanded `<details>`), and **auto-pops once after an update** in the panel,
+  tracked by one `localStorage` key `vwjb_seen_ver_v1` (version string only).
+- Removed an in-panel "What's new" link (decluttered the version bar).
+- **README**: added a Changelog section linking to CHANGELOG.md.
+- Payload now ~80 KB (changelog baked in) — still fine; trim app changelog to
+  recent versions if it ever balloons.
+
+### Notes for next session
+- New work should start on a fresh branch (e.g. `v0.1.2`) off `main`.
+- The `v0.1.1` branch is merged; safe to leave or delete.
+
+---
+
 ## 2026-06-21 — Initial build through public deployment
 
 **Current version:** `v0.1.0-alpha` (live build stamp `v0.1.0-alpha · 2026-06-21 …`)
