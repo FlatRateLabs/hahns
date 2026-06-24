@@ -976,7 +976,16 @@
           var closeOv = function () { try { ov.remove(); } catch (e) {} };
           ov.querySelector(".exno").addEventListener("click", closeOv);
           ov.addEventListener("click", function (e) { if (e.target === ov) closeOv(); });
-          ov.querySelector(".exyes").addEventListener("click", function () { host.remove(); });
+          ov.querySelector(".exyes").addEventListener("click", function () {
+            // a real exit discards the job — wipe all stored state so a fresh
+            // open starts clean (matches the "all info will be lost" promise)
+            try {
+              clearJob();
+              sessionStorage.removeItem("vwjb_pos_v1");
+              sessionStorage.removeItem("vwjb_min_v1");
+            } catch (e) {}
+            host.remove();
+          });
         } else if (act === "min") {
           setMin(!isMin());
           renderInto(host, r, options);
