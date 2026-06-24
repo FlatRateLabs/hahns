@@ -26,6 +26,15 @@
   var SEEN_KEY = "vwjb_seen_ver_v1";
   // where techs re-grab the latest (used by the "check for latest" link)
   var SITE_URL = "https://flatratelabs.github.io/hahns/";
+  // ---- auto-update check (the ONE deliberate network exception) ----
+  // On the first panel open per browser session we fetch this tiny static file
+  // and, if it names a newer version, show a non-blocking "update available"
+  // banner. The request carries NO referrer, cookies, or job/ELSA data — just a
+  // GET for a public file — and fails silently if ELSA's CSP blocks it.
+  var VERSION_URL = SITE_URL + "version.json";
+  var UPD_CHK_KEY = "vwjb_upd_chk_v1";   // sessionStorage flag: checked once this session
+  var updateVersion = null;               // set to the newer version string when found
+  var updateDismissed = false;            // tech closed the banner this session
 
   // the segments captured by the last scan, kept so the build stamp can dump a
   // diagnostic of exactly what the page-walk saw (helps tune against real pages)
@@ -526,12 +535,20 @@
     ".hd .hbtn{display:inline-flex;align-items:center;justify-content:center;padding:3px 5px}" +
     ".hd .hbtn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".wrap.min{max-height:none}" +
-    ".wrap.min .sub,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft{display:none}" +
+    ".wrap.min .sub,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar{display:none}" +
     ".sub{padding:6px 13px;background:#eef1f6;display:flex;align-items:center}" +
     ".bld{font-size:11px;color:#5a6b8c;white-space:nowrap;cursor:pointer}" +
     ".bld:hover{color:#001e50;text-decoration:underline}" +
     ".upd{margin-left:auto;font-size:11px;color:#185fa5;text-decoration:none;white-space:nowrap}" +
     ".upd:hover{text-decoration:underline}" +
+    // "update available" banner (auto-update check)
+    ".updbar{display:flex;align-items:center;gap:8px;padding:8px 13px;background:#fff8e6;border-bottom:1px solid #f3e2b3;font-size:11.5px;color:#6b5300;line-height:1.35}" +
+    ".updtxt{flex:1}" +
+    ".updbar b{color:#5a4300}" +
+    ".updlink{color:#185fa5;text-decoration:none;white-space:nowrap;font-weight:600}" +
+    ".updlink:hover{text-decoration:underline}" +
+    ".updx{flex-shrink:0;appearance:none;-webkit-appearance:none;border:0;background:transparent;color:#9a8230;cursor:pointer;font-size:12px;padding:2px 4px;border-radius:5px}" +
+    ".updx:hover{background:rgba(107,83,0,.12);color:#6b5300}" +
     ".jobbar{padding:9px 13px;border-bottom:1px solid #eee;display:flex;gap:7px;align-items:center}" +
     ".job{flex:1;min-width:0;font:600 14px inherit;color:#001e50;border:1px solid #dfe4ee;border-radius:8px;padding:8px 10px;outline:none;background:#fff}" +
     ".job::placeholder{color:#b3b9c4;font-weight:400}" +
@@ -636,6 +653,12 @@
       '<div class="sub">' +
         '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span>" +
         '<a class="upd" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Opens the H.A.H.N.S page so you can compare versions">check for latest &#8599;</a></div>' +
+      (!embed && updateVersion && !updateDismissed
+        ? '<div class="updbar"><span class="updtxt">Update available: <b>v' + esc(updateVersion) +
+            '</b> — hard-refresh the setup page &amp; re-drag the bookmark.</span>' +
+            '<a class="updlink" href="' + SITE_URL + '" target="_blank" rel="noopener">Open &#8599;</a>' +
+            '<button class="updx" data-act="upddismiss" title="Dismiss">&#10005;</button></div>'
+        : "") +
       '<div class="jobbar">' +
         '<input class="job" type="text" placeholder="Job title — e.g. Rear Brakes" value="' + esc(r.__title || "") + '">' +
         '<button class="newjob" data-act="newjob" title="Clear everything and start a new job">New job</button>' +
@@ -898,6 +921,28 @@
     ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
   }
 
+  // The ONE network call: once per session, fetch the published version.json and,
+  // if it names a newer build, flag it so the panel shows an "update available"
+  // banner. Everything is wrapped so a CSP block / offline / parse error just
+  // no-ops — the manual "check for latest" link remains the guaranteed fallback.
+  function checkForUpdate(onFound) {
+    try {
+      if (sessionStorage.getItem(UPD_CHK_KEY)) return;  // already checked this session
+      sessionStorage.setItem(UPD_CHK_KEY, "1");
+    } catch (e) { /* private mode — just proceed once */ }
+    try {
+      fetch(VERSION_URL, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer" })
+        .then(function (res) { return res && res.ok ? res.json() : null; })
+        .then(function (data) {
+          if (data && data.version && data.version !== APP_VERSION) {
+            updateVersion = data.version;
+            if (typeof onFound === "function") onFound();
+          }
+        })
+        .catch(function () { /* blocked or offline — silent by design */ });
+    } catch (e) { /* fetch unavailable — silent */ }
+  }
+
   function renderInto(host, r, options) {
     options = options || {};
     var onRescan = options.onRescan;
@@ -1027,6 +1072,9 @@
             } catch (e) {}
             host.remove();
           });
+        } else if (act === "upddismiss") {
+          updateDismissed = true;
+          renderInto(host, r, options);
         } else if (act === "min") {
           setMin(!isMin());
           renderInto(host, r, options);
@@ -1147,6 +1195,10 @@
         showChangelog(host.__vwjbShadow);
       }
     } catch (e) {}
+
+    // one-time-per-session update check; re-render to reveal the banner if a
+    // newer version is published (no-ops silently if the request is blocked)
+    checkForUpdate(function () { show(loadJob() || emptyResults()); });
   }
 
   window.VWJB = { run: run, extract: extract, extractSegments: extractSegments,

@@ -9,6 +9,21 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.2.0-alpha — in progress
+
+New feature. Not yet live; still being tested on the `v0.2.0` branch.
+
+### Added
+- **Automatic update check.** The first time you open the panel each browser
+  session, H.A.H.N.S quietly checks whether a newer version has been published.
+  If so, a small banner appears: "Update available — hard-refresh the setup page
+  & re-drag the bookmark," with a link to open it. This is the tool's **only**
+  network use: it requests a single public version file and sends no job or ELSA
+  data. If your shop browser blocks the check, nothing breaks — the panel works
+  exactly as before and the manual "check for latest" link still works.
+
+---
+
 ## v0.1.1-alpha — 2026-06-24
 
 Bug-fix and polish cycle.

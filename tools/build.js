@@ -15,7 +15,7 @@ const root = path.join(__dirname, "..");
 // ---- version ----
 // Bump this when you ship. While testing, keep the "-alpha" tag.
 //   tiny fix -> 0.1.1   new feature -> 0.2.0   stable release -> 1.0.0
-const VERSION = "0.1.1-alpha";
+const VERSION = "0.2.0-alpha";
 
 // shown in the panel + setup page: "v0.1.0-alpha · 2026-06-20 21:53 UTC"
 const date = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
@@ -106,11 +106,16 @@ const html = template
 
 fs.writeFileSync(path.join(distDir, "HAHNS.html"), html);
 
+// tiny file the deployed app fetches once per session for its update check
+const versionJson = JSON.stringify({ version: VERSION, build: build });
+fs.writeFileSync(path.join(distDir, "version.json"), versionJson);
+
 // GitHub Pages: serve the site from /docs (index.html is the default page)
 const docsDir = path.join(root, "docs");
 fs.mkdirSync(docsDir, { recursive: true });
 fs.writeFileSync(path.join(docsDir, "index.html"), html);
 fs.writeFileSync(path.join(docsDir, "bookmarklet.txt"), bookmarklet);
+fs.writeFileSync(path.join(docsDir, "version.json"), versionJson);
 // stop Pages' Jekyll from touching our files
 fs.writeFileSync(path.join(docsDir, ".nojekyll"), "");
 
@@ -118,3 +123,4 @@ console.log("Built " + build + ":");
 console.log("  dist/bookmarklet.txt      (" + bookmarklet.length + " chars)");
 console.log("  dist/HAHNS.html");
 console.log("  docs/index.html           (GitHub Pages)");
+console.log("  docs/version.json         (update check)");
