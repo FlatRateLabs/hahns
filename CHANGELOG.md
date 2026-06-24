@@ -17,9 +17,9 @@ Bug-fix cycle. Not yet live; still being tested on the `v0.1.1` branch.
 - **Exit confirmation.** Clicking the panel's **✕** now asks "Are you sure you
   want to exit? All collected job info will be lost." with **Exit** / **Cancel**,
   so an accidental click no longer wipes the job.
-- **"What's new" changelog.** This list now appears at the bottom of the setup
-  page, and after an update the panel shows it once automatically so you can see
-  what changed.
+- **"What's new" changelog.** This list now appears on the setup page (under
+  "Current version"), and after an update the panel shows it once automatically
+  so you can see what changed.
 
 ### Fixed
 - **Closing now actually clears the job.** Before, closing only hid the panel —

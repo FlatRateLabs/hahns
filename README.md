@@ -19,6 +19,12 @@ bookmarks bar, and they're done — nothing installs.
    Tell techs to **re-drag** the bookmark from the link (the panel's build stamp
    confirms they have the latest).
 
+## Changelog
+What changed in each version, newest first: **[CHANGELOG.md](CHANGELOG.md)**.
+
+It's also shown on the setup page (under "Current version") and pops up once in
+the panel after a tech updates to a new version.
+
 ## Privacy by design
 - Runs entirely in your browser. No server, no network calls, no analytics.
 - Only reads text ELSA has already displayed to you.
