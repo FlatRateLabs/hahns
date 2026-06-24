@@ -9,9 +9,9 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.2.0-alpha — in progress
+## v0.2.0-alpha — 2026-06-24
 
-New feature. Not yet live; still being tested on the `v0.2.0` branch.
+New feature release.
 
 ### Added
 - **Automatic update check.** The first time you open the panel each browser
