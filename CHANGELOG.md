@@ -18,8 +18,8 @@ Bug-fix cycle. Not yet live; still being tested on the `v0.1.1` branch.
   want to exit? All collected job info will be lost." with **Exit** / **Cancel**,
   so an accidental click no longer wipes the job.
 - **"What's new" changelog.** This list now appears at the bottom of the setup
-  page and inside the panel (a "What's new" link in the version bar). After an
-  update it pops up once automatically so you can see what changed.
+  page, and after an update the panel shows it once automatically so you can see
+  what changed.
 
 ### Fixed
 - **Closing now actually clears the job.** Before, closing only hid the panel —

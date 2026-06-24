@@ -556,9 +556,7 @@
     ".exyes:hover{background:#8f2626}" +
     ".exno{background:#fff;color:#001e50}" +
     ".exno:hover{background:#f3f6fb}" +
-    // "What's new" link in the sub bar + the changelog modal it opens
-    ".wnew{font-size:11px;color:#185fa5;text-decoration:none;white-space:nowrap;cursor:pointer;margin-left:12px}" +
-    ".wnew:hover{text-decoration:underline}" +
+    // the "What's new" changelog modal (auto-shown once after an update)
     ".clmodal{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(0,8,30,.28);padding:18px}" +
     ".clbox{background:#fff;border:1px solid #d4d4d4;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.3);width:380px;max-width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden}" +
     ".clhd{display:flex;align-items:center;padding:13px 15px;background:#001e50;color:#fff}" +
@@ -637,7 +635,6 @@
         '<button data-act="close" title="Close">&#10005;</button></div>' +
       '<div class="sub">' +
         '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span>" +
-        '<a class="wnew" data-act="whatsnew" title="See what changed in this version">What\'s new</a>' +
         '<a class="upd" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Opens the H.A.H.N.S page so you can compare versions">check for latest &#8599;</a></div>' +
       '<div class="jobbar">' +
         '<input class="job" type="text" placeholder="Job title — e.g. Rear Brakes" value="' + esc(r.__title || "") + '">' +
@@ -1030,8 +1027,6 @@
             } catch (e) {}
             host.remove();
           });
-        } else if (act === "whatsnew") {
-          showChangelog(root);
         } else if (act === "min") {
           setMin(!isMin());
           renderInto(host, r, options);
