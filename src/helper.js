@@ -27,25 +27,23 @@
   // where techs re-grab the latest (used by the "check for latest" link)
   var SITE_URL = "https://flatratelabs.github.io/hahns/";
   // ---- auto-update check (the ONE deliberate network exception) ----
-  // At most once per day, in the background after the panel has rendered, we
-  // check for a newer build TWO ways and show a non-blocking banner if found:
-  //   (1) fetch version.json — gives the exact new version, but ELSA's
-  //       connect-src CSP blocks it (confirmed), so this only works off-ELSA.
-  //   (2) load a marker image — rides on the more-permissive img-src, so it can
-  //       work ON ELSA; tells us yes/no (no version string).
-  // Every request is a referrer-less, cookie-less GET for a public file on our
-  // own hosting — no job/ELSA data, no telemetry. Failures are silent for the
-  // tech but the real reason (incl. whether CSP actually fired) is recorded for
-  // the diagnostic dump.
+  // ELSA's CSP blocks ALL requests to our domain (connect-src AND img-src,
+  // both browser-confirmed), so a server check simply cannot run on an ELSA
+  // page. Therefore: on ELSA we make NO network call at all (preserving the
+  // no-network promise there) and instead show a note telling the tech to check
+  // from a normal page. OFF ELSA we fetch version.json (≤once/day, in the
+  // background after render) and show an "update available" banner if newer.
+  // The fetch is a referrer-less, cookie-less GET for a public file — no
+  // job/ELSA data, no telemetry. Outcome is recorded for the diagnostic dump.
   var VERSION_URL = SITE_URL + "version.json";
-  var UC_CONTROL_URL = SITE_URL + "uc/control.png";   // always present — proves img-src reaches us
-  var UC_MARKER_URL = SITE_URL + "uc/cur/" + APP_VERSION + ".png"; // present only for the current build
   var UPD_LAST_KEY = "vwjb_last_update_check_v1";    // localStorage: {at, ver} of last network attempt
   var UPD_RESULT_KEY = "vwjb_last_update_result_v1"; // localStorage: JSON of the last attempt's outcome
-  var UPD_DAY_MS = 24 * 60 * 60 * 1000;               // once-per-day throttle
+  var BLK_DISMISS_KEY = "vwjb_upd_blk_dismiss_v1";   // sessionStorage: tech hid the "check off ELSA" note
+  var UPD_DAY_MS = 24 * 60 * 60 * 1000;               // once-per-day throttle (off-ELSA)
   var updateVersion = null;               // exact newer version (from fetch) when available
-  var updateAvailable = false;            // a newer build exists (marker missing, or fetch says so)
-  var updateDismissed = false;            // tech closed the banner this session
+  var updateAvailable = false;            // a newer build exists
+  var updateBlocked = false;              // check can't run here (we're on ELSA) — show guidance
+  var updateDismissed = false;            // tech closed the update banner this session
 
   // the segments captured by the last scan, kept so the build stamp can dump a
   // diagnostic of exactly what the page-walk saw (helps tune against real pages)
@@ -436,6 +434,9 @@
   function isMin() { try { return sessionStorage.getItem("vwjb_min_v1") === "1"; } catch (e) { return false; } }
   function setMin(v) { try { sessionStorage.setItem("vwjb_min_v1", v ? "1" : "0"); } catch (e) {} }
 
+  // tech dismissed the "check off ELSA" note (per tab, so it doesn't nag)
+  function blkDismissed() { try { return sessionStorage.getItem(BLK_DISMISS_KEY) === "1"; } catch (e) { return false; } }
+
   /* ------------------------------------------------------------------ *
    * 3. GATHER — walk the live page into ordered { text, bold } segments,
    *    preserving which text is bold (how ELSA marks component callouts).
@@ -546,7 +547,7 @@
     ".hd .hbtn{display:inline-flex;align-items:center;justify-content:center;padding:3px 5px}" +
     ".hd .hbtn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".wrap.min{max-height:none}" +
-    ".wrap.min .sub,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar{display:none}" +
+    ".wrap.min .sub,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar,.wrap.min .updnote{display:none}" +
     ".sub{padding:6px 13px;background:#eef1f6;display:flex;align-items:center}" +
     ".bld{font-size:11px;color:#5a6b8c;white-space:nowrap;cursor:pointer}" +
     ".bld:hover{color:#001e50;text-decoration:underline}" +
@@ -561,6 +562,12 @@
     ".updget:hover{background:#134c84}" +
     ".updx{flex-shrink:0;appearance:none;-webkit-appearance:none;border:1px solid #e0cf9a;background:#fff;color:#6b5300;font:600 11.5px inherit;padding:6px 10px;border-radius:7px;cursor:pointer}" +
     ".updx:hover{background:#fdf6e3}" +
+    // muted "check off ELSA" guidance note (shown when the check can't run here)
+    ".updnote{display:flex;align-items:center;gap:8px;padding:8px 13px;background:#eef1f6;border-bottom:1px solid #dde3ee;font-size:11px;color:#5a6b8c;line-height:1.35}" +
+    ".updnotetxt{flex:1}" +
+    ".updnote b{color:#3a4a63}" +
+    ".updnote .updx{border-color:#cfd6e4;color:#5a6b8c}" +
+    ".updnote .updx:hover{background:#f3f6fb}" +
     ".jobbar{padding:9px 13px;border-bottom:1px solid #eee;display:flex;gap:7px;align-items:center}" +
     ".job{flex:1;min-width:0;font:600 14px inherit;color:#001e50;border:1px solid #dfe4ee;border-radius:8px;padding:8px 10px;outline:none;background:#fff}" +
     ".job::placeholder{color:#b3b9c4;font-weight:400}" +
@@ -671,6 +678,11 @@
               (updateVersion ? ' · latest is <b>v' + esc(updateVersion) + '</b>' : '') + '</span></div>' +
             '<a class="updget" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Open the setup page to update">Get Update</a>' +
             '<button class="updx" data-act="upddismiss" title="Hide this until the next update">Dismiss</button></div>'
+        : "") +
+      // ELSA blocks the check, so guide the tech to run it from a normal page
+      (!embed && updateBlocked && !updateAvailable && !blkDismissed()
+        ? '<div class="updnote"><span class="updnotetxt">Update checks can\'t run inside ELSA. To check for a newer version, open <b>H.A.H.N.S</b> on a normal web page <b>before</b> opening ELSA (or after closing it).</span>' +
+            '<button class="updx" data-act="blkdismiss" title="Hide this note">Dismiss</button></div>'
         : "") +
       '<div class="jobbar">' +
         '<input class="job" type="text" placeholder="Job title — e.g. Rear Brakes" value="' + esc(r.__title || "") + '">' +
@@ -939,14 +951,44 @@
     ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
   }
 
-  // Runs in the background after render, at most once per day (throttled via
-  // localStorage). Probes for a newer build two ways — a fetch of version.json
-  // (exact version, blocked by ELSA's connect-src) and a marker-image load (yes/no,
-  // rides on the more-permissive img-src). Either one finding a newer build flags
-  // the banner. Failures are silent for the tech; the real reason of BOTH probes
-  // (HTTP status, errors, and whether a CSP violation actually fired for connect
-  // and/or img) is recorded so the diagnostic shows the truth instead of guessing.
+  // Is the bookmarklet running on an ELSA page? ELSA's CSP blocks our update
+  // check, so we don't even try there — we show guidance instead. Matched by the
+  // hosts the repair content + portal live on (and a couple of ELSA-ish hints).
+  function isElsaPage() {
+    try {
+      var h = (location.hostname || "").toLowerCase();
+      return /(^|\.)vwhub\.com$/.test(h) || /(^|\.)vw-now\.com$/.test(h) ||
+        h.indexOf("elsa") >= 0 || h.indexOf("e2g") >= 0;
+    } catch (e) { return false; }
+  }
+
+  // Re-apply a previously-found update so the banner persists across page opens
+  // (e.g. on a throttled day when we don't re-fetch).
+  function restoreUpdateState() {
+    try {
+      var last = JSON.parse(localStorage.getItem(UPD_LAST_KEY) || "null");
+      if (!last || last.ver !== APP_VERSION) return;     // result was for a different build
+      var res = JSON.parse(localStorage.getItem(UPD_RESULT_KEY) || "null");
+      if (res && res.fetch && res.fetch.success && res.fetch.latest && res.fetch.latest !== APP_VERSION) {
+        updateVersion = res.fetch.latest; updateAvailable = true;
+      }
+    } catch (e) {}
+  }
+
+  // Decide what to show. ON ELSA: no network at all — just flag the guidance
+  // note. OFF ELSA: fetch version.json (≤once/day) and flag the banner if newer.
+  // Silent on failure; the outcome is recorded for the diagnostic dump.
   function checkForUpdate(onFound) {
+    restoreUpdateState();
+    function flag() { if (typeof onFound === "function") onFound(); }
+    function save(res) { try { localStorage.setItem(UPD_RESULT_KEY, JSON.stringify(res)); } catch (e) {} }
+
+    if (isElsaPage()) {
+      updateBlocked = true;   // can't check here; the note tells the tech what to do
+      save({ attempted: false, at: new Date().toISOString(), host: location.hostname, skipped: "on ELSA — update checks run only off ELSA" });
+      return;
+    }
+
     var now = Date.now();
     // once-per-day throttle; a version change (fresh install) re-checks promptly
     try {
@@ -955,68 +997,40 @@
     } catch (e) { /* unreadable storage — just proceed */ }
     try { localStorage.setItem(UPD_LAST_KEY, JSON.stringify({ at: now, ver: APP_VERSION })); } catch (e) {}
 
-    var result = { attempted: true, at: new Date(now).toISOString(), fetch: null, image: null };
-    function save() { try { localStorage.setItem(UPD_RESULT_KEY, JSON.stringify(result)); } catch (e) {} }
-    save();
-    function flag() { if (typeof onFound === "function") onFound(); }
-
-    // Watch for REAL CSP violations naming our host, separately for connect-src
-    // (the fetch) and img-src (the marker image). A CSP block throws the same
-    // generic "Failed to fetch"/image error as any network failure, so we only
-    // claim CSP when the browser actually fires the event.
-    var connectCsp = false, imgCsp = false;
+    // only claim CSP when the browser actually fires the violation event
+    var csp = false;
     var onViol = function (ev) {
       try {
         var dir = String((ev && (ev.effectiveDirective || ev.violatedDirective)) || "");
-        if (String((ev && ev.blockedURI) || "").indexOf("flatratelabs.github.io") < 0) return;
-        if (dir.indexOf("connect") === 0) connectCsp = true;
-        if (dir.indexOf("img") === 0) imgCsp = true;
+        if (dir.indexOf("connect") === 0 && String((ev && ev.blockedURI) || "").indexOf("flatratelabs.github.io") >= 0) csp = true;
       } catch (e) {}
     };
     try { document.addEventListener("securitypolicyviolation", onViol); } catch (e) {}
     setTimeout(function () { try { document.removeEventListener("securitypolicyviolation", onViol); } catch (e) {} }, 8000);
 
-    // --- probe 1: fetch version.json (exact version; works only off-ELSA) ---
+    function finish(fetchRes) { save({ attempted: true, at: new Date(now).toISOString(), host: location.hostname, fetch: fetchRes }); }
+
     try {
       fetch(VERSION_URL, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer" })
         .then(function (resp) {
           var status = resp ? resp.status : null;
-          if (!resp || !resp.ok) { result.fetch = { success: false, httpStatus: status, error: "non-OK HTTP response", csp: connectCsp }; save(); return null; }
+          if (!resp || !resp.ok) { finish({ success: false, httpStatus: status, error: "non-OK HTTP response", csp: csp }); return null; }
           return resp.json().then(function (data) {
-            result.fetch = { success: true, httpStatus: status, error: null, csp: false, latest: (data && data.version) || null }; save();
+            finish({ success: true, httpStatus: status, error: null, csp: false, latest: (data && data.version) || null });
             if (data && data.version && data.version !== APP_VERSION) { updateVersion = data.version; updateAvailable = true; flag(); }
             return data;
           }, function (perr) {
-            result.fetch = { success: false, httpStatus: status, error: "bad JSON: " + ((perr && perr.message) || perr), csp: false }; save(); return null;
+            finish({ success: false, httpStatus: status, error: "bad JSON: " + ((perr && perr.message) || perr), csp: false }); return null;
           });
         })
         .catch(function (err) {
-          setTimeout(function () { result.fetch = { success: false, httpStatus: null, error: (err && err.message) || String(err), csp: connectCsp }; save(); }, 0);
+          setTimeout(function () {
+            finish({ success: false, httpStatus: null, error: (err && err.message) || String(err), csp: csp });
+            if (csp) { updateBlocked = true; flag(); }   // a restricted page we didn't detect by host
+          }, 0);
         });
     } catch (e) {
-      result.fetch = { success: false, httpStatus: null, error: (e && e.message) || String(e), csp: connectCsp }; save();
-    }
-
-    // --- probe 2: marker images (CSP-proof yes/no via img-src) ---
-    try {
-      var control = new Image(), marker = new Image();
-      var cOk = null, mOk = null;
-      var settle = function () {
-        if (cOk === null || mOk === null) return;            // wait for both
-        var outcome;
-        if (!cOk) outcome = "blocked-or-offline";            // control failed -> can't trust the marker
-        else if (mOk) outcome = "up-to-date";
-        else { outcome = "update-available"; updateAvailable = true; flag(); }
-        result.image = { controlLoaded: cOk, markerLoaded: mOk, imgCsp: imgCsp, outcome: outcome }; save();
-      };
-      control.onload = function () { cOk = true; settle(); };
-      control.onerror = function () { setTimeout(function () { cOk = false; settle(); }, 0); };  // let the CSP event fire first
-      marker.onload = function () { mOk = true; settle(); };
-      marker.onerror = function () { setTimeout(function () { mOk = false; settle(); }, 0); };
-      control.src = UC_CONTROL_URL + "?t=" + now;            // cache-bust so a deleted marker truly 404s
-      marker.src = UC_MARKER_URL + "?t=" + now;
-    } catch (e) {
-      result.image = { controlLoaded: false, markerLoaded: false, imgCsp: imgCsp, outcome: "error: " + ((e && e.message) || e) }; save();
+      finish({ success: false, httpStatus: null, error: (e && e.message) || String(e), csp: csp });
     }
   }
 
@@ -1152,6 +1166,9 @@
         } else if (act === "upddismiss") {
           updateDismissed = true;
           renderInto(host, r, options);
+        } else if (act === "blkdismiss") {
+          try { sessionStorage.setItem(BLK_DISMISS_KEY, "1"); } catch (e) {}
+          renderInto(host, r, options);
         } else if (act === "min") {
           setMin(!isMin());
           renderInto(host, r, options);
@@ -1259,6 +1276,11 @@
       clearJob();
       show(emptyResults());
     }
+    // decide the update state first (sync: ELSA-host / restore last result) so
+    // the first render already shows the banner or the "check off ELSA" note;
+    // the async fetch (off ELSA) re-renders if it finds a newer build later
+    checkForUpdate(function () { show(loadJob() || emptyResults()); });
+
     // open showing the current job (blank if nothing collected yet) WITHOUT
     // auto-scanning — scanning the page is a deliberate "Scan page" click
     show(loadJob() || emptyResults());
@@ -1272,10 +1294,6 @@
         showChangelog(host.__vwjbShadow);
       }
     } catch (e) {}
-
-    // one-time-per-session update check; re-render to reveal the banner if a
-    // newer version is published (no-ops silently if the request is blocked)
-    checkForUpdate(function () { show(loadJob() || emptyResults()); });
   }
 
   window.VWJB = { run: run, extract: extract, extractSegments: extractSegments,

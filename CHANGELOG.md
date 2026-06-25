@@ -9,21 +9,31 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.2.2-alpha — 2026-06-25
+## v0.2.3-alpha — 2026-06-25
 
-Makes the update check work on ELSA (where the normal network call is blocked).
+Settles how the update check behaves on ELSA, after testing proved ELSA blocks
+every kind of background check.
 
 ### Changed
-- **Update check now also works on ELSA.** ELSA's security policy blocks the
-  normal version lookup (confirmed by the browser), so the check now *also* loads
-  a tiny marker image — which ELSA does allow — to tell whether a newer build
-  exists. On ELSA the banner says "a newer version is available" without the
-  version number; off ELSA it still shows the exact new version.
+- **The update check now runs only outside ELSA, and tells you so.** Testing
+  confirmed (by the browser itself) that ELSA blocks H.A.H.N.S from reaching the
+  internet at all while it's open — so the check no longer even tries while
+  you're in ELSA (keeping the "nothing leaves your browser on ELSA" promise
+  intact). Instead, the panel shows a short note: *"Update checks can't run
+  inside ELSA — open H.A.H.N.S on a normal web page before opening ELSA (or after
+  closing it)."* When you do open it off ELSA, it checks and shows the exact new
+  version if one exists.
 
-### Added
-- The diagnostic dump now reports both checks (the version lookup and the image
-  check) and, for each, whether the browser actually reported a security-policy
-  block — so we can see exactly what a given shop machine allows.
+### Removed
+- The marker-image trick from v0.2.2 (ELSA blocks images from us too, so it
+  couldn't work).
+
+---
+
+## v0.2.2-alpha — 2026-06-25
+
+Attempted to make the update check work inside ELSA via a marker image. Testing
+showed ELSA blocks that too — superseded by v0.2.3.
 
 ---
 
