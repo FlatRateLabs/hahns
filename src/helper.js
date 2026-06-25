@@ -27,15 +27,18 @@
   // where techs re-grab the latest (used by the "check for latest" link)
   var SITE_URL = "https://flatratelabs.github.io/hahns/";
   // ---- auto-update check (the ONE deliberate network exception) ----
-  // On the first panel open per browser session we fetch this tiny static file
-  // and, if it names a newer version, show a non-blocking "update available"
-  // banner. The request carries NO referrer, cookies, or job/ELSA data — just a
-  // GET for a public file — and fails silently if ELSA's CSP blocks it.
+  // At most once per day (in the background, after the panel has rendered) we
+  // fetch this tiny static file and, if it names a newer version, show a
+  // non-blocking "update available" banner. The request carries NO referrer,
+  // cookies, or job/ELSA data — just a GET for a public file. On any failure it
+  // is silent for the tech, but the real reason (HTTP status, exception, and
+  // whether a CSP violation actually fired) is recorded for the diagnostic dump.
   var VERSION_URL = SITE_URL + "version.json";
-  var UPD_CHK_KEY = "vwjb_upd_chk_v1";   // sessionStorage flag: checked once this session
-  var updateVersion = null;               // set to the newer version string when found
+  var UPD_LAST_KEY = "vwjb_last_update_check_v1";    // localStorage: {at, ver} of last network attempt
+  var UPD_RESULT_KEY = "vwjb_last_update_result_v1"; // localStorage: JSON of the last attempt's outcome
+  var UPD_DAY_MS = 24 * 60 * 60 * 1000;               // once-per-day throttle
+  var updateVersion = null;               // newer version string when found
   var updateDismissed = false;            // tech closed the banner this session
-  var updateStatus = "not started";       // human-readable outcome, surfaced in the diagnostic dump
 
   // the segments captured by the last scan, kept so the build stamp can dump a
   // diagnostic of exactly what the page-walk saw (helps tune against real pages)
@@ -543,13 +546,14 @@
     ".upd{margin-left:auto;font-size:11px;color:#185fa5;text-decoration:none;white-space:nowrap}" +
     ".upd:hover{text-decoration:underline}" +
     // "update available" banner (auto-update check)
-    ".updbar{display:flex;align-items:center;gap:8px;padding:8px 13px;background:#fff8e6;border-bottom:1px solid #f3e2b3;font-size:11.5px;color:#6b5300;line-height:1.35}" +
-    ".updtxt{flex:1}" +
-    ".updbar b{color:#5a4300}" +
-    ".updlink{color:#185fa5;text-decoration:none;white-space:nowrap;font-weight:600}" +
-    ".updlink:hover{text-decoration:underline}" +
-    ".updx{flex-shrink:0;appearance:none;-webkit-appearance:none;border:0;background:transparent;color:#9a8230;cursor:pointer;font-size:12px;padding:2px 4px;border-radius:5px}" +
-    ".updx:hover{background:rgba(107,83,0,.12);color:#6b5300}" +
+    ".updbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 13px;background:#fff8e6;border-bottom:1px solid #f3e2b3;font-size:11.5px;color:#6b5300;line-height:1.3}" +
+    ".updmsg{flex:1;min-width:140px;display:flex;flex-direction:column}" +
+    ".updhd{font-size:12px;color:#5a4300}" +
+    ".updvers b{color:#5a4300}" +
+    ".updget{flex-shrink:0;appearance:none;-webkit-appearance:none;background:#185fa5;color:#fff;text-decoration:none;font:600 11.5px inherit;padding:6px 11px;border-radius:7px;white-space:nowrap;border:0;cursor:pointer}" +
+    ".updget:hover{background:#134c84}" +
+    ".updx{flex-shrink:0;appearance:none;-webkit-appearance:none;border:1px solid #e0cf9a;background:#fff;color:#6b5300;font:600 11.5px inherit;padding:6px 10px;border-radius:7px;cursor:pointer}" +
+    ".updx:hover{background:#fdf6e3}" +
     ".jobbar{padding:9px 13px;border-bottom:1px solid #eee;display:flex;gap:7px;align-items:center}" +
     ".job{flex:1;min-width:0;font:600 14px inherit;color:#001e50;border:1px solid #dfe4ee;border-radius:8px;padding:8px 10px;outline:none;background:#fff}" +
     ".job::placeholder{color:#b3b9c4;font-weight:400}" +
@@ -655,10 +659,10 @@
         '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span>" +
         '<a class="upd" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Opens the H.A.H.N.S page so you can compare versions">check for latest &#8599;</a></div>' +
       (!embed && updateVersion && !updateDismissed
-        ? '<div class="updbar"><span class="updtxt">Update available: <b>v' + esc(updateVersion) +
-            '</b> — hard-refresh the setup page &amp; re-drag the bookmark.</span>' +
-            '<a class="updlink" href="' + SITE_URL + '" target="_blank" rel="noopener">Open &#8599;</a>' +
-            '<button class="updx" data-act="upddismiss" title="Dismiss">&#10005;</button></div>'
+        ? '<div class="updbar"><div class="updmsg"><b class="updhd">New version available</b>' +
+            '<span class="updvers">You have <b>v' + esc(APP_VERSION) + '</b> · latest is <b>v' + esc(updateVersion) + '</b></span></div>' +
+            '<a class="updget" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Open the setup page to update">Get Update</a>' +
+            '<button class="updx" data-act="upddismiss" title="Hide this until the next update">Dismiss</button></div>'
         : "") +
       '<div class="jobbar">' +
         '<input class="job" type="text" placeholder="Job title — e.g. Rear Brakes" value="' + esc(r.__title || "") + '">' +
@@ -861,8 +865,12 @@
     var hdr = "", cands = [], picked = [];
     try { hdr = detectTitle(document); } catch (e) {}
     try { cands = gatherImages(document); picked = pickDiagrams(cands); } catch (e) {}
+    var lastChk, lastRes;
+    try { lastChk = localStorage.getItem(UPD_LAST_KEY) || "(never)"; } catch (e) { lastChk = "(unreadable)"; }
+    try { lastRes = localStorage.getItem(UPD_RESULT_KEY) || "(none)"; } catch (e) { lastRes = "(unreadable)"; }
     return "H.A.H.N.S diagnostic — version " + BUILD + "\n" +
-      "update check: " + updateStatus + "\n" +
+      "update check — last attempt: " + lastChk + "\n" +
+      "update check — last result: " + lastRes + "\n" +
       "flags: B=read as bold, H=recognised as a part heading\n" +
       "detected page header: \"" + hdr + "\"\n" +
       "large images on page: " + cands.length + " · diagrams kept: " + picked.length +
@@ -923,38 +931,70 @@
     ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
   }
 
-  // The ONE network call: once per successful check per session, fetch the
-  // published version.json and, if it names a newer build, flag it so the panel
-  // shows an "update available" banner. Everything is wrapped so a CSP block /
-  // offline / parse error just no-ops — the manual "check for latest" link
-  // remains the guaranteed fallback. The outcome is recorded in updateStatus so
-  // the diagnostic dump can report what actually happened on locked-down machines.
+  // The ONE network call. Runs in the background after render, at most once per
+  // day (throttled via localStorage). On success it compares the published
+  // version to ours and, if newer, flags the banner. On failure it is silent for
+  // the tech but records the real reason — HTTP status, exception message, and
+  // whether a CSP violation actually fired — so the diagnostic can show the
+  // truth instead of guessing. The manual "check for latest" link is the fallback.
   function checkForUpdate(onFound) {
+    var now = Date.now();
+    // once-per-day throttle; a version change (fresh install) re-checks promptly
     try {
-      // a blocked/failed check does NOT spend the token, so we keep retrying on
-      // later opens until one succeeds; once it succeeds we stop for the session
-      if (sessionStorage.getItem(UPD_CHK_KEY)) { updateStatus = "skipped (already succeeded this session)"; return; }
-    } catch (e) { /* private mode — just proceed */ }
-    updateStatus = "checking…";
+      var prev = JSON.parse(localStorage.getItem(UPD_LAST_KEY) || "null");
+      if (prev && prev.ver === APP_VERSION && prev.at && (now - prev.at) < UPD_DAY_MS) return;
+    } catch (e) { /* unreadable storage — just proceed */ }
+    try { localStorage.setItem(UPD_LAST_KEY, JSON.stringify({ at: now, ver: APP_VERSION })); } catch (e) {}
+
+    // Listen for a real CSP violation naming our request, so we can report
+    // definitively whether connect-src blocked it (a CSP block throws the same
+    // generic "Failed to fetch" as any network error, so the error text alone
+    // proves nothing). Only set csp=true when the browser actually says so.
+    var csp = false;
+    var onViol = function (ev) {
+      try {
+        var dir = String((ev && (ev.effectiveDirective || ev.violatedDirective)) || "");
+        var uri = String((ev && ev.blockedURI) || "");
+        if (dir.indexOf("connect") === 0 &&
+            (uri.indexOf("flatratelabs.github.io") >= 0 || uri.indexOf("version.json") >= 0)) csp = true;
+      } catch (e) {}
+    };
+    try { document.addEventListener("securitypolicyviolation", onViol); } catch (e) {}
+
+    function finish(res) {
+      res.attempted = true;
+      res.at = new Date(now).toISOString();
+      res.csp = csp;
+      try { localStorage.setItem(UPD_RESULT_KEY, JSON.stringify(res)); } catch (e) {}
+      try { document.removeEventListener("securitypolicyviolation", onViol); } catch (e) {}
+    }
+
     try {
       fetch(VERSION_URL, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer" })
-        .then(function (res) {
-          if (!res || !res.ok) { updateStatus = "got a bad response (HTTP " + (res && res.status) + ")"; return null; }
-          try { sessionStorage.setItem(UPD_CHK_KEY, "1"); } catch (e) {}  // succeeded — stop checking this session
-          return res.json();
+        .then(function (resp) {
+          var status = resp ? resp.status : null;
+          if (!resp || !resp.ok) { finish({ fetchSuccess: false, httpStatus: status, error: "non-OK HTTP response" }); return null; }
+          return resp.json().then(function (data) {
+            finish({ fetchSuccess: true, httpStatus: status, error: null, latest: (data && data.version) || null });
+            return data;
+          }, function (perr) {
+            finish({ fetchSuccess: false, httpStatus: status, error: "bad JSON: " + ((perr && perr.message) || perr) });
+            return null;
+          });
         })
         .then(function (data) {
-          if (!data) return;
-          if (data.version && data.version !== APP_VERSION) {
-            updateStatus = "update available: " + data.version;
+          if (data && data.version && data.version !== APP_VERSION) {
             updateVersion = data.version;
             if (typeof onFound === "function") onFound();
-          } else {
-            updateStatus = "up to date (latest is " + (data.version || "?") + ")";
           }
         })
-        .catch(function (err) { updateStatus = "blocked or offline: " + ((err && err.message) || err); });
-    } catch (e) { updateStatus = "fetch unavailable: " + ((e && e.message) || e); }
+        .catch(function (err) {
+          // let any CSP violation event fire first, then record the reason
+          setTimeout(function () { finish({ fetchSuccess: false, httpStatus: null, error: (err && err.message) || String(err) }); }, 0);
+        });
+    } catch (e) {
+      finish({ fetchSuccess: false, httpStatus: null, error: (e && e.message) || String(e) });
+    }
   }
 
   function renderInto(host, r, options) {

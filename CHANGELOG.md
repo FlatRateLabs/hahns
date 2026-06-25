@@ -9,6 +9,26 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.2.1-alpha — in progress
+
+Reworks the update check from v0.2.0. Still being tested on the `v0.2.1` branch.
+
+### Changed
+- **Update check now runs at most once a day** (in the background, after the
+  panel is already on screen — it never slows the panel down), instead of once
+  per browser session.
+- **Clearer update banner**: shows the version you have, the new version, a
+  **Get Update** button, and a **Dismiss** button.
+
+### Added
+- **Better self-diagnosis.** If the check can't reach the internet, the panel
+  still works silently — but the diagnostic dump (click the version stamp) now
+  records exactly what happened: whether it was attempted, the HTTP status, the
+  error, and whether the browser actually reported a security-policy block. No
+  more guessing why an update didn't show.
+
+---
+
 ## v0.2.0-alpha — 2026-06-24
 
 New feature release.
