@@ -15,7 +15,7 @@ const root = path.join(__dirname, "..");
 // ---- version ----
 // Bump this when you ship. While testing, keep the "-alpha" tag.
 //   tiny fix -> 0.1.1   new feature -> 0.2.0   stable release -> 1.0.0
-const VERSION = "0.2.1-alpha";
+const VERSION = "0.2.2-alpha";
 
 // shown in the panel + setup page: "v0.1.0-alpha · 2026-06-20 21:53 UTC"
 const date = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
@@ -110,12 +110,32 @@ fs.writeFileSync(path.join(distDir, "HAHNS.html"), html);
 const versionJson = JSON.stringify({ version: VERSION, build: build });
 fs.writeFileSync(path.join(distDir, "version.json"), versionJson);
 
+// Marker images for the CSP-proof, image-based update check (rides on img-src,
+// which ELSA allows, instead of the connect-src that ELSA blocks):
+//   uc/control.png            — always present; proves img-src reaches us at all
+//   uc/cur/<VERSION>.png       — exists ONLY for the current build; older
+//                                versions' markers are wiped each build, so an
+//                                out-of-date app's marker 404s -> "update available"
+const ONE_PX_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64");
+function writeMarkers(baseDir) {
+  const ucDir = path.join(baseDir, "uc");
+  const curDir = path.join(ucDir, "cur");
+  fs.rmSync(curDir, { recursive: true, force: true });   // drop previous versions' markers
+  fs.mkdirSync(curDir, { recursive: true });
+  fs.writeFileSync(path.join(ucDir, "control.png"), ONE_PX_PNG);
+  fs.writeFileSync(path.join(curDir, VERSION + ".png"), ONE_PX_PNG);
+}
+writeMarkers(distDir);
+
 // GitHub Pages: serve the site from /docs (index.html is the default page)
 const docsDir = path.join(root, "docs");
 fs.mkdirSync(docsDir, { recursive: true });
 fs.writeFileSync(path.join(docsDir, "index.html"), html);
 fs.writeFileSync(path.join(docsDir, "bookmarklet.txt"), bookmarklet);
 fs.writeFileSync(path.join(docsDir, "version.json"), versionJson);
+writeMarkers(docsDir);
 // stop Pages' Jekyll from touching our files
 fs.writeFileSync(path.join(docsDir, ".nojekyll"), "");
 
@@ -124,3 +144,4 @@ console.log("  dist/bookmarklet.txt      (" + bookmarklet.length + " chars)");
 console.log("  dist/HAHNS.html");
 console.log("  docs/index.html           (GitHub Pages)");
 console.log("  docs/version.json         (update check)");
+console.log("  docs/uc/control.png + uc/cur/" + VERSION + ".png (image check)");

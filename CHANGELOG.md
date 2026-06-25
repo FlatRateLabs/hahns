@@ -9,6 +9,24 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.2.2-alpha — 2026-06-25
+
+Makes the update check work on ELSA (where the normal network call is blocked).
+
+### Changed
+- **Update check now also works on ELSA.** ELSA's security policy blocks the
+  normal version lookup (confirmed by the browser), so the check now *also* loads
+  a tiny marker image — which ELSA does allow — to tell whether a newer build
+  exists. On ELSA the banner says "a newer version is available" without the
+  version number; off ELSA it still shows the exact new version.
+
+### Added
+- The diagnostic dump now reports both checks (the version lookup and the image
+  check) and, for each, whether the browser actually reported a security-policy
+  block — so we can see exactly what a given shop machine allows.
+
+---
+
 ## v0.2.1-alpha — 2026-06-25
 
 Reworks the update check from v0.2.0.

@@ -27,17 +27,24 @@
   // where techs re-grab the latest (used by the "check for latest" link)
   var SITE_URL = "https://flatratelabs.github.io/hahns/";
   // ---- auto-update check (the ONE deliberate network exception) ----
-  // At most once per day (in the background, after the panel has rendered) we
-  // fetch this tiny static file and, if it names a newer version, show a
-  // non-blocking "update available" banner. The request carries NO referrer,
-  // cookies, or job/ELSA data — just a GET for a public file. On any failure it
-  // is silent for the tech, but the real reason (HTTP status, exception, and
-  // whether a CSP violation actually fired) is recorded for the diagnostic dump.
+  // At most once per day, in the background after the panel has rendered, we
+  // check for a newer build TWO ways and show a non-blocking banner if found:
+  //   (1) fetch version.json — gives the exact new version, but ELSA's
+  //       connect-src CSP blocks it (confirmed), so this only works off-ELSA.
+  //   (2) load a marker image — rides on the more-permissive img-src, so it can
+  //       work ON ELSA; tells us yes/no (no version string).
+  // Every request is a referrer-less, cookie-less GET for a public file on our
+  // own hosting — no job/ELSA data, no telemetry. Failures are silent for the
+  // tech but the real reason (incl. whether CSP actually fired) is recorded for
+  // the diagnostic dump.
   var VERSION_URL = SITE_URL + "version.json";
+  var UC_CONTROL_URL = SITE_URL + "uc/control.png";   // always present — proves img-src reaches us
+  var UC_MARKER_URL = SITE_URL + "uc/cur/" + APP_VERSION + ".png"; // present only for the current build
   var UPD_LAST_KEY = "vwjb_last_update_check_v1";    // localStorage: {at, ver} of last network attempt
   var UPD_RESULT_KEY = "vwjb_last_update_result_v1"; // localStorage: JSON of the last attempt's outcome
   var UPD_DAY_MS = 24 * 60 * 60 * 1000;               // once-per-day throttle
-  var updateVersion = null;               // newer version string when found
+  var updateVersion = null;               // exact newer version (from fetch) when available
+  var updateAvailable = false;            // a newer build exists (marker missing, or fetch says so)
   var updateDismissed = false;            // tech closed the banner this session
 
   // the segments captured by the last scan, kept so the build stamp can dump a
@@ -658,9 +665,10 @@
       '<div class="sub">' +
         '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span>" +
         '<a class="upd" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Opens the H.A.H.N.S page so you can compare versions">check for latest &#8599;</a></div>' +
-      (!embed && updateVersion && !updateDismissed
+      (!embed && updateAvailable && !updateDismissed
         ? '<div class="updbar"><div class="updmsg"><b class="updhd">New version available</b>' +
-            '<span class="updvers">You have <b>v' + esc(APP_VERSION) + '</b> · latest is <b>v' + esc(updateVersion) + '</b></span></div>' +
+            '<span class="updvers">You have <b>v' + esc(APP_VERSION) + '</b>' +
+              (updateVersion ? ' · latest is <b>v' + esc(updateVersion) + '</b>' : '') + '</span></div>' +
             '<a class="updget" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Open the setup page to update">Get Update</a>' +
             '<button class="updx" data-act="upddismiss" title="Hide this until the next update">Dismiss</button></div>'
         : "") +
@@ -931,12 +939,13 @@
     ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
   }
 
-  // The ONE network call. Runs in the background after render, at most once per
-  // day (throttled via localStorage). On success it compares the published
-  // version to ours and, if newer, flags the banner. On failure it is silent for
-  // the tech but records the real reason — HTTP status, exception message, and
-  // whether a CSP violation actually fired — so the diagnostic can show the
-  // truth instead of guessing. The manual "check for latest" link is the fallback.
+  // Runs in the background after render, at most once per day (throttled via
+  // localStorage). Probes for a newer build two ways — a fetch of version.json
+  // (exact version, blocked by ELSA's connect-src) and a marker-image load (yes/no,
+  // rides on the more-permissive img-src). Either one finding a newer build flags
+  // the banner. Failures are silent for the tech; the real reason of BOTH probes
+  // (HTTP status, errors, and whether a CSP violation actually fired for connect
+  // and/or img) is recorded so the diagnostic shows the truth instead of guessing.
   function checkForUpdate(onFound) {
     var now = Date.now();
     // once-per-day throttle; a version change (fresh install) re-checks promptly
@@ -946,54 +955,68 @@
     } catch (e) { /* unreadable storage — just proceed */ }
     try { localStorage.setItem(UPD_LAST_KEY, JSON.stringify({ at: now, ver: APP_VERSION })); } catch (e) {}
 
-    // Listen for a real CSP violation naming our request, so we can report
-    // definitively whether connect-src blocked it (a CSP block throws the same
-    // generic "Failed to fetch" as any network error, so the error text alone
-    // proves nothing). Only set csp=true when the browser actually says so.
-    var csp = false;
+    var result = { attempted: true, at: new Date(now).toISOString(), fetch: null, image: null };
+    function save() { try { localStorage.setItem(UPD_RESULT_KEY, JSON.stringify(result)); } catch (e) {} }
+    save();
+    function flag() { if (typeof onFound === "function") onFound(); }
+
+    // Watch for REAL CSP violations naming our host, separately for connect-src
+    // (the fetch) and img-src (the marker image). A CSP block throws the same
+    // generic "Failed to fetch"/image error as any network failure, so we only
+    // claim CSP when the browser actually fires the event.
+    var connectCsp = false, imgCsp = false;
     var onViol = function (ev) {
       try {
         var dir = String((ev && (ev.effectiveDirective || ev.violatedDirective)) || "");
-        var uri = String((ev && ev.blockedURI) || "");
-        if (dir.indexOf("connect") === 0 &&
-            (uri.indexOf("flatratelabs.github.io") >= 0 || uri.indexOf("version.json") >= 0)) csp = true;
+        if (String((ev && ev.blockedURI) || "").indexOf("flatratelabs.github.io") < 0) return;
+        if (dir.indexOf("connect") === 0) connectCsp = true;
+        if (dir.indexOf("img") === 0) imgCsp = true;
       } catch (e) {}
     };
     try { document.addEventListener("securitypolicyviolation", onViol); } catch (e) {}
+    setTimeout(function () { try { document.removeEventListener("securitypolicyviolation", onViol); } catch (e) {} }, 8000);
 
-    function finish(res) {
-      res.attempted = true;
-      res.at = new Date(now).toISOString();
-      res.csp = csp;
-      try { localStorage.setItem(UPD_RESULT_KEY, JSON.stringify(res)); } catch (e) {}
-      try { document.removeEventListener("securitypolicyviolation", onViol); } catch (e) {}
-    }
-
+    // --- probe 1: fetch version.json (exact version; works only off-ELSA) ---
     try {
       fetch(VERSION_URL, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer" })
         .then(function (resp) {
           var status = resp ? resp.status : null;
-          if (!resp || !resp.ok) { finish({ fetchSuccess: false, httpStatus: status, error: "non-OK HTTP response" }); return null; }
+          if (!resp || !resp.ok) { result.fetch = { success: false, httpStatus: status, error: "non-OK HTTP response", csp: connectCsp }; save(); return null; }
           return resp.json().then(function (data) {
-            finish({ fetchSuccess: true, httpStatus: status, error: null, latest: (data && data.version) || null });
+            result.fetch = { success: true, httpStatus: status, error: null, csp: false, latest: (data && data.version) || null }; save();
+            if (data && data.version && data.version !== APP_VERSION) { updateVersion = data.version; updateAvailable = true; flag(); }
             return data;
           }, function (perr) {
-            finish({ fetchSuccess: false, httpStatus: status, error: "bad JSON: " + ((perr && perr.message) || perr) });
-            return null;
+            result.fetch = { success: false, httpStatus: status, error: "bad JSON: " + ((perr && perr.message) || perr), csp: false }; save(); return null;
           });
         })
-        .then(function (data) {
-          if (data && data.version && data.version !== APP_VERSION) {
-            updateVersion = data.version;
-            if (typeof onFound === "function") onFound();
-          }
-        })
         .catch(function (err) {
-          // let any CSP violation event fire first, then record the reason
-          setTimeout(function () { finish({ fetchSuccess: false, httpStatus: null, error: (err && err.message) || String(err) }); }, 0);
+          setTimeout(function () { result.fetch = { success: false, httpStatus: null, error: (err && err.message) || String(err), csp: connectCsp }; save(); }, 0);
         });
     } catch (e) {
-      finish({ fetchSuccess: false, httpStatus: null, error: (e && e.message) || String(e) });
+      result.fetch = { success: false, httpStatus: null, error: (e && e.message) || String(e), csp: connectCsp }; save();
+    }
+
+    // --- probe 2: marker images (CSP-proof yes/no via img-src) ---
+    try {
+      var control = new Image(), marker = new Image();
+      var cOk = null, mOk = null;
+      var settle = function () {
+        if (cOk === null || mOk === null) return;            // wait for both
+        var outcome;
+        if (!cOk) outcome = "blocked-or-offline";            // control failed -> can't trust the marker
+        else if (mOk) outcome = "up-to-date";
+        else { outcome = "update-available"; updateAvailable = true; flag(); }
+        result.image = { controlLoaded: cOk, markerLoaded: mOk, imgCsp: imgCsp, outcome: outcome }; save();
+      };
+      control.onload = function () { cOk = true; settle(); };
+      control.onerror = function () { setTimeout(function () { cOk = false; settle(); }, 0); };  // let the CSP event fire first
+      marker.onload = function () { mOk = true; settle(); };
+      marker.onerror = function () { setTimeout(function () { mOk = false; settle(); }, 0); };
+      control.src = UC_CONTROL_URL + "?t=" + now;            // cache-bust so a deleted marker truly 404s
+      marker.src = UC_MARKER_URL + "?t=" + now;
+    } catch (e) {
+      result.image = { controlLoaded: false, markerLoaded: false, imgCsp: imgCsp, outcome: "error: " + ((e && e.message) || e) }; save();
     }
   }
 
