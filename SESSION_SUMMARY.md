@@ -5,6 +5,44 @@ permanent project reference.
 
 ---
 
+## 2026-06-25 — Auto-update saga: v0.2.0 → v0.2.3 (shipped)
+
+**Current version:** `v0.2.3-alpha` (live). **Live:** https://flatratelabs.github.io/hahns/
+
+Goal: add an auto-update check (the owner's one sanctioned network exception).
+Iterated through real-ELSA testing to a settled end-state.
+
+- **v0.2.0** — once-per-session `fetch` of `version.json`; update banner. Real-ELSA
+  test: failed with generic `Failed to fetch`.
+- **v0.2.1** — reworked: once-per-day (localStorage throttle), richer banner
+  (current/new version, Get Update/Dismiss), and a `securitypolicyviolation`
+  listener so the diagnostic records whether CSP *actually* fired (owner pushed
+  back on assuming CSP — good call). Real-ELSA test: **`csp:true` for
+  `connect-src`** — ELSA's CSP block now browser-confirmed, not guessed.
+- **v0.2.2** — tried a CSP-proof **marker-image** check via `img-src` (build
+  published `uc/control.png` + `uc/cur/<ver>.png`). Real-ELSA test: **`imgCsp:true`**
+  — ELSA blocks images from our domain too. Dead end, confirmed by the browser.
+- **v0.2.3 (final)** — accepted that **no background check can run on ELSA**.
+  Host-gate `isElsaPage()` (vwhub.com/vw-now.com/elsa/e2g): on ELSA make **zero
+  network calls** + show a muted note ("check from a normal page before opening
+  ELSA"); off ELSA do the once-a-day fetch + banner. Removed the marker images.
+
+**Key facts learned (in CLAUDE.md):** ELSA pages are served from `www.vwhub.com`;
+its CSP blocks our domain on both `connect-src` and `img-src` (browser-confirmed).
+GitHub Pages serves with `access-control-allow-origin: *` (CORS never the blocker).
+Repo must stay **public** for the Pages link to work (free plan).
+
+**Storage added:** `vwjb_last_update_check_v1`, `vwjb_last_update_result_v1`
+(localStorage), `vwjb_upd_blk_dismiss_v1` (sessionStorage). Diagnostic dump now
+includes the update-check attempt + result.
+
+**Open/next:** bookmarklet payload ~97 KB (baked-in changelog growing) — consider
+trimming the *app's* changelog to recent versions while keeping full on the page.
+Final real-ELSA verification of v0.2.3 (note shows, no console CSP errors) pending
+owner test.
+
+---
+
 ## 2026-06-24 — v0.1.1-alpha bug-fix/polish cycle (shipped)
 
 **Current version:** `v0.1.1-alpha` (live). **Live:** https://flatratelabs.github.io/hahns/
