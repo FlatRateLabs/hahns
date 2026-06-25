@@ -9,9 +9,9 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.2.1-alpha — in progress
+## v0.2.1-alpha — 2026-06-25
 
-Reworks the update check from v0.2.0. Still being tested on the `v0.2.1` branch.
+Reworks the update check from v0.2.0.
 
 ### Changed
 - **Update check now runs at most once a day** (in the background, after the
