@@ -5,9 +5,9 @@ permanent project reference.
 
 ---
 
-## 2026-06-25 — Auto-update saga: v0.2.0 → v0.2.3 (shipped)
+## 2026-06-25 — Auto-update saga: v0.2.0 → v0.2.4 (shipped, settled)
 
-**Current version:** `v0.2.3-alpha` (live). **Live:** https://flatratelabs.github.io/hahns/
+**Current version:** `v0.2.4-alpha` (live). **Live:** https://flatratelabs.github.io/hahns/
 
 Goal: add an auto-update check (the owner's one sanctioned network exception).
 Iterated through real-ELSA testing to a settled end-state.
@@ -22,24 +22,37 @@ Iterated through real-ELSA testing to a settled end-state.
 - **v0.2.2** — tried a CSP-proof **marker-image** check via `img-src` (build
   published `uc/control.png` + `uc/cur/<ver>.png`). Real-ELSA test: **`imgCsp:true`**
   — ELSA blocks images from our domain too. Dead end, confirmed by the browser.
-- **v0.2.3 (final)** — accepted that **no background check can run on ELSA**.
+- **v0.2.3** — accepted that **no background check can run on ELSA**.
   Host-gate `isElsaPage()` (vwhub.com/vw-now.com/elsa/e2g): on ELSA make **zero
-  network calls** + show a muted note ("check from a normal page before opening
-  ELSA"); off ELSA do the once-a-day fetch + banner. Removed the marker images.
+  network calls** + show a muted note; off ELSA do the once-a-day fetch + banner.
+  Removed the marker images. Real-ELSA verified: result `"skipped":"on ELSA…"`.
+- **v0.2.4 (final)** — reworded the ELSA note to point at the **"check for latest ↗"**
+  link (which opens the setup page even from inside ELSA), after the owner noted a
+  bookmarklet can't run on a blank/new-tab page. The note now says: *"Can't
+  auto-check while ELSA is open. To check, click check for latest ↗ and compare…"*
 
-**Key facts learned (in CLAUDE.md):** ELSA pages are served from `www.vwhub.com`;
-its CSP blocks our domain on both `connect-src` and `img-src` (browser-confirmed).
-GitHub Pages serves with `access-control-allow-origin: *` (CORS never the blocker).
-Repo must stay **public** for the Pages link to work (free plan).
+**Loader bookmarklet — asked & DEFINITIVELY ruled out.** Owner asked about a tiny
+auto-updating loader stub. Then pasted ELSA's **actual CSP header** (recorded in
+CLAUDE.md): `script-src 'self' 'unsafe-inline'` (no external scripts → loader
+can't load our code; inline allowed → why the self-contained bookmarklet works),
+`connect-src 'self' blob:`, `img-src 'self' blob: data:`. So **external code on
+ELSA is impossible**; the self-contained bookmarklet + re-drag-to-update is
+mandatory and final. Don't revisit loaders/remote-code for ELSA.
+
+**Other facts (in CLAUDE.md):** ELSA served from `www.vwhub.com`; GitHub Pages
+CORS is `*` (never the blocker); repo must stay **public** for the Pages link
+(free plan).
 
 **Storage added:** `vwjb_last_update_check_v1`, `vwjb_last_update_result_v1`
 (localStorage), `vwjb_upd_blk_dismiss_v1` (sessionStorage). Diagnostic dump now
 includes the update-check attempt + result.
 
-**Open/next:** bookmarklet payload ~97 KB (baked-in changelog growing) — consider
-trimming the *app's* changelog to recent versions while keeping full on the page.
-Final real-ELSA verification of v0.2.3 (note shows, no console CSP errors) pending
-owner test.
+**Open/next:**
+- Bookmarklet payload ~97 KB (baked-in changelog growing) — consider trimming the
+  *app's* embedded changelog to recent versions while keeping full on the page.
+- Optional: add `accessaudi.com` to `isElsaPage()` (Audi shares ELSA infra; it's
+  in ELSA's CSP) if Hahns is ever used on Audi ELSA.
+- Auto-update feature is **done/settled** — no further ELSA network work possible.
 
 ---
 
