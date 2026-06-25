@@ -566,6 +566,8 @@
     ".updnote{display:flex;align-items:center;gap:8px;padding:8px 13px;background:#eef1f6;border-bottom:1px solid #dde3ee;font-size:11px;color:#5a6b8c;line-height:1.35}" +
     ".updnotetxt{flex:1}" +
     ".updnote b{color:#3a4a63}" +
+    ".updnotelink{color:#185fa5;text-decoration:none;font-weight:600;white-space:nowrap}" +
+    ".updnotelink:hover{text-decoration:underline}" +
     ".updnote .updx{border-color:#cfd6e4;color:#5a6b8c}" +
     ".updnote .updx:hover{background:#f3f6fb}" +
     ".jobbar{padding:9px 13px;border-bottom:1px solid #eee;display:flex;gap:7px;align-items:center}" +
@@ -679,9 +681,12 @@
             '<a class="updget" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Open the setup page to update">Get Update</a>' +
             '<button class="updx" data-act="upddismiss" title="Hide this until the next update">Dismiss</button></div>'
         : "") +
-      // ELSA blocks the check, so guide the tech to run it from a normal page
+      // ELSA blocks the auto-check, so point the tech at the always-works path:
+      // the "check for latest" link opens the H.A.H.N.S page even from inside ELSA
       (!embed && updateBlocked && !updateAvailable && !blkDismissed()
-        ? '<div class="updnote"><span class="updnotetxt">Update checks can\'t run inside ELSA. To check for a newer version, open <b>H.A.H.N.S</b> on a normal web page <b>before</b> opening ELSA (or after closing it).</span>' +
+        ? '<div class="updnote"><span class="updnotetxt">Can\'t auto-check for updates while ELSA is open. To check, click ' +
+            '<a class="updnotelink" href="' + SITE_URL + '" target="_blank" rel="noopener">check for latest &#8599;</a>' +
+            ' and compare its version to the one shown above.</span>' +
             '<button class="updx" data-act="blkdismiss" title="Hide this note">Dismiss</button></div>'
         : "") +
       '<div class="jobbar">' +

@@ -9,6 +9,16 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.2.4-alpha — 2026-06-25
+
+### Fixed
+- **Clearer "how to check for updates" note.** The note inside ELSA now points
+  you straight at the **check for latest ↗** link (which opens the H.A.H.N.S page
+  even from inside ELSA), instead of telling you to open the bookmark on another
+  web page — which didn't work from a blank tab.
+
+---
+
 ## v0.2.3-alpha — 2026-06-25
 
 Settles how the update check behaves on ELSA, after testing proved ELSA blocks
