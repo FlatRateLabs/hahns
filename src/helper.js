@@ -111,22 +111,13 @@
       key: "tools",
       title: "Special tools",
       icon: "M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 2 2 6-6a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3z",
-      // distinctive VW tool numbers, or an explicit "special tool" mention
+      // distinctive VW tool numbers (incl. a "/N" sub-part), or an explicit
+      // "special tool" mention. The actual parsing + de-duping is done by
+      // toolEntries() in the extract loop (the tools bucket is special-cased).
       test: function (line) {
-        if (/\bT\d{3,5}[A-Z]?\b/.test(line)) return true;
-        if (/\bVAS\s?\d{3,5}[A-Z]?\b/i.test(line)) return true;
-        // VAG / V.A.G with optional dots and a trailing "/2" style suffix
-        if (/\bV\.?A\.?[SG]\.?\s?\d{3,4}(?:\/\d+)?\b/i.test(line)) return true;
+        if (TOOL_RE.test(line)) { TOOL_RE.lastIndex = 0; return true; }
         if (/\bspecial\s+tool\b/i.test(line)) return true;
         return false;
-      },
-      // pull out the bare tool numbers so we can show them as chips
-      tokens: function (line) {
-        var out = [];
-        var re = /\b(?:T\d{3,5}[A-Z]?|VAS\s?\d{3,5}[A-Z]?|V\.?A\.?[SG]\.?\s?\d{3,4}(?:\/\d+)?)\b/gi;
-        var m;
-        while ((m = re.exec(line))) out.push(m[0].replace(/\s+/g, " ").trim());
-        return out;
       }
     },
     {
@@ -181,6 +172,94 @@
     return m ? m[1].trim() : null;
   }
 
+  // ELSA flags safety text with one of four colored banners — DANGER (red),
+  // WARNING (orange), CAUTION (yellow), NOTE (light blue). The banner word is its
+  // own styled element, so it usually lands in its own segment ahead of the text.
+  // We map each to a severity so the panel can colour-match ELSA. NOTE matters
+  // most here: its text has no warning keyword of its own, so it was being missed
+  // — and it's matched ONLY as a real banner (never the loose word "note") so a
+  // sentence like "Note the gap" can't false-trigger.
+  var BANNERS = { DANGER: "danger", WARNING: "warning", CAUTION: "caution", NOTE: "note" };
+
+  // a segment that is ONLY a banner word (any case, optional trailing : or !)
+  function bannerLabel(line) {
+    var m = line.match(/^\s*(danger|warning|caution|note)\s*[:!]?\s*$/i);
+    return m ? BANNERS[m[1].toUpperCase()] : null;
+  }
+
+  // a banner word glued to its text on one line: "WARNING: ...", "NOTE - ...", or
+  // an UPPERCASE header run together with the text ("DANGER Texts with this ...").
+  function inlineBanner(line) {
+    var m = line.match(/^\s*(danger|warning|caution|note)\s*[:!\-–—]\s+(.{2,})$/i);
+    if (m) return { sev: BANNERS[m[1].toUpperCase()], text: m[2].replace(/\s+/g, " ").trim() };
+    m = line.match(/^\s*(DANGER|WARNING|CAUTION|NOTE)\s+(.{3,})$/);   // uppercase only, no false hits
+    if (m) return { sev: BANNERS[m[1]], text: m[2].replace(/\s+/g, " ").trim() };
+    return null;
+  }
+
+  // best-guess severity for a warning line caught by the keyword test but with no
+  // explicit banner: colour follows the word; risk-only lines default to amber.
+  function sevFromText(line) {
+    if (/\bdanger\b/i.test(line)) return "danger";
+    if (/\bcaution\b/i.test(line)) return "caution";
+    return "warning";
+  }
+
+  // matches a VW special-tool number, incl. a trailing "/N" sub-part
+  var TOOL_RE = /\b(?:T\d{3,5}[A-Z]?(?:\/\d+)?|VAS\s?\d{3,5}[A-Z]?(?:\/\d+)?|V\.?A\.?[SG]\.?\s?\d{3,4}(?:\/\d+)?)\b/gi;
+
+  // ELSA writes tools as "<Tool Name> - <number> -". Pull the tool name out of the
+  // text BEFORE the number: drop a trailing separator, keep the nearest clause,
+  // and strip leading filler verbs (Use/With/Install/the…) so we're left with the
+  // name. Returns "" when nothing name-like remains (then we just show the number).
+  function toolDescBefore(before) {
+    var s = String(before).replace(/[\s\-–—:,.]+$/, "").trim();
+    if (!s) return "";
+    s = s.split(/[.;:]\s+/).pop();                  // the clause nearest the number
+    var prev;
+    do { prev = s;
+      s = s.replace(/^(?:use|using|with|via|install|installing|installed|fit|fitting|fitted|the|a|an|by|of|means|to|and|then|now|first|see|refer|insert|inserting)\s+/i, "");
+    } while (s !== prev);
+    s = s.replace(/[\s\-–—:,]+$/, "").replace(/\s+/g, " ").trim();
+    if (s.length < 2 || s.length > 60 || !/[A-Za-z]/.test(s)) return "";
+    return s;
+  }
+
+  // fallback: a name AFTER the number ("- T10145/1 - Caliper Piston Tool"). Only
+  // accept a leading run of Title-Case words so we don't grab a following sentence.
+  function toolDescAfter(after) {
+    var s = String(after).replace(/^[\s\-–—:,.]+/, "").trim();
+    if (!s) return "";
+    var m = s.match(/^((?:[A-Z][\w\/&.\-]*\s+){0,5}[A-Z][\w\/&.\-]*)/);
+    if (!m) return "";
+    var name = m[1].replace(/\s+/g, " ").trim();
+    return (name.length < 2 || name.length > 60) ? "" : name;
+  }
+
+  // every tool number on a line, paired with a best-guess description, deduped order
+  function toolEntries(line) {
+    var out = [];
+    TOOL_RE.lastIndex = 0;
+    var m;
+    while ((m = TOOL_RE.exec(line))) {
+      var num = m[0].replace(/\s+/g, " ").trim();
+      var desc = toolDescBefore(line.slice(0, m.index)) ||
+                 toolDescAfter(line.slice(m.index + m[0].length));
+      out.push({ num: num, desc: desc });
+    }
+    return out;
+  }
+
+  // unique tool numbers across the whole job (drives the blue chips)
+  function toolNums(r) {
+    var seen = {}, out = [];
+    (r.tools || []).forEach(function (it) {
+      var n = it.num || "";
+      if (n && !seen[n.toLowerCase()]) { seen[n.toLowerCase()] = 1; out.push(n); }
+    });
+    return out;
+  }
+
   // Core extractor. Works on ordered SEGMENTS: { text, bold }.
   //   A component callout is a line like "2. Torx Bolt". We detect it by the
   //   number-period-name PATTERN plus the STOP_FIRST word filter (which rejects
@@ -192,7 +271,6 @@
     var results = {};
     var seen = {};
     SECTIONS.forEach(function (s) { results[s.key] = []; seen[s.key] = {}; });
-    var toolChips = {};
 
     // carry the current legend part name down onto the specs listed under it,
     // until the next callout heading. ttl is a safety budget against bleed.
@@ -201,6 +279,7 @@
     var pending = "";        // a bare "2." whose name is in the next segment
     var partNum = 0;         // running component count for ELSA "+ ADD" legends
     var expectName = false;  // the previous segment was an "+ ADD" button
+    var pendingSev = "";     // a lone banner word (DANGER/…/NOTE) colours the next line
 
     segments.forEach(function (seg) {
       var line = String(seg.text || "").replace(/\s+/g, " ").trim();
@@ -234,7 +313,59 @@
       }
       if (!handled && ttl > 0) { ttl--; if (ttl === 0) currentPart = ""; }
 
+      // ---- safety-banner severity (DANGER / WARNING / CAUTION / NOTE) ----
+      // A lone banner word just colours the NEXT content line — that's how the
+      // text under a NOTE banner (which has no warning keyword) gets captured.
+      var lineSev = "";          // severity to colour this line's warning, if any
+      var warnText = line;       // warning text with any inline banner word stripped
+      var bannerHeader = handled ? null : bannerLabel(line);
+      if (bannerHeader) {
+        pendingSev = bannerHeader;
+      } else if (!handled) {
+        var ib = inlineBanner(line);
+        if (ib) { lineSev = ib.sev; warnText = ib.text; pendingSev = ""; }
+        else if (pendingSev) { lineSev = pendingSev; pendingSev = ""; }
+      } else {
+        // a structural line (ADD / marker / heading) — a pending banner with no
+        // plain text after it just lapses, so it can't leak onto a part name/spec
+        pendingSev = "";
+      }
+
       SECTIONS.forEach(function (s) {
+        if (s.key === "warnings") {
+          // warnings carry a severity → the panel colour-matches ELSA's banner.
+          // Include a line if it has a banner severity OR trips the keyword test.
+          if (handled || bannerHeader) return;          // skip part lines + the bare banner word
+          if (!(lineSev || s.test(warnText))) return;
+          var sev = lineSev || sevFromText(warnText);
+          var wk = ("warn||" + sev + "||" + warnText).toLowerCase();
+          if (seen.warnings[wk]) return;
+          seen.warnings[wk] = 1;
+          results.warnings.push({ text: warnText, part: "", sev: sev });
+          return;
+        }
+        if (s.key === "tools") {
+          // ONE entry per unique tool number (a tool is usually cited many times),
+          // each with a parsed name when we can find one. A bare "special tool"
+          // mention with no number is kept as a text-only entry.
+          var entries = toolEntries(line);
+          if (entries.length) {
+            entries.forEach(function (e) {
+              var tk = e.num.toLowerCase();
+              if (seen.tools[tk]) {
+                // already have it — fill in a description if this sighting has one
+                if (e.desc) results.tools.forEach(function (it) { if (it.num && it.num.toLowerCase() === tk && !it.desc) { it.desc = e.desc; it.text = it.num + " — " + e.desc; } });
+                return;
+              }
+              seen.tools[tk] = 1;
+              results.tools.push({ num: e.num, desc: e.desc, text: e.num + (e.desc ? " — " + e.desc : ""), part: "" });
+            });
+          } else if (/\bspecial\s+tool\b/i.test(line)) {
+            var sk = "txt::" + line.toLowerCase();
+            if (!seen.tools[sk]) { seen.tools[sk] = 1; results.tools.push({ num: "", desc: "", text: line, part: "" }); }
+          }
+          return;
+        }
         if (!s.test(line)) return;
         // auto part names only flow into torque/replace; fluids keeps the manual
         // chip but won't grab a stray legend name (capacities aren't callout parts)
@@ -245,7 +376,6 @@
         if (seen[s.key][key]) return;
         seen[s.key][key] = 1;
         results[s.key].push({ text: line, part: part });
-        if (s.tokens) s.tokens(line).forEach(function (t) { toolChips[t] = 1; });
       });
     });
 
@@ -253,7 +383,6 @@
     SECTIONS.forEach(function (s) {
       if (results[s.key].length > 40) results[s.key] = results[s.key].slice(0, 40);
     });
-    results.__tools = Object.keys(toolChips);
     return results;
   }
 
@@ -281,7 +410,6 @@
   function emptyResults() {
     var r = {};
     SECTIONS.forEach(function (s) { r[s.key] = []; });
-    r.__tools = [];
     r.__title = "";
     r.__images = [];   // [{ src: pageHeader, url }] — diagram references, not copies
     return r;
@@ -362,20 +490,38 @@
     return order.map(function (s) { return { src: s, entries: map[s] }; });
   }
 
+  // dedup key for a tool entry — by number across the whole job (so a tool cited
+  // on several pages is listed once), or by text for a number-less "special tool"
+  function toolKey(it) { return it.num ? "num::" + it.num.toLowerCase() : "txt::" + (it.text || "").toLowerCase(); }
+
   // fold a freshly scanned page (src) into the running job list (dst)
   function mergeInto(dst, src) {
     SECTIONS.forEach(function (s) {
+      if (s.key === "tools") {
+        // tools are deduped by number job-wide (NOT per page); fill in a missing
+        // description if a later page provides one
+        var tseen = {};
+        dst.tools.forEach(function (it) { tseen[toolKey(it)] = it; });
+        (src.tools || []).forEach(function (it) {
+          var k = toolKey(it), have = tseen[k];
+          if (!have) {
+            tseen[k] = it;
+            dst.tools.push({ num: it.num || "", desc: it.desc || "", text: it.text, part: "", src: it.src || "" });
+          } else if (it.desc && !have.desc) {
+            have.desc = it.desc; have.text = have.num + " — " + it.desc;
+          }
+        });
+        if (dst.tools.length > 150) dst.tools = dst.tools.slice(0, 150);
+        return;
+      }
       var seen = {};
       dst[s.key].forEach(function (it) { seen[itemKey(it)] = 1; });
       (src[s.key] || []).forEach(function (it) {
         var k = itemKey(it);
-        if (!seen[k]) { seen[k] = 1; dst[s.key].push({ text: it.text, part: it.part || "", src: it.src || "" }); }
+        if (!seen[k]) { seen[k] = 1; dst[s.key].push({ text: it.text, part: it.part || "", src: it.src || "", sev: it.sev || "" }); }
       });
       if (dst[s.key].length > 150) dst[s.key] = dst[s.key].slice(0, 150);
     });
-    var tset = {};
-    dst.__tools.concat(src.__tools || []).forEach(function (t) { tset[t] = 1; });
-    dst.__tools = Object.keys(tset);
     // diagram references, deduped by url
     dst.__images = dst.__images || [];
     var iset = {};
@@ -389,7 +535,7 @@
 
   function saveJob(r) {
     try {
-      var slim = { __title: r.__title || "", __tools: r.__tools || [], __images: r.__images || [] };
+      var slim = { __title: r.__title || "", __images: r.__images || [] };
       SECTIONS.forEach(function (s) { slim[s.key] = r[s.key] || []; });
       sessionStorage.setItem(STORE_KEY, JSON.stringify(slim));
     } catch (e) { /* storage unavailable — stay in-memory for this page */ }
@@ -402,7 +548,6 @@
       var o = JSON.parse(raw);
       var r = emptyResults();
       SECTIONS.forEach(function (s) { if (Array.isArray(o[s.key])) r[s.key] = o[s.key]; });
-      r.__tools = o.__tools || [];
       r.__title = o.__title || "";
       r.__images = Array.isArray(o.__images) ? o.__images : [];
       return r;
@@ -619,14 +764,24 @@
     ".hint{font-size:13px;color:#5a6b8c;background:#eef1f6;border-radius:8px;padding:11px 13px;margin:6px 0 4px;line-height:1.5}" +
     ".hint b{color:#001e50}" +
     ".chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}" +
-    ".chip{background:#001e50;color:#fff;font-size:12px;font-weight:600;border-radius:6px;padding:2px 8px}" +
+    ".chip{display:inline-flex;align-items:center;gap:4px;background:#001e50;color:#fff;font-size:12px;font-weight:600;border-radius:6px;padding:2px 5px 2px 8px}" +
+    ".chipx{appearance:none;-webkit-appearance:none;background:transparent;border:0;color:#9fb2d6;cursor:pointer;font-size:11px;line-height:1;padding:0 1px;border-radius:4px}" +
+    ".chipx:hover{color:#fff;background:rgba(255,255,255,.18)}" +
     ".c-torque{color:#185fa5}.c-replace{color:#0f6e56}.c-fluids{color:#185fa5}.c-tools{color:#534ab7}.c-warnings{color:#a32d2d}.c-diagram{color:#5f5e5a}" +
     ".dgmhdr{font:600 11px inherit;color:#5f6b80;margin:9px 0 4px}" +
     ".dgmwrap{position:relative;margin:6px 0}" +
     ".dgm{display:block;max-width:100%;height:auto;border:1px solid #e3e3e3;border-radius:6px;cursor:zoom-in;background:#fff}" +
     ".dgmdel{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}" +
     ".dgmdel:hover{background:#c0392b}" +
-    ".sec.warnings .item{border-left-color:#e24b4a;background:#fff5f5;color:#791f1f;border-radius:0 6px 6px 0;padding-left:10px}" +
+    ".sec.warnings .item{border-left-width:3px;border-radius:0 6px 6px 0;padding-left:10px}" +
+    // ELSA's four banner colours: DANGER red, WARNING orange, CAUTION yellow, NOTE light blue
+    ".sec.warnings .item.sev-danger{border-left-color:#d11f2d;background:#fdecec;color:#7a1620}" +
+    ".sec.warnings .item.sev-warning{border-left-color:#e8821e;background:#fff4e6;color:#7a4708}" +
+    ".sec.warnings .item.sev-caution{border-left-color:#e0b400;background:#fffbe0;color:#6b5300}" +
+    ".sec.warnings .item.sev-note{border-left-color:#3a86c8;background:#eef5fb;color:#1d4e74}" +
+    // a warning with no detected banner (e.g. added by hand) keeps a neutral red
+    ".sec.warnings .item:not([class*=sev-]){border-left-color:#e24b4a;background:#fff5f5;color:#791f1f}" +
+    ".sec.warnings .sevtag{font-weight:700;font-size:10px;letter-spacing:.04em;margin-right:6px;color:inherit}" +
     ".ft{padding:9px 13px;border-top:1px solid #eee;display:flex;gap:8px}" +
     ".ft button{flex:1;font-size:12px;font-weight:600;border:1px solid #cfd6e4;background:#fff;color:#001e50;border-radius:7px;padding:7px;cursor:pointer}" +
     ".ft button:hover{background:#f3f6fb}" +
@@ -680,14 +835,25 @@
     // group items under a per-page header once 2+ pages have been scanned
     var multiSrc = srcCount(r) >= 2;
     function itemRow(s, it, idx) {
+      var del = '<button class="del" data-del="' + s.key + '" data-i="' + idx + '" title="Remove this line" aria-label="Remove this line">' + svg(TRASH) + "</button>";
+      // tools show the number in bold, then the description (when we found one)
+      if (s.key === "tools") {
+        var t = it.num ? "<b>" + esc(it.num) + "</b>" + (it.desc ? " — " + esc(it.desc) : "") : esc(it.text);
+        return '<div class="item tool"><span class="txt">' + t + "</span>" + del + "</div>";
+      }
       var lbl = "";
       if (s.label) {
         lbl = it.part
           ? '<button class="lbl set" data-k="' + s.key + '" data-i="' + idx + '" title="Click to edit part">' + esc(it.part) + "</button>"
           : '<button class="lbl add" data-k="' + s.key + '" data-i="' + idx + '" title="Click to name this part">+ part</button>';
       }
-      var del = '<button class="del" data-del="' + s.key + '" data-i="' + idx + '" title="Remove this line" aria-label="Remove this line">' + svg(TRASH) + "</button>";
-      return '<div class="item">' + lbl + '<span class="txt">' + esc(it.text) + "</span>" + del + "</div>";
+      // warnings carry a banner severity → colour the row + show a matching tag
+      var sevCls = "", sevTag = "";
+      if (s.key === "warnings" && it.sev) {
+        sevCls = " sev-" + it.sev;
+        sevTag = '<span class="sevtag">' + esc(it.sev.toUpperCase()) + "</span>";
+      }
+      return '<div class="item' + sevCls + '">' + lbl + '<span class="txt">' + sevTag + esc(it.text) + "</span>" + del + "</div>";
     }
 
     SECTIONS.forEach(function (s) {
@@ -695,22 +861,28 @@
       html += '<div class="sec ' + s.key + '"><div class="st c-' + s.key + '">' +
         svg(s.icon) + s.title + '<span class="ct">' + items.length + "</span></div>";
 
-      if (s.key === "tools" && r.__tools && r.__tools.length) {
-        html += '<div class="chips">';
-        r.__tools.forEach(function (t) { html += '<span class="chip">' + esc(t) + "</span>"; });
-        html += "</div>";
+      // blue tool-number chips for a quick glance — each one removable
+      if (s.key === "tools") {
+        var nums = toolNums(r);
+        if (nums.length) {
+          html += '<div class="chips">';
+          nums.forEach(function (t) {
+            html += '<span class="chip">' + esc(t) +
+              '<button class="chipx" data-chipdel="' + esc(t) + '" title="Remove ' + esc(t) + '" aria-label="Remove tool">&#10005;</button></span>';
+          });
+          html += "</div>";
+        }
       }
 
-      if (items.length) {
-        if (multiSrc) {
-          groupBySource(items).forEach(function (g) {
-            html += '<input class="srch" data-src="' + esc(g.src) + '" value="' + esc(g.src) +
-              '" placeholder="page name" title="Page these came from — edit to rename">';
-            g.entries.forEach(function (e) { html += itemRow(s, e.it, e.idx); });
-          });
-        } else {
-          items.forEach(function (it, idx) { html += itemRow(s, it, idx); });
-        }
+      // tools are a single job-wide deduped list → render flat (never per-page)
+      if (items.length && (multiSrc && s.key !== "tools")) {
+        groupBySource(items).forEach(function (g) {
+          html += '<input class="srch" data-src="' + esc(g.src) + '" value="' + esc(g.src) +
+            '" placeholder="page name" title="Page these came from — edit to rename">';
+          g.entries.forEach(function (e) { html += itemRow(s, e.it, e.idx); });
+        });
+      } else if (items.length) {
+        items.forEach(function (it, idx) { html += itemRow(s, it, idx); });
       } else {
         html += '<div class="empty">None yet.</div>';
       }
@@ -753,8 +925,8 @@
       var items = r[s.key] || [];
       if (!items.length) return;
       out.push("== " + s.title.toUpperCase() + " ==");
-      var line = function (it) { return "   - " + (it.part ? "[" + it.part + "] " : "") + it.text; };
-      if (multiSrc) {
+      var line = function (it) { return "   - " + (it.sev ? it.sev.toUpperCase() + ": " : "") + (it.part ? "[" + it.part + "] " : "") + it.text; };
+      if (multiSrc && s.key !== "tools") {
         groupBySource(items).forEach(function (g) {
           out.push("  -- " + (g.src || "page") + " --");
           g.entries.forEach(function (e) { out.push(line(e.it)); });
@@ -800,16 +972,17 @@
     p.push("<h1>" + esc(r.__title || "H.A.H.N.S — Job sheet") + "</h1>");
     p.push('<div class="meta">H.A.H.N.S · printed ' + esc(when) + "</div>");
     var any = false;
-    var li = function (it) { return "<li>" + (it.part ? "<b>" + esc(it.part) + "</b> " : "") + esc(it.text) + "</li>"; };
+    var li = function (it) { return "<li>" + (it.sev ? "<b>" + esc(it.sev.toUpperCase()) + ":</b> " : "") + (it.part ? "<b>" + esc(it.part) + "</b> " : "") + esc(it.text) + "</li>"; };
     SECTIONS.forEach(function (s) {
       var items = r[s.key] || [];
       if (!items.length) return;
       any = true;
       p.push("<h2>" + esc(s.title) + "</h2>");
-      if (s.key === "tools" && r.__tools && r.__tools.length) {
-        p.push('<div class="chips">' + r.__tools.map(function (t) { return '<span class="chip">' + esc(t) + "</span>"; }).join("") + "</div>");
+      if (s.key === "tools") {
+        var nums = toolNums(r);
+        if (nums.length) p.push('<div class="chips">' + nums.map(function (t) { return '<span class="chip">' + esc(t) + "</span>"; }).join("") + "</div>");
       }
-      if (multiSrc) {
+      if (multiSrc && s.key !== "tools") {
         groupBySource(items).forEach(function (g) {
           p.push("<h3>" + esc(g.src || "page") + "</h3><ul>" + g.entries.map(function (e) { return li(e.it); }).join("") + "</ul>");
         });
@@ -1013,6 +1186,17 @@
           persist();
           renderInto(host, r, options);
         }
+      });
+    });
+
+    // ✕ on a tool chip — removes that tool (chip + its list row are the same tool)
+    root.querySelectorAll("[data-chipdel]").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var num = (btn.getAttribute("data-chipdel") || "").toLowerCase();
+        r.tools = (r.tools || []).filter(function (it) { return (it.num || "").toLowerCase() !== num; });
+        persist();
+        renderInto(host, r, options);
       });
     });
 

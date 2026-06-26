@@ -5,6 +5,45 @@ permanent project reference.
 
 ---
 
+## 2026-06-25 — v0.3.1-alpha: warning banners + special-tools rework
+
+**Current version:** `v0.3.1-alpha`. Branch `v0.3.1` → merged to `main`.
+
+Three bug-fix/improvement areas, all in `src/helper.js` (+ demo sample in
+`src/template.html`). Verified by `node --check`, the eval harness, and the
+browser preview (DOM + computed styles; no console errors).
+
+### Warning banners (DANGER / WARNING / CAUTION / NOTE)
+- **NOTE banner text was being missed** (it has no warning keyword). Added banner
+  detection: `bannerLabel()` (a lone banner word colours the next line via a
+  `pendingSev`), `inlineBanner()` ("WARNING: …" / uppercase-glued), `sevFromText()`
+  (keyword fallback). NOTE matched ONLY as a real banner so "Note the gap" can't
+  false-trigger. Each warning now carries a `sev`.
+- **Colour-coded to ELSA:** `.sev-danger` red, `.sev-warning` orange,
+  `.sev-caution` yellow, `.sev-note` light blue, plus a bold severity tag; manual
+  adds keep a neutral red. Copy/Print prefix the severity word.
+
+### Special tools
+- **`/N` sub-part fix:** `T…`/`VAS…` patterns now allow a trailing `/N`
+  (e.g. `T1000/1`) in both `test` and the shared `TOOL_RE` — were truncating.
+- **Deduped + described:** the `tools` bucket is special-cased. `toolEntries()`
+  parses each number + a description (`toolDescBefore` strips "Use/With/the…";
+  `toolDescAfter` Title-Case fallback). Items `{num, desc, text}` **deduped by
+  number job-wide** (a tool cited many times → one row; `mergeInto`/`toolKey`
+  back-fill a missing desc). List shows `**num** — desc`, or just the number.
+- **Removable chips:** chips now derive from the list via `toolNums(r)` (the
+  `__tools` field was removed everywhere) and each has a ✕ (`data-chipdel`) that
+  also removes the list row. Tools render **flat** (never grouped per-page) in
+  panel/copy/print.
+
+### Notes for next session
+- Old in-progress jobs in `sessionStorage` (pre-0.3.1 tools shape) lose chips until
+  re-scanned — transient, acceptable.
+- Description parsing assumes ELSA's "Name - NUMBER -" layout + English filler
+  words; tune `toolDescBefore`/`toolDescAfter` if real pages differ.
+
+---
+
 ## 2026-06-25 — v0.3.0-alpha: drop network auto-update, add weekly reminder
 
 **Current version:** `v0.3.0-alpha` (built, not yet pushed). **Live (pending push):**

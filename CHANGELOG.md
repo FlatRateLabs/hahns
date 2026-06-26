@@ -9,6 +9,38 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.1-alpha — 2026-06-25
+
+Bug fixes for how safety banners are read and shown.
+
+### Fixed
+- **NOTE banners are now captured.** ELSA flags safety text with four banners —
+  **DANGER**, **WARNING**, **CAUTION**, and **NOTE**. The **NOTE** banner's text
+  was being skipped (it has no warning word of its own), so important "could
+  result in vehicle damage" notes never made it into Critical warnings. They're
+  now collected like the other three.
+- **Special tools with a "/N" sub-part are read in full.** Tool numbers that end
+  in a slash and a number — like **T1000/1** or **VAS 6234/2** — were being cut
+  off (or missed). They now come through complete.
+- **Each special tool is listed once.** A tool mentioned several times in a
+  procedure used to appear as a repeated row in the list. It's now listed a single
+  time (the blue chip at the top stays for the quick glance).
+
+### Added
+- **Warnings are colour-coded to match ELSA.** Each item in Critical warnings now
+  shows its banner type and matching colour — **DANGER** red, **WARNING** orange,
+  **CAUTION** yellow, **NOTE** light blue — the same colours ELSA uses, so they're
+  easy to tell apart at a glance. The Copy/Print output labels each one too
+  (e.g. "NOTE: …").
+- **Special tools now show a name.** When the procedure gives the tool a name
+  (e.g. "Caliper Piston Tool - T10145/1 -"), the list shows the number **and** the
+  name. If there's no name, it just shows the number.
+- **You can remove a tool chip.** Each blue tool chip now has a small ✕ to delete
+  it (which also removes it from the list below) — handy when a tool isn't one you
+  need.
+
+---
+
 ## v0.3.0-alpha — 2026-06-25
 
 Replaces the automatic update check (which simply can't work inside ELSA) with a

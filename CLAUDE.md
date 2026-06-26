@@ -36,7 +36,9 @@
 ## Key functions in `src/helper.js`
 - `gatherSegments(doc)` — walks the live DOM into ordered `{text, bold}` segments; breaks at block boundaries, joins table cells per row, recurses same-origin frames.
 - `extractSegments(segments)` / `extract(text)` — the extractor. `SECTIONS` array defines the 5 buckets (`torque`, `replace`, `fluids`, `tools`, `warnings`) with `test()` regex; `torque`+`replace` have `autoPart:true`, `torque`/`replace`/`fluids` have `label:true`.
+- **Warning banner severity (v0.3.1):** ELSA flags safety text with four colored banners — **DANGER** (red), **WARNING** (orange), **CAUTION** (yellow), **NOTE** (light blue). `bannerLabel()` matches a lone banner word (its own segment) and carries a `pendingSev` onto the next line; `inlineBanner()` handles "WARNING: …" glued forms; `sevFromText()` infers severity for keyword-only lines. Each `warnings` item gets a `sev` field; the panel/print/copy colour-match and tag it. **NOTE is matched ONLY as a real banner** (never the loose word "note") — its text has no warning keyword, which is why it was previously missed. Detection depends on the English banner words (could break if ELSA localizes them).
 - Component numbering: ELSA's visible "1./2./3." are CSS list markers (NOT in text). Each component name follows an **"+ ADD" button** — so `extractSegments` counts ADD buttons and numbers components itself (`partFromHeading`, `cleanPartName`, `STOP_FIRST` reject list).
+- **Special tools (reworked v0.3.1):** the `tools` bucket is special-cased in the extract loop. `toolEntries(line)` finds every tool number (`TOOL_RE`, incl. a `/N` sub-part) and parses a description from the surrounding text (`toolDescBefore` strips leading filler like "Use/With/the…"; `toolDescAfter` is a Title-Case fallback). Items are `{num, desc, text}` **deduped by number job-wide** (a tool cited many times is listed once; `mergeInto`/`toolKey` keep it unique across pages and back-fill a missing description). The blue chips are derived from the list via `toolNums(r)` (not a separate `__tools` field anymore) and each chip is removable (`data-chipdel`), which also drops its list row. Tools render **flat** (never grouped per-page) in panel/copy/print.
 - `gatherImages`/`pickDiagrams` — capture only the dominant overview diagram(s), and only on pages with numbered components.
 - `mergeInto`/`saveJob`/`loadJob` + `groupBySource`/`srcCount` — multi-page accumulation grouped by source page.
 - `buildHTML`/`renderInto` — render the Shadow-DOM panel; `makeDraggable`, `printJob`/`buildPrintHTML`, `plainText`, `debugDump`, `detectTitle`, `run`.
@@ -53,7 +55,7 @@
 # Product Requirements
 
 ## Core features (built)
-- One-click **Scan page**: extracts torque, replace-after-removal, fluids/capacities, special tools, critical warnings.
+- One-click **Scan page**: extracts torque, replace-after-removal, fluids/capacities, special tools, critical warnings (incl. **DANGER/WARNING/CAUTION/NOTE** banners, colour-coded to match ELSA — v0.3.1).
 - **Auto component numbering** from the "+ ADD" button pattern → labels like `2. Torx Bolt`.
 - Per-spec **editable part labels** (`+ part` chips); auto labels flow into torque/replace only (fluids = manual chip).
 - **Manual add** rows per section; **trash/delete** per item; **delete** per diagram.
