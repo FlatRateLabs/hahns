@@ -17,33 +17,18 @@
 
   // build id, stamped in by tools/build.js so you can confirm which version is live
   var BUILD = "__BUILD__";
-  // bare version (e.g. "0.1.1-alpha") + the rendered changelog, both baked in at
-  // build time from CHANGELOG.md so "What's new" works with no network call
-  var APP_VERSION = "__VERSION__";
-  var CHANGELOG_HTML = __CHANGELOG_HTML__;
-  // remembers the last version a tech saw "What's new" for, so the popup shows
-  // once per update (only a version string — never any job/ELSA content)
-  var SEEN_KEY = "vwjb_seen_ver_v1";
-  // where techs re-grab the latest (used by the "check for latest" link)
+  // where techs re-grab the latest (used by the "check for latest" link and the
+  // weekly update-check reminder)
   var SITE_URL = "https://flatratelabs.github.io/hahns/";
-  // ---- auto-update check (the ONE deliberate network exception) ----
-  // ELSA's CSP blocks ALL requests to our domain (connect-src AND img-src,
-  // both browser-confirmed), so a server check simply cannot run on an ELSA
-  // page. Therefore: on ELSA we make NO network call at all (preserving the
-  // no-network promise there) and instead show a note telling the tech to check
-  // from a normal page. OFF ELSA we fetch version.json (≤once/day, in the
-  // background after render) and show an "update available" banner if newer.
-  // The fetch is a referrer-less, cookie-less GET for a public file — no
-  // job/ELSA data, no telemetry. Outcome is recorded for the diagnostic dump.
-  var VERSION_URL = SITE_URL + "version.json";
-  var UPD_LAST_KEY = "vwjb_last_update_check_v1";    // localStorage: {at, ver} of last network attempt
-  var UPD_RESULT_KEY = "vwjb_last_update_result_v1"; // localStorage: JSON of the last attempt's outcome
-  var BLK_DISMISS_KEY = "vwjb_upd_blk_dismiss_v1";   // sessionStorage: tech hid the "check off ELSA" note
-  var UPD_DAY_MS = 24 * 60 * 60 * 1000;               // once-per-day throttle (off-ELSA)
-  var updateVersion = null;               // exact newer version (from fetch) when available
-  var updateAvailable = false;            // a newer build exists
-  var updateBlocked = false;              // check can't run here (we're on ELSA) — show guidance
-  var updateDismissed = false;            // tech closed the update banner this session
+  // ---- weekly "check for updates" reminder (no network — pure local date) ----
+  // Auto-update can't work on ELSA: its CSP blocks every request to our domain
+  // (confirmed by the browser for connect-src AND img-src), so the app makes
+  // ZERO network calls. Instead we nudge the tech once a week — anchored to
+  // Wednesday — to open the setup page and compare versions. We persist ONLY a
+  // date string (the Wednesday we last reminded for), never job/ELSA content, so
+  // the no-network / retain-nothing posture stays fully intact.
+  var REMIND_KEY = "vwjb_upd_reminder_v1";  // localStorage: Wednesday-marker last acknowledged
+  var remindDue = false;                     // show the weekly update-check banner
 
   // the segments captured by the last scan, kept so the build stamp can dump a
   // diagnostic of exactly what the page-walk saw (helps tune against real pages)
@@ -434,8 +419,33 @@
   function isMin() { try { return sessionStorage.getItem("vwjb_min_v1") === "1"; } catch (e) { return false; } }
   function setMin(v) { try { sessionStorage.setItem("vwjb_min_v1", v ? "1" : "0"); } catch (e) {} }
 
-  // tech dismissed the "check off ELSA" note (per tab, so it doesn't nag)
-  function blkDismissed() { try { return sessionStorage.getItem(BLK_DISMISS_KEY) === "1"; } catch (e) { return false; } }
+  // the most recent Wednesday on or before `now`, as YYYY-MM-DD. Used as a
+  // once-a-week marker: it only changes when a new Wednesday passes.
+  function wedMarker(now) {
+    var d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    var back = (d.getDay() - 3 + 7) % 7;   // 3 = Wednesday; days since the last one
+    d.setDate(d.getDate() - back);
+    var mm = ("0" + (d.getMonth() + 1)).slice(-2), dd = ("0" + d.getDate()).slice(-2);
+    return d.getFullYear() + "-" + mm + "-" + dd;
+  }
+
+  // Is the weekly reminder due right now? Two guards keep it from being annoying:
+  //   1. it only fires on WEDNESDAY (getDay() === 3), and
+  //   2. it shows at most ONCE per Wednesday — we record this Wednesday's marker
+  //      the moment it becomes due, so re-opening the panel later the same day
+  //      won't show it again.
+  // We can't actually tell whether the app is out of date (there's no network
+  // check), so this is a gentle once-a-week nudge to go look — never a real alert.
+  function reminderDue() {
+    try {
+      if (new Date().getDay() !== 3) return false;                  // 3 = Wednesday only
+      var cur = wedMarker(Date.now());
+      if (localStorage.getItem(REMIND_KEY) === cur) return false;   // already shown this Wed
+      localStorage.setItem(REMIND_KEY, cur);                        // show once, then mark seen
+      return true;
+    } catch (e) { return false; }
+  }
 
   /* ------------------------------------------------------------------ *
    * 3. GATHER — walk the live page into ordered { text, bold } segments,
@@ -547,29 +557,19 @@
     ".hd .hbtn{display:inline-flex;align-items:center;justify-content:center;padding:3px 5px}" +
     ".hd .hbtn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".wrap.min{max-height:none}" +
-    ".wrap.min .sub,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar,.wrap.min .updnote{display:none}" +
+    ".wrap.min .sub,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar{display:none}" +
     ".sub{padding:6px 13px;background:#eef1f6;display:flex;align-items:center}" +
     ".bld{font-size:11px;color:#5a6b8c;white-space:nowrap;cursor:pointer}" +
     ".bld:hover{color:#001e50;text-decoration:underline}" +
     ".upd{margin-left:auto;font-size:11px;color:#185fa5;text-decoration:none;white-space:nowrap}" +
     ".upd:hover{text-decoration:underline}" +
-    // "update available" banner (auto-update check)
-    ".updbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 13px;background:#fff8e6;border-bottom:1px solid #f3e2b3;font-size:11.5px;color:#6b5300;line-height:1.3}" +
-    ".updmsg{flex:1;min-width:140px;display:flex;flex-direction:column}" +
-    ".updhd{font-size:12px;color:#5a4300}" +
-    ".updvers b{color:#5a4300}" +
+    // weekly "App may be out of date" update-check reminder banner (yellow)
+    ".updbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 13px;background:#fff8e6;border-bottom:1px solid #f3e2b3;font-size:12px;color:#6b5300;line-height:1.3}" +
+    ".updmsg2{flex:1;min-width:120px;font-weight:600;color:#5a4300}" +
     ".updget{flex-shrink:0;appearance:none;-webkit-appearance:none;background:#185fa5;color:#fff;text-decoration:none;font:600 11.5px inherit;padding:6px 11px;border-radius:7px;white-space:nowrap;border:0;cursor:pointer}" +
     ".updget:hover{background:#134c84}" +
     ".updx{flex-shrink:0;appearance:none;-webkit-appearance:none;border:1px solid #e0cf9a;background:#fff;color:#6b5300;font:600 11.5px inherit;padding:6px 10px;border-radius:7px;cursor:pointer}" +
     ".updx:hover{background:#fdf6e3}" +
-    // muted "check off ELSA" guidance note (shown when the check can't run here)
-    ".updnote{display:flex;align-items:center;gap:8px;padding:8px 13px;background:#eef1f6;border-bottom:1px solid #dde3ee;font-size:11px;color:#5a6b8c;line-height:1.35}" +
-    ".updnotetxt{flex:1}" +
-    ".updnote b{color:#3a4a63}" +
-    ".updnotelink{color:#185fa5;text-decoration:none;font-weight:600;white-space:nowrap}" +
-    ".updnotelink:hover{text-decoration:underline}" +
-    ".updnote .updx{border-color:#cfd6e4;color:#5a6b8c}" +
-    ".updnote .updx:hover{background:#f3f6fb}" +
     ".jobbar{padding:9px 13px;border-bottom:1px solid #eee;display:flex;gap:7px;align-items:center}" +
     ".job{flex:1;min-width:0;font:600 14px inherit;color:#001e50;border:1px solid #dfe4ee;border-radius:8px;padding:8px 10px;outline:none;background:#fff}" +
     ".job::placeholder{color:#b3b9c4;font-weight:400}" +
@@ -594,23 +594,6 @@
     ".exyes:hover{background:#8f2626}" +
     ".exno{background:#fff;color:#001e50}" +
     ".exno:hover{background:#f3f6fb}" +
-    // the "What's new" changelog modal (auto-shown once after an update)
-    ".clmodal{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(0,8,30,.28);padding:18px}" +
-    ".clbox{background:#fff;border:1px solid #d4d4d4;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.3);width:380px;max-width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden}" +
-    ".clhd{display:flex;align-items:center;padding:13px 15px;background:#001e50;color:#fff}" +
-    ".clhd b{font-size:14px;font-weight:600;flex:1}" +
-    ".clhd button{background:transparent;border:0;color:#cdd7ea;cursor:pointer;font-size:14px;padding:3px 6px;border-radius:6px}" +
-    ".clhd button:hover{background:rgba(255,255,255,.15);color:#fff}" +
-    ".clbody{overflow-y:auto;padding:6px 16px 14px}" +
-    ".cl-ver{padding:12px 0;border-bottom:1px solid #eee}" +
-    ".cl-ver:last-child{border-bottom:0}" +
-    ".cl-ver h3{font-size:14px;color:#001e50;margin:4px 0 2px}" +
-    ".cl-status{font-weight:400;color:#5a6b8c;font-size:12px}" +
-    ".cl-intro{font-size:12px;color:#5a6b8c;margin:2px 0 6px}" +
-    ".cl-ver h4{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#185fa5;margin:9px 0 3px}" +
-    ".cl-ver ul{margin:0;padding-left:18px}" +
-    ".cl-ver li{font-size:12.5px;line-height:1.45;color:#26324a;margin:3px 0}" +
-    ".cl-ver code{background:#eef1f6;border-radius:4px;padding:0 4px;font-size:11.5px}" +
     ".body{overflow-y:auto;padding:4px 13px 13px}" +
     ".sec{padding:11px 0;border-bottom:1px solid #eee}" +
     ".sec:last-child{border-bottom:0}" +
@@ -671,24 +654,17 @@
         '<button data-act="rescan" title="Read this page and add its specs to the job">Scan page</button>' +
         (embed ? "" : '<button data-act="min" class="hbtn" title="' + (mini ? "Expand" : "Minimize") + '">' + svg(mini ? "M7 7h10v10H7z" : "M6 12h12") + "</button>") +
         '<button data-act="close" title="Close">&#10005;</button></div>' +
+      // gentle once-a-week nudge to open the setup page and compare versions —
+      // shown only on Wednesdays, once that day. Network-free (we can't actually
+      // know if the app is stale), so it behaves the same inside and outside ELSA.
+      (!embed && remindDue
+        ? '<div class="updbar"><span class="updmsg2">App may be out of date.</span>' +
+            '<a class="updget" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Open the H.A.H.N.S setup page to compare versions">Check for update?</a>' +
+            '<button class="updx" data-act="reminddismiss" title="Hide this">Dismiss</button></div>'
+        : "") +
       '<div class="sub">' +
         '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span>" +
         '<a class="upd" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Opens the H.A.H.N.S page so you can compare versions">check for latest &#8599;</a></div>' +
-      (!embed && updateAvailable && !updateDismissed
-        ? '<div class="updbar"><div class="updmsg"><b class="updhd">New version available</b>' +
-            '<span class="updvers">You have <b>v' + esc(APP_VERSION) + '</b>' +
-              (updateVersion ? ' · latest is <b>v' + esc(updateVersion) + '</b>' : '') + '</span></div>' +
-            '<a class="updget" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Open the setup page to update">Get Update</a>' +
-            '<button class="updx" data-act="upddismiss" title="Hide this until the next update">Dismiss</button></div>'
-        : "") +
-      // ELSA blocks the auto-check, so point the tech at the always-works path:
-      // the "check for latest" link opens the H.A.H.N.S page even from inside ELSA
-      (!embed && updateBlocked && !updateAvailable && !blkDismissed()
-        ? '<div class="updnote"><span class="updnotetxt">Can\'t auto-check for updates while ELSA is open. To check, click ' +
-            '<a class="updnotelink" href="' + SITE_URL + '" target="_blank" rel="noopener">check for latest &#8599;</a>' +
-            ' and compare its version to the one shown above.</span>' +
-            '<button class="updx" data-act="blkdismiss" title="Hide this note">Dismiss</button></div>'
-        : "") +
       '<div class="jobbar">' +
         '<input class="job" type="text" placeholder="Job title — e.g. Rear Brakes" value="' + esc(r.__title || "") + '">' +
         '<button class="newjob" data-act="newjob" title="Clear everything and start a new job">New job</button>' +
@@ -890,12 +866,10 @@
     var hdr = "", cands = [], picked = [];
     try { hdr = detectTitle(document); } catch (e) {}
     try { cands = gatherImages(document); picked = pickDiagrams(cands); } catch (e) {}
-    var lastChk, lastRes;
-    try { lastChk = localStorage.getItem(UPD_LAST_KEY) || "(never)"; } catch (e) { lastChk = "(unreadable)"; }
-    try { lastRes = localStorage.getItem(UPD_RESULT_KEY) || "(none)"; } catch (e) { lastRes = "(unreadable)"; }
+    var remindSeen;
+    try { remindSeen = localStorage.getItem(REMIND_KEY) || "(unset)"; } catch (e) { remindSeen = "(unreadable)"; }
     return "H.A.H.N.S diagnostic — version " + BUILD + "\n" +
-      "update check — last attempt: " + lastChk + "\n" +
-      "update check — last result: " + lastRes + "\n" +
+      "update reminder — last acknowledged week: " + remindSeen + " · this week: " + wedMarker(Date.now()) + "\n" +
       "flags: B=read as bold, H=recognised as a part heading\n" +
       "detected page header: \"" + hdr + "\"\n" +
       "large images on page: " + cands.length + " · diagrams kept: " + picked.length +
@@ -939,105 +913,6 @@
     });
   }
 
-  // the "What's new" modal — baked-in changelog, shown in the Shadow DOM so it
-  // matches the panel and stays isolated from ELSA's CSS
-  function showChangelog(root) {
-    if (!root) return;
-    var ex = root.querySelector(".clmodal");
-    if (ex) { try { ex.remove(); } catch (e) {} }
-    var ov = document.createElement("div");
-    ov.className = "clmodal";
-    ov.innerHTML = '<div class="clbox"><div class="clhd"><b>What\'s new — H.A.H.N.S</b>' +
-      '<button class="clx" title="Close">&#10005;</button></div>' +
-      '<div class="clbody">' + CHANGELOG_HTML + "</div></div>";
-    root.appendChild(ov);
-    var close = function () { try { ov.remove(); } catch (e) {} };
-    ov.querySelector(".clx").addEventListener("click", close);
-    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
-  }
-
-  // Is the bookmarklet running on an ELSA page? ELSA's CSP blocks our update
-  // check, so we don't even try there — we show guidance instead. Matched by the
-  // hosts the repair content + portal live on (and a couple of ELSA-ish hints).
-  function isElsaPage() {
-    try {
-      var h = (location.hostname || "").toLowerCase();
-      return /(^|\.)vwhub\.com$/.test(h) || /(^|\.)vw-now\.com$/.test(h) ||
-        h.indexOf("elsa") >= 0 || h.indexOf("e2g") >= 0;
-    } catch (e) { return false; }
-  }
-
-  // Re-apply a previously-found update so the banner persists across page opens
-  // (e.g. on a throttled day when we don't re-fetch).
-  function restoreUpdateState() {
-    try {
-      var last = JSON.parse(localStorage.getItem(UPD_LAST_KEY) || "null");
-      if (!last || last.ver !== APP_VERSION) return;     // result was for a different build
-      var res = JSON.parse(localStorage.getItem(UPD_RESULT_KEY) || "null");
-      if (res && res.fetch && res.fetch.success && res.fetch.latest && res.fetch.latest !== APP_VERSION) {
-        updateVersion = res.fetch.latest; updateAvailable = true;
-      }
-    } catch (e) {}
-  }
-
-  // Decide what to show. ON ELSA: no network at all — just flag the guidance
-  // note. OFF ELSA: fetch version.json (≤once/day) and flag the banner if newer.
-  // Silent on failure; the outcome is recorded for the diagnostic dump.
-  function checkForUpdate(onFound) {
-    restoreUpdateState();
-    function flag() { if (typeof onFound === "function") onFound(); }
-    function save(res) { try { localStorage.setItem(UPD_RESULT_KEY, JSON.stringify(res)); } catch (e) {} }
-
-    if (isElsaPage()) {
-      updateBlocked = true;   // can't check here; the note tells the tech what to do
-      save({ attempted: false, at: new Date().toISOString(), host: location.hostname, skipped: "on ELSA — update checks run only off ELSA" });
-      return;
-    }
-
-    var now = Date.now();
-    // once-per-day throttle; a version change (fresh install) re-checks promptly
-    try {
-      var prev = JSON.parse(localStorage.getItem(UPD_LAST_KEY) || "null");
-      if (prev && prev.ver === APP_VERSION && prev.at && (now - prev.at) < UPD_DAY_MS) return;
-    } catch (e) { /* unreadable storage — just proceed */ }
-    try { localStorage.setItem(UPD_LAST_KEY, JSON.stringify({ at: now, ver: APP_VERSION })); } catch (e) {}
-
-    // only claim CSP when the browser actually fires the violation event
-    var csp = false;
-    var onViol = function (ev) {
-      try {
-        var dir = String((ev && (ev.effectiveDirective || ev.violatedDirective)) || "");
-        if (dir.indexOf("connect") === 0 && String((ev && ev.blockedURI) || "").indexOf("flatratelabs.github.io") >= 0) csp = true;
-      } catch (e) {}
-    };
-    try { document.addEventListener("securitypolicyviolation", onViol); } catch (e) {}
-    setTimeout(function () { try { document.removeEventListener("securitypolicyviolation", onViol); } catch (e) {} }, 8000);
-
-    function finish(fetchRes) { save({ attempted: true, at: new Date(now).toISOString(), host: location.hostname, fetch: fetchRes }); }
-
-    try {
-      fetch(VERSION_URL, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer" })
-        .then(function (resp) {
-          var status = resp ? resp.status : null;
-          if (!resp || !resp.ok) { finish({ success: false, httpStatus: status, error: "non-OK HTTP response", csp: csp }); return null; }
-          return resp.json().then(function (data) {
-            finish({ success: true, httpStatus: status, error: null, csp: false, latest: (data && data.version) || null });
-            if (data && data.version && data.version !== APP_VERSION) { updateVersion = data.version; updateAvailable = true; flag(); }
-            return data;
-          }, function (perr) {
-            finish({ success: false, httpStatus: status, error: "bad JSON: " + ((perr && perr.message) || perr), csp: false }); return null;
-          });
-        })
-        .catch(function (err) {
-          setTimeout(function () {
-            finish({ success: false, httpStatus: null, error: (err && err.message) || String(err), csp: csp });
-            if (csp) { updateBlocked = true; flag(); }   // a restricted page we didn't detect by host
-          }, 0);
-        });
-    } catch (e) {
-      finish({ success: false, httpStatus: null, error: (e && e.message) || String(e), csp: csp });
-    }
-  }
 
   function renderInto(host, r, options) {
     options = options || {};
@@ -1168,11 +1043,10 @@
             } catch (e) {}
             host.remove();
           });
-        } else if (act === "upddismiss") {
-          updateDismissed = true;
-          renderInto(host, r, options);
-        } else if (act === "blkdismiss") {
-          try { sessionStorage.setItem(BLK_DISMISS_KEY, "1"); } catch (e) {}
+        } else if (act === "reminddismiss") {
+          // this Wednesday's marker was already recorded when the banner became
+          // due, so dismissing just clears it from the current view
+          remindDue = false;
           renderInto(host, r, options);
         } else if (act === "min") {
           setMin(!isMin());
@@ -1281,24 +1155,14 @@
       clearJob();
       show(emptyResults());
     }
-    // decide the update state first (sync: ELSA-host / restore last result) so
-    // the first render already shows the banner or the "check off ELSA" note;
-    // the async fetch (off ELSA) re-renders if it finds a newer build later
-    checkForUpdate(function () { show(loadJob() || emptyResults()); });
+    // weekly update-check reminder (pure local date — no network): shows once,
+    // only on Wednesdays. We can't know if the app is actually stale, so it's a
+    // gentle nudge, not an alert.
+    remindDue = reminderDue();
 
     // open showing the current job (blank if nothing collected yet) WITHOUT
     // auto-scanning — scanning the page is a deliberate "Scan page" click
     show(loadJob() || emptyResults());
-
-    // show "What's new" once after an update: compare the baked-in version to the
-    // last one this browser saw. Stores only the version string (no job/ELSA data);
-    // wrapped in try/catch since locked-down browsers can block localStorage.
-    try {
-      if (localStorage.getItem(SEEN_KEY) !== APP_VERSION) {
-        localStorage.setItem(SEEN_KEY, APP_VERSION);
-        showChangelog(host.__vwjbShadow);
-      }
-    } catch (e) {}
   }
 
   window.VWJB = { run: run, extract: extract, extractSegments: extractSegments,

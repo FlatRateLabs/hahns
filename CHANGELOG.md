@@ -9,6 +9,36 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.0-alpha — 2026-06-25
+
+Replaces the automatic update check (which simply can't work inside ELSA) with a
+simple weekly reminder, and tidies up the panel.
+
+### Added
+- **Weekly "check for updates" reminder.** On **Wednesdays** — and only once that
+  day — a yellow bar appears at the top of the panel: *"App may be out of date.
+  **Check for update?**"* The link opens the H.A.H.N.S setup page so you can
+  compare your version to the latest; **Dismiss** clears it. Kept deliberately
+  low-key: it shows once a week and nothing more, because there's no way to know
+  for sure whether your copy is actually out of date. Needs no internet — it's
+  just a calendar reminder, so it works the same inside ELSA as anywhere else.
+
+### Changed
+- **The setup page now leads with the bookmark button.** The drag-the-wrench
+  button moved to the top of the page, so updating is faster to find.
+- **"What's new" starts collapsed** on the setup page — click it open when you
+  want the full history.
+
+### Removed
+- **The automatic, over-the-internet update check** (from v0.2.0–v0.2.4). ELSA
+  blocks it completely, so it never worked there — the weekly reminder above
+  replaces it. H.A.H.N.S is now back to making **zero network calls**, ever.
+- **The "What's new" pop-up inside the panel.** The full history lives on the
+  setup page (the only place you can actually update from), so the app no longer
+  carries its own copy — which also makes the bookmark smaller.
+
+---
+
 ## v0.2.4-alpha — 2026-06-25
 
 ### Fixed

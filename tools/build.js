@@ -15,7 +15,7 @@ const root = path.join(__dirname, "..");
 // ---- version ----
 // Bump this when you ship. While testing, keep the "-alpha" tag.
 //   tiny fix -> 0.1.1   new feature -> 0.2.0   stable release -> 1.0.0
-const VERSION = "0.2.4-alpha";
+const VERSION = "0.3.0-alpha";
 
 // shown in the panel + setup page: "v0.1.0-alpha · 2026-06-20 21:53 UTC"
 const date = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
@@ -23,8 +23,8 @@ const build = "v" + VERSION + " · " + date;
 
 // ---- changelog ----
 // CHANGELOG.md is the single source. We render it to HTML at build time and bake
-// it into both the setup page and the bookmarklet — so the app never needs the
-// network to show "What's new" (keeps the no-network privacy posture).
+// it into the setup page only (the app itself no longer shows a changelog — techs
+// read it here, on the page they update from). No network needed either way.
 function clEsc(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -67,14 +67,9 @@ function renderChangelog(md) {
   return html + "</div>";
 }
 const changelogHtml = renderChangelog(fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8"));
-// JS string literal for the bookmarklet; < keeps "</script>" from breaking
-// the inline <script> on the setup page
-const changelogJs = JSON.stringify(changelogHtml).replace(/</g, "\\u003c");
 
 const helper = fs.readFileSync(path.join(root, "src/helper.js"), "utf8")
-  .replace(/__BUILD__/g, build)
-  .replace(/__VERSION__/g, VERSION)
-  .replace(/__CHANGELOG_HTML__/g, changelogJs);
+  .replace(/__BUILD__/g, build);
 const template = fs.readFileSync(path.join(root, "src/template.html"), "utf8")
   .replace(/__BUILD__/g, build)
   .replace("__CHANGELOG__", changelogHtml);
@@ -106,7 +101,9 @@ const html = template
 
 fs.writeFileSync(path.join(distDir, "HAHNS.html"), html);
 
-// tiny file the deployed app fetches once per session for its update check
+// machine-readable version record. The app no longer fetches this (auto-update is
+// impossible on ELSA — the app reminds the tech to check here instead); kept as a
+// plain published record of the current build.
 const versionJson = JSON.stringify({ version: VERSION, build: build });
 fs.writeFileSync(path.join(distDir, "version.json"), versionJson);
 
@@ -123,4 +120,4 @@ console.log("Built " + build + ":");
 console.log("  dist/bookmarklet.txt      (" + bookmarklet.length + " chars)");
 console.log("  dist/HAHNS.html");
 console.log("  docs/index.html           (GitHub Pages)");
-console.log("  docs/version.json         (update check)");
+console.log("  docs/version.json         (version record)");

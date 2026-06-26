@@ -5,6 +5,54 @@ permanent project reference.
 
 ---
 
+## 2026-06-25 — v0.3.0-alpha: drop network auto-update, add weekly reminder
+
+**Current version:** `v0.3.0-alpha` (built, not yet pushed). **Live (pending push):**
+https://flatratelabs.github.io/hahns/
+
+Reversed the v0.2.x auto-update feature (proven impossible on ELSA) and replaced it
+with a network-free weekly reminder. **The app is back to ZERO network calls.**
+
+### Shipped (on `main` working tree — build done, push pending)
+- **Removed the entire network update check.** Deleted `checkForUpdate`,
+  `restoreUpdateState`, `isElsaPage`, the `version.json` fetch, the
+  `securitypolicyviolation` listener, the "update available" banner, and the
+  "check off ELSA" guidance note. Removed storage keys
+  `vwjb_last_update_check_v1`, `vwjb_last_update_result_v1`,
+  `vwjb_upd_blk_dismiss_v1`.
+- **Added a Wednesday-only reminder (no network).** Pure local-date check:
+  `reminderDue()` returns true **only on Wednesday** (`getDay() === 3`) and **only
+  once** that day — it writes this Wednesday's marker (`wedMarker()`, `YYYY-MM-DD`)
+  the instant it's due, so re-opening the panel later the same day won't show it
+  again. Yellow banner at the top of the panel: *"App may be out of date. **Check
+  for update?**"* — the link opens the setup page; **Dismiss** just clears the
+  current view. One new localStorage key: `vwjb_upd_reminder_v1` (a date string
+  only). Works identically on/off ELSA. Deliberately low-key: we can't know if the
+  app is actually stale, so it's a soft nudge, not an alert (owner's call).
+- **Removed the in-app "What's new" pop-up.** Deleted `showChangelog`, the
+  `vwjb_seen_ver_v1` key, and the modal CSS. The changelog now lives only on the
+  setup page. Stopped baking the changelog into the bookmarklet (`build.js` no
+  longer emits `__CHANGELOG_HTML__`/`__VERSION__`; helper's only placeholder is
+  `__BUILD__`). **Payload dropped ~97 KB → ~78 KB.**
+- **Setup page:** moved the **drag-to-install button card to the top** (right under
+  the tagline) so updating techs find it fast; made **"What's new" collapsed by
+  default** (removed `open`).
+- `version.json` is still published (static version record) but nothing fetches it.
+
+### Verified
+- `node --check` clean; eval harness confirms extraction + ADD-button numbering
+  still work; browser preview confirms: setup page layout (drag card on top,
+  collapsed changelog, `v0.3.0-alpha` stamp); zero `fetch(` in the bundle; no
+  `clmodal` left. Reminder behavior tested by forcing the weekday: **non-Wednesday
+  → no banner, no marker written**; **Wednesday → banner shows once**; **re-open
+  same Wednesday → no banner**. No console errors.
+
+### Next session
+- **Push to deploy:** `git pull --rebase` → commit → push; confirm the live stamp
+  reads `v0.3.0-alpha`. Tell the owner to hard-refresh + re-drag.
+
+---
+
 ## 2026-06-25 — Auto-update saga: v0.2.0 → v0.2.4 (shipped, settled)
 
 **Current version:** `v0.2.4-alpha` (live). **Live:** https://flatratelabs.github.io/hahns/
