@@ -5,6 +5,170 @@ permanent project reference.
 
 ---
 
+## 2026-06-27 — v0.3.5.1-alpha: add 2021–2026 fluid data (+ parser robustness)
+
+Branch **`0.3.5.1`** (off `main`, carries the 2020 work below). Version bumped to
+`v0.3.5.1-alpha`. Added the **2021–2026** model years — lookup now covers **2019
+through 2026** (8 years). **Note:** new fluid years are *served data*, so techs do
+**not** need to re-drag the bookmark to get them; the version bump is just to track
+the release.
+
+### 2026 (added after 2025, same branch)
+- Parsed `2026 VW Fluid Capacity Tables.pdf` → 7 models (Atlas Family, Golf Family,
+  ID.Buzz, ID.4, Jetta, Taos, Tiguan — no ID.7 this year, faithful to the PDF).
+  **No parser changes needed** — all engine codes captured, all oil/coolant/AC
+  capacities correct; 2025 re-parsed byte-identical.
+- **Faithful changes:** Tiguan (RM1) adds a third engine **DYKA** (all 6.0 L) and its
+  AWD-clutch fill is now 0.95 L (was 0.75/0.65); Taos (CL2) lists both DYBA + DNKA.
+- **Minor cosmetic (engine code correct):** Golf's DZMA desc shows a stray ")"
+  ("2.0L )") from a wrapped engine cell. Same EV 0MP messy-label row as 2025.
+
+### 2025 (added after 2024, same branch)
+
+### 2025 (added after 2024, same branch)
+- Parsed `2025 VW Fluid Capacity Tables.pdf` → 8 models (Atlas Family, Golf Family,
+  **ID.Buzz**, ID.4, **ID.7**, Jetta, Taos, Tiguan). **No parser changes needed** —
+  all engine codes captured, all oil/coolant/AC capacities correct; 2024 re-parsed
+  byte-identical.
+- **Faithful redesigns/new codes:** Tiguan is new — code **RM1** (was BJ2), engines
+  **DYLA/DYLB**, oil up to **6.0 L (6.3 qt)**, dual 8-spd autos (09H 7.5 L / 09U
+  6.4 L). Taos **CL2** + new engine **DYBA**. Jetta **BU5**, Golf Family **DA1**.
+  New EVs **ID.Buzz** (EBJ) and **ID.7** (ED2) join ID.4. Jetta now uses the 09U
+  8-spd auto (6.4 L).
+- **Messy SECONDARY label to flag in `2025.txt`** (value correct): the EV
+  **Single-Speed 0MP** reduction-gearbox row (ID.Buzz/ID.4/ID.7) has a multi-line
+  procedural cell ("residue removed" → **3.18 L (3.36 qt)**, captured; plus a
+  no-number "fill to the check hole" scenario) whose label absorbed the wrapped
+  text. Also the 0MJ range "0.88-0.93 L" shows as "0.93 L". Same dense-table class
+  as the Golf/Arteon torque-splitter rows; capacities are present.
+
+### 2024 (added after 2023, same branch)
+
+### 2024 (added after 2023, same branch)
+- Parsed `2024 VW Fluid Capacity.pdf` → 7 models (Arteon, Atlas Family, Golf Family,
+  ID.4, Jetta, Taos, Tiguan). **No parser changes needed** — all engine codes
+  captured, all oil/coolant/AC capacities correct; 2023 re-parsed byte-identical.
+- **Faithful changes:** Atlas Family is redesigned — code **CA3/CMD** (was CA2/CMC),
+  new engine **DRKB** 2.0L only (the 3.6L VR6 is gone), so its coolant is now ~10 L
+  (not 20 L). Most models list both R1234yf and R134a A/C charges. Same dense-table
+  drivetrain secondary-label messiness as 2022/2023 (Golf/Arteon torque-splitter).
+
+### 2023 (added after 2022, same branch)
+
+### 2023 (added after 2022, same branch)
+- Parsed `2023 VW Fluid Capacity Tables.pdf` → 7 models (Arteon, Atlas Family,
+  Golf Family, ID.4, Jetta, Taos, Tiguan). **No parser changes needed** — all
+  engine codes captured, all oil/coolant/AC capacities correct. Decode round-trip
+  verified.
+- **VW PDF typo corrected:** the Golf Front-Axle-Diff-Lock qt value reads
+  "(0.6.3 qt)" in VW's PDF — a number can't have two decimal points. Added
+  `fixDecimals()` to the parser (collapses a stray middle dot: `0.6.3` → `0.63`),
+  so the served value now reads **0.60 L (0.63 qt)**. Generic + durable across
+  re-parses; only fires on malformed double-dot numbers (2020–2022 re-parsed
+  byte-identical).
+- **Faithful PDF quirks (not bugs):** ID.4 model code is now **E81** (was E21);
+  Atlas/Golf/Jetta sections are named "… Family"; 2023 lists Tiguan rear final
+  drive as a single "0CQ / 0BR" row at 0.9 L (2022 had them split). Jetta/Taos/
+  Tiguan now also list an R134a A/C charge alongside R1234yf.
+- **Messy SECONDARY labels to flag in `2023.txt`** (values correct): Golf Family &
+  Arteon drivetrain torque-splitter / manual-trans rows ("ly Disas- sembled",
+  "Clutch Cable (0.4L on each", "Hypoid Chamber (housing let-"). Same dense-table
+  class as 2022.
+
+### 2022 (added after 2021, same branch)
+
+### 2022 (added after 2021, same branch)
+- Parsed `2022 VW Fluid Capacity Tables.pdf` → 8 models (Jetta/GLI, GTI/Golf R,
+  Passat, Arteon, Taos, Tiguan, Atlas/Atlas Cross Sport, ID.4).
+- **Critical parser bug fixed — phantom model section.** Taos's engine-oil row
+  rendered as `1.5 - DNKA … 4.3 L (4.6 qt)` (the "L" dropped off "1.5L"), so it
+  matched `MODEL_HDR` (`^\d+\.\d+\s+ … (CODE)`) — spawning a junk "model" and
+  leaving the real **Taos empty** (engine oil lost). Fix: `parsePdf` now rejects any
+  candidate header line carrying table data (`VW \d{3}` / `qt` / `\d L (` / `+/-`).
+  After fix: 8 models, Taos `[DNKA]` 4.3 L + coolant/AC/drivetrain all present.
+- **Verified:** 2020 + 2021 re-parsed **byte-identical** (guard only fires on
+  table-data lines). Decode round-trip: Taos DNKA 4.3 L, Tiguan DTEA 5.7 L, Atlas
+  DCGA/DTFA + CDVC, ID.4 EV. Built + mirrored `docs/dist/fluids/2022.json`.
+- **PDF quirks (faithful, handled by the page):** Tiguan lists coolant application
+  as **DGUA** but engine oil as **DTEA** — the page's coolant fallback shows the
+  model's coolant row when no engine-code match, so 10 L still displays. Atlas
+  model code is now **CA2 / CMC** (was CA1 / CMC).
+- **Messy SECONDARY labels to flag in `2022.txt`** (values correct): GTI/Golf R and
+  Arteon **drivetrain** rows have scrambled labels from a denser multi-column table
+  (e.g. "sembled: 2.30 L", "(6.4 Refill qt): Approximately 6.0 L", torque-splitter
+  "Clutch Cable (0.4L on each"). Capacities are present; labels need an owner pass.
+
+### 2021
+
+### What happened
+- Parsed `2021 VW Fluid Capacity Tables.pdf` → 8 models (Jetta/GLI, Golf/GTI,
+  Passat, Arteon, Tiguan, **Taos** (new), Atlas/Atlas Cross Sport, **ID.4** (new EV)).
+- **2021 PDF layout exposed 4 parser gaps — all fixed in `tools/parse-fluids.js`:**
+  1. **Bare engine codes.** Arteon ("DLRB") and Taos ("1.5L - DNKA") list the code
+     *unparenthesised* in the Engine column, so `codesIn` (parens-only) missed it →
+     no engine match. `parseOil` now falls back to a bare 4-letter code (`\b[A-Z]{4}\b`)
+     and strips it from the display label. → Arteon `[DLRB]`, Taos `[DNKA] 1.5L`.
+  2. **Indented table headers.** ID.4's A/C + Drivetrain header rows are indented;
+     the header-finder regex (`^(Engine…|Component…)`) didn't allow leading space, so
+     both tables were skipped (ID.4 came out fully empty). Added `^\s*`.
+  3. **`ml` units.** ID.4 compressor oil is in `ml` (e.g. "200 +/- 10 ml"); `VAL_RE`
+     only knew L/g/cc. Added `ml`.
+  4. **R744 refrigerant + E-MOTOR COOLANT.** ID.4 uses R744 (CO2) alongside R1234yf;
+     added R744 to the refrigerant tagger. Mapped the EV "E-MOTOR COOLANT" header to
+     `engineCoolant` (ID.4's coolant has no numeric value — "refer to manual" — so it
+     filters to empty, which is correct).
+- **Regression check:** re-ran 2020 after the edits — `docs/fluids/2020.json` is
+  **byte-identical** (the new code paths only fire on the 2021-style cases).
+- Bumped `VERSION` → `0.3.5.1-alpha`, rebuilt (stamp `v0.3.5.1-alpha · 2026-06-27`),
+  reorganized CHANGELOG (marked v0.3.5 released; new v0.3.5.1 "Added" for 2020+2021).
+- **Verified:** `node --check` clean; decode round-trip OK (Arteon DLRB 5.7 L, Taos
+  DNKA 4.3 L, ID.4 EV oil empty + A/C 4 rows + drivetrain 0MH 0.8 L).
+
+### Known messy labels (values correct — flag for owner review of `2021.txt`)
+- **Taos** drivetrain 09S row: label reads "Initial Fill Refill N / A" because the
+  PDF's Refill is literally "N/A" (no number) — the **6.3 L initial fill is correct**.
+- Same exotic-label class as prior years (Arteon Denso date variants, etc.).
+
+### Next
+- **Deploy pending owner OK:** PR `0.3.5.1` → `main` (or commit + `pull --rebase` +
+  push). Confirm live stamp `v0.3.5.1-alpha`; new years appear in the lookup.
+- More years: same flow, review the gitignored sheet each time.
+
+---
+
+## 2026-06-27 — Add 2020 fluid data (+ parser footnote fix)
+
+Loaded the **2020** model-year fluids so the lookup now covers 2019 **and** 2020.
+
+### What happened
+- Ran `node tools/parse-fluids.js "2020 VW Fluid Capacity Tables.pdf" --year 2020`.
+  All 8 models parsed (Jetta/GLI, Golf/GTI, Golf R, e-Golf, Passat, Arteon, Tiguan,
+  Atlas/Atlas Cross Sport) with **correct capacities/specs throughout**.
+- **Parser bug found & fixed:** the 2.0L engine-oil rows had the oil-quality
+  **footnote paragraph** ("1) If you must add oil…") bleeding into the engine
+  *description* label. `isNoise` caught the footnote's first line but not its
+  wrapped continuation lines, so `parseOil` folded them into col1. Fix: `parseOil`
+  now **breaks** at the footnote marker (`/^\s*\d\)\s/`) — the footnote always sits
+  below the last engine row — so no continuation can leak in. Engine *codes* were
+  always clean (matching never broke); this only cleaned the display label.
+- Re-ran the parser → all engine-oil labels clean. Built (`node tools/build.js`),
+  confirmed `docs/fluids/2020.json` + mirrored `dist/fluids/2020.json`. Decode test
+  round-trips (Atlas DCGA 5.7 L / CDVC 5.5 L oil, 20 L coolant). CHANGELOG entry
+  added under v0.3.5 (Added).
+
+### Known messy labels (values correct — same exotic cases as 2019)
+- **Golf R** compressor-oil rows ("Denso – Note the type plate on I", multiple
+  Denso week/date variants) and the `0GC` DSG `+/- 0.1L` tolerance splitting into
+  its own fill line. **Atlas A/C** application reads `(CA2)` / `(CMC)` (from the PDF).
+  All capacities are right; only some SECONDARY *labels* are cosmetically messy.
+
+### Next
+- **Deploy pending owner OK:** commit `tools/parse-fluids.js`, `docs/fluids/2020.json`,
+  `dist/fluids/2020.json`, CHANGELOG, this summary → `git pull --rebase` → push.
+- More years: same flow, one PDF at a time; review the gitignored sheet each time.
+
+---
+
 ## 2026-06-27 — v0.3.4 → v0.3.5-alpha: Fluids & Capacities vehicle-matched lookup
 
 **Current version:** `v0.3.5-alpha` — **DEPLOYED & LIVE** (PRs #20 + #23 merged to
