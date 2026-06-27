@@ -5,6 +5,86 @@ permanent project reference.
 
 ---
 
+## 2026-06-26 — v0.3.2 → v0.3.3-alpha: vehicle init + real-page gating fix
+
+**Current version:** `v0.3.3-alpha` (built). Branch `v0.3.2`, PR
+[#19](https://github.com/FlatRateLabs/hahns/pull/19). All in `src/helper.js` +
+version bump in `tools/build.js`.
+
+### v0.3.3 fix — load ONLY from the real Vehicle Summary (owner-tested)
+- **Owner tested on real ELSA (ATLAS VIN `1V2MR2CAXKC537000`):** the summary scan
+  was **perfect** — all 5 fields correct (`Model Name=ATLAS 3.6 SEL AWD`,
+  `Engine Code=CDVC`, `Trans Type=09PA - AQ450-8A`, `Model Year=2019`).
+- **Bug found:** scanning a **repair-manual** page with no vehicle loaded still
+  grabbed a vehicle — ELSA shows the selected VIN in its header on EVERY page
+  (`Select VIN:…`), so the old "VIN present = summary page" signal mis-fired, then
+  loose matchers filled Model Name with "code" and Trans Type with "in the
+  illustration may differ from the".
+- **Fix:** added **`isVehicleSummaryPage(segments)`** — requires the summary's own
+  structure (the "Vehicle Data" section header and/or ≥2 of the anchored labels
+  Model Name / Model Year / Engine Code / Trans Type on their own lines). `scan()`
+  now loads only when that's true; otherwise it's blocked with "this isn't the
+  Vehicle Summary page." Rewrote extraction to **anchored, exact-label** matching
+  (`VEH_LABELS` + `vehField`, label-cell → next-line value), keyed to ELSA's real
+  layout. Diagnostic dump now prints `looks like Vehicle Summary: yes/no`.
+- **Verified** with the actual readout segments: real summary → `isSummary:true` +
+  all 5 correct; a simulated repair page (header VIN + junk) → `isSummary:false`
+  (loads nothing). Browser: helper loads clean, `v0.3.3-alpha` stamp, no errors.
+
+### v0.3.2 base (vehicle init)
+
+New up-front step: the tech scans ELSA's **Vehicle Summary** page before anything
+else, and H.A.H.N.S captures the vehicle's identity. This is **groundwork for a
+later feature** (owner's note), plus a clear "good grab" confirmation.
+
+### Decisions (asked the owner)
+- **Gating:** *Block + prompt* — clicking Scan on a procedure before a vehicle is
+  loaded collects nothing and shows "scan the Vehicle Summary first."
+- **Partial grab:** *Accept + flag blanks* — a found VIN loads the vehicle; any of
+  the other four blank fields are flagged amber and click-to-edit.
+- **Scan UX:** *Auto-detect on the same Scan button* — a found VIN means "this was
+  the summary page"; no VIN means it's a procedure page (blocked until loaded).
+
+### Shipped
+- **`extractVehicle(segments)`** → `{vin, year, model, engine, trans}`. VIN via
+  `VIN_RE` (17 chars, excl. I/O/Q) + `looksVin`; the other four via `vehVal()`, a
+  label→value scan (same line or next line). **Heuristic** — keyed off field
+  labels; will need tuning against a real Vehicle Summary page (see below).
+- **Vehicle rides inside `vwjb_job_v1` as `r.__vehicle`** (no new storage key) — so
+  Exit and New job clear it automatically and it survives page navigation.
+  `emptyResults`/`saveJob`/`loadJob`/`mergeInto` updated to carry it.
+- **Vehicle bar** (`vehicleBar(r)`): green "Vehicle loaded" strip with a check + the
+  5 fields, pinned under the header; blanks show "+ add" + a "Missing: …" note;
+  each value is click-to-edit (`.vval`, mirrors the part-label editor). Hidden in
+  `embed` (setup-page demo) mode. Added to `plainText`, print (`.veh` block), and
+  the diagnostic dump (which now prints the **per-field grab** — the tuning hook).
+- **Gating** in `run().scan()`: until `vehLoaded(job)`, a scan only tries the
+  vehicle; a found VIN loads it, otherwise `vehNotice` prompts and nothing is
+  collected. After that, scans collect procedure specs as before.
+- Version bumped to `v0.3.2-alpha`; CHANGELOG entry added.
+
+### Verified
+- `node --check` clean. Eval harness: `extractVehicle` pulls all 5 from a synthetic
+  summary (both same-line and label-on-own-line layouts); a no-VIN procedure page
+  yields blanks (correctly "not a summary"); `mergeInto` preserves a loaded vehicle
+  across a page scan; `plainText` prints the vehicle block (blank → "—").
+- Browser preview (temp harness, since the demo is embed-mode): all three states
+  render clean with no console errors — **loaded/complete** (green + 5 fields),
+  **loaded/blanks** (amber "+ add" + Missing note), **no-vehicle** (prompt). Inline
+  edit of a blank Engine Code saved + re-rendered.
+
+### Next session
+- **Extractor is now tuned to the real ATLAS summary** (anchored labels) — if a
+  future vehicle/page reads wrong, grab a fresh diagnostic dump and adjust
+  `VEH_LABELS`/`vehField`. Watch for non-English ELSA labels (matchers are English).
+- **Re-test the gate on a repair page** on real ELSA to confirm the header VIN no
+  longer loads a vehicle (verified in the harness; confirm in the bay).
+- **Deploy:** push to update PR #19; confirm the live stamp reads `v0.3.3-alpha`;
+  owner hard-refresh + re-drag.
+- The "feature we'll add later" that consumes the vehicle data is still TBD.
+
+---
+
 ## 2026-06-25 — v0.3.1-alpha: warning banners + special-tools rework
 
 **Current version:** `v0.3.1-alpha`. Branch `v0.3.1` → merged to `main`.

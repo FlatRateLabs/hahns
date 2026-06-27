@@ -29,6 +29,9 @@
   // the no-network / retain-nothing posture stays fully intact.
   var REMIND_KEY = "vwjb_upd_reminder_v1";  // localStorage: Wednesday-marker last acknowledged
   var remindDue = false;                     // show the weekly update-check banner
+  // transient one-line note for the vehicle bar (e.g. a blocked procedure scan
+  // before a vehicle is loaded). Cleared once shown — never persisted.
+  var vehNotice = "";
 
   // the segments captured by the last scan, kept so the build stamp can dump a
   // diagnostic of exactly what the page-walk saw (helps tune against real pages)
@@ -400,6 +403,112 @@
   }
 
   /* ------------------------------------------------------------------ *
+   * 2a. VEHICLE — read the ELSA "Vehicle Summary" page once, up front.
+   *     We pull five identity fields (VIN, Model Year, Model Name, Engine
+   *     Code, Trans Type) so the rest of the job is anchored to a known
+   *     vehicle. Tuned against a real Vehicle Summary dump (ATLAS, 2026-06):
+   *     ELSA lays each field out as a "Vehicle Data" section where the label
+   *     ("Model Name", "Engine Code", …) is its own line and the value is the
+   *     NEXT line. We anchor the matchers to those exact labels so stray text
+   *     on a repair page can't trip them.
+   *
+   *     IMPORTANT: a VIN ALONE is NOT proof we're on the summary — ELSA shows
+   *     the selected VIN in its header on EVERY page. `isVehicleSummaryPage`
+   *     gates loading on the summary's own structure (see below), so a repair
+   *     page's header VIN never loads a vehicle.
+   * ------------------------------------------------------------------ */
+
+  // a VIN is 17 chars from A–Z/0–9 with I, O and Q excluded
+  var VIN_RE = /\b[A-HJ-NPR-Z0-9]{17}\b/;
+  function looksVin(t) { return VIN_RE.test(t) && /[0-9]/.test(t) && /[A-Z]/.test(t); }
+
+  function vehLines(segments) {
+    return (segments || [])
+      .map(function (s) { return String(s.text || "").replace(/\s+/g, " ").trim(); })
+      .filter(function (l) { return l; });
+  }
+
+  // the four identity labels as they appear on the Vehicle Summary, each
+  // ANCHORED to the start of its own line (so "model" buried in a sentence on a
+  // repair page can't match). Shared by extraction and the page-type gate.
+  var VEH_LABELS = {
+    year:   /^model\s*year\b/i,
+    model:  /^model\s*name\b/i,
+    engine: /^engine\s*code\b/i,
+    trans:  /^trans(?:mission)?\s*type\b|^gearbox\s*type\b/i
+  };
+
+  // value for a labelled field: the rest of the label's own line if anything
+  // follows it, otherwise the NEXT line (ELSA's label-cell / value-cell layout).
+  function vehField(lines, labelRe, valRe) {
+    for (var i = 0; i < lines.length; i++) {
+      var m = lines[i].match(labelRe);
+      if (!m) continue;
+      var rest = lines[i].slice(m[0].length).replace(/^[\s:#.\-–—=|]+/, "").trim();
+      var raw = rest || (i + 1 < lines.length ? lines[i + 1].trim() : "");
+      if (!raw) continue;
+      if (valRe) { var vm = raw.match(valRe); if (vm) return (vm[1] || vm[0]).trim(); continue; }
+      return raw.replace(/\s+/g, " ").slice(0, 60).trim();
+    }
+    return "";
+  }
+
+  // Is the scanned page actually ELSA's Vehicle Summary? A VIN alone isn't enough
+  // (it's in the header on every page), so we require the summary's own structure:
+  // the "Vehicle Data" section, and/or its labelled identity fields on their own
+  // lines. Two label hits — or the section header plus one — is the threshold.
+  function isVehicleSummaryPage(segments) {
+    var lines = vehLines(segments);
+    var hasHeader = lines.some(function (l) { return /^vehicle\s*data\b/i.test(l); });
+    var hits = 0;
+    Object.keys(VEH_LABELS).forEach(function (k) {
+      if (lines.some(function (l) { return VEH_LABELS[k].test(l); })) hits++;
+    });
+    return hits >= 2 || (hasHeader && hits >= 1);
+  }
+
+  // returns { vin, year, model, engine, trans } — any field may be "" (blank).
+  // Only meaningful when isVehicleSummaryPage() is true for the same page.
+  function extractVehicle(segments) {
+    var lines = vehLines(segments);
+    var v = { vin: "", year: "", model: "", engine: "", trans: "" };
+
+    // VIN — prefer a line that names it; fall back to any VIN-shaped token
+    for (var i = 0; i < lines.length && !v.vin; i++) {
+      if (/\bVIN\b|chassis|vehicle\s*identification/i.test(lines[i])) {
+        var m = lines[i].toUpperCase().match(VIN_RE);
+        if (!m && i + 1 < lines.length) m = lines[i + 1].toUpperCase().match(VIN_RE);
+        if (m && looksVin(m[0])) v.vin = m[0];
+      }
+    }
+    if (!v.vin) {
+      for (var j = 0; j < lines.length; j++) {
+        var u = lines[j].toUpperCase(), mm = u.match(VIN_RE);
+        if (mm && looksVin(mm[0])) { v.vin = mm[0]; break; }
+      }
+    }
+
+    v.year   = vehField(lines, VEH_LABELS.year, /\b((?:19|20)\d{2})\b/);
+    v.model  = vehField(lines, VEH_LABELS.model, null);
+    v.engine = vehField(lines, VEH_LABELS.engine, /^([A-Za-z]{2,5}\d{0,2}[A-Za-z]?)\b/);
+    v.trans  = vehField(lines, VEH_LABELS.trans, null);
+    return v;
+  }
+
+  // the five fields in display order — shared by the panel, copy, print, dump
+  var VEH_FIELDS = [
+    { k: "vin",    label: "VIN" },
+    { k: "year",   label: "Model Year" },
+    { k: "model",  label: "Model Name" },
+    { k: "engine", label: "Engine Code" },
+    { k: "trans",  label: "Trans Type" }
+  ];
+  function vehLoaded(r) { return !!(r && r.__vehicle && r.__vehicle.vin); }
+  function vehMissing(v) {
+    return VEH_FIELDS.filter(function (f) { return !(v && v[f.k]); }).map(function (f) { return f.label; });
+  }
+
+  /* ------------------------------------------------------------------ *
    * 2b. JOB — accumulate specs across pages. The running list lives in
    *     sessionStorage so it survives navigating ELSA page-to-page and
    *     auto-erases when the tab/browser closes (or on "New job").
@@ -412,6 +521,7 @@
     SECTIONS.forEach(function (s) { r[s.key] = []; });
     r.__title = "";
     r.__images = [];   // [{ src: pageHeader, url }] — diagram references, not copies
+    r.__vehicle = null; // { vin, year, model, engine, trans } once the summary is scanned
     return r;
   }
 
@@ -530,12 +640,13 @@
       if (!iset[im.url]) { iset[im.url] = 1; dst.__images.push({ src: im.src || "", url: im.url }); }
     });
     if (!dst.__title && src.__title) dst.__title = src.__title;
+    if (!dst.__vehicle && src.__vehicle) dst.__vehicle = src.__vehicle;
     return dst;
   }
 
   function saveJob(r) {
     try {
-      var slim = { __title: r.__title || "", __images: r.__images || [] };
+      var slim = { __title: r.__title || "", __images: r.__images || [], __vehicle: r.__vehicle || null };
       SECTIONS.forEach(function (s) { slim[s.key] = r[s.key] || []; });
       sessionStorage.setItem(STORE_KEY, JSON.stringify(slim));
     } catch (e) { /* storage unavailable — stay in-memory for this page */ }
@@ -550,6 +661,7 @@
       SECTIONS.forEach(function (s) { if (Array.isArray(o[s.key])) r[s.key] = o[s.key]; });
       r.__title = o.__title || "";
       r.__images = Array.isArray(o.__images) ? o.__images : [];
+      r.__vehicle = (o.__vehicle && o.__vehicle.vin) ? o.__vehicle : null;
       return r;
     } catch (e) { return null; }
   }
@@ -702,7 +814,20 @@
     ".hd .hbtn{display:inline-flex;align-items:center;justify-content:center;padding:3px 5px}" +
     ".hd .hbtn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".wrap.min{max-height:none}" +
-    ".wrap.min .sub,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar{display:none}" +
+    ".wrap.min .sub,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar,.wrap.min .vbar{display:none}" +
+    // vehicle bar — the up-front "what car is this" identity strip
+    ".vbar{padding:9px 13px;border-bottom:1px solid #eee;font-size:12px;line-height:1.4}" +
+    ".vbar.empty{background:#eef1f6;color:#3a4a63}" +
+    ".vbar.ok{background:#edf7ee;border-bottom-color:#cce6cf}" +
+    ".vmsg b{color:#001e50}" +
+    ".vhead{display:flex;align-items:center;gap:6px;font-weight:700;color:#1e6b34;font-size:11px;letter-spacing:.03em;text-transform:uppercase;margin-bottom:6px}" +
+    ".vhead svg{width:14px;height:14px;fill:none;stroke:#1e6b34;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}" +
+    ".vgrid{display:grid;grid-template-columns:auto 1fr;gap:3px 9px;align-items:baseline}" +
+    ".vk{color:#5a6b8c;font-weight:600;white-space:nowrap}" +
+    ".vval{color:#1c1c1c;font-weight:600;cursor:text;word-break:break-all}" +
+    ".vval.miss{color:#b06a00;font-style:italic;font-weight:600}" +
+    ".vvalin{font:600 12px inherit;padding:2px 5px;border:1px solid #001e50;border-radius:5px;outline:none;width:100%;max-width:190px}" +
+    ".vwarn{margin-top:7px;font-size:11px;color:#8a5a00;background:#fff6e0;border:1px solid #f0dca6;border-radius:6px;padding:5px 8px;line-height:1.35}" +
     ".sub{padding:6px 13px;background:#eef1f6;display:flex;align-items:center}" +
     ".bld{font-size:11px;color:#5a6b8c;white-space:nowrap;cursor:pointer}" +
     ".bld:hover{color:#001e50;text-decoration:underline}" +
@@ -791,6 +916,7 @@
   var WRENCH = "M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 2 2 6-6a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3z";
   var TRASH = "M4 7h16M10 11v6M14 11v6M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3";
   var IMG_ICON = "M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 10a1.3 1.3 0 1 1-2.6 0 1.3 1.3 0 0 1 2.6 0";
+  var CHECK = "M20 6 9 17l-5-5";
 
   function svg(path, cls) {
     return '<svg viewBox="0 0 24 24" class="' + (cls || "") + '"><path d="' + path + '"/></svg>';
@@ -801,6 +927,34 @@
     });
   }
 
+  // the identity strip pinned under the header. When a vehicle is loaded it
+  // shows the five fields (blanks flagged + editable); otherwise it prompts the
+  // tech to scan ELSA's Vehicle Summary page first.
+  function vehicleBar(r) {
+    var note = vehNotice
+      ? '<div class="vwarn">' + esc(vehNotice) + "</div>"
+      : "";
+    if (!vehLoaded(r)) {
+      return '<div class="vbar empty"><div class="vmsg">' +
+        '<b>No vehicle loaded.</b> Open ELSA’s <b>Vehicle Summary</b> page and click ' +
+        '<b>Scan page</b> to load the vehicle before collecting specs.</div>' + note + "</div>";
+    }
+    var v = r.__vehicle;
+    var grid = VEH_FIELDS.map(function (f) {
+      var val = v[f.k];
+      var cell = val
+        ? '<span class="vval" data-vk="' + f.k + '" title="Click to edit">' + esc(val) + "</span>"
+        : '<span class="vval miss" data-vk="' + f.k + '" title="Click to add">+ add</span>';
+      return '<span class="vk">' + esc(f.label) + "</span>" + cell;
+    }).join("");
+    var miss = vehMissing(v);
+    var warn = miss.length
+      ? '<div class="vwarn">Missing: ' + esc(miss.join(", ")) + " — click a blank to add it by hand.</div>"
+      : "";
+    return '<div class="vbar ok"><div class="vhead">' + svg(CHECK) + "Vehicle loaded</div>" +
+      '<div class="vgrid">' + grid + "</div>" + warn + note + "</div>";
+  }
+
   function buildHTML(r, embed) {
     var mini = !embed && isMin();
     var html = "" +
@@ -809,6 +963,8 @@
         '<button data-act="rescan" title="Read this page and add its specs to the job">Scan page</button>' +
         (embed ? "" : '<button data-act="min" class="hbtn" title="' + (mini ? "Expand" : "Minimize") + '">' + svg(mini ? "M7 7h10v10H7z" : "M6 12h12") + "</button>") +
         '<button data-act="close" title="Close">&#10005;</button></div>' +
+      // vehicle identity strip (required before any procedure page is collected)
+      (embed ? "" : vehicleBar(r)) +
       // gentle once-a-week nudge to open the setup page and compare versions —
       // shown only on Wednesdays, once that day. Network-free (we can't actually
       // know if the app is stale), so it behaves the same inside and outside ELSA.
@@ -829,7 +985,9 @@
     var total = 0;
     SECTIONS.forEach(function (s) { total += (r[s.key] || []).length; });
     if (total === 0) {
-      html += '<div class="hint">Nothing collected yet — click <b>Scan page</b> to read the page you’re on.</div>';
+      html += vehLoaded(r)
+        ? '<div class="hint">Vehicle loaded. Open a repair procedure and click <b>Scan page</b> to collect its specs.</div>'
+        : '<div class="hint">Start on ELSA’s <b>Vehicle Summary</b> page and click <b>Scan page</b> to load the vehicle. Procedure specs can be collected after that.</div>';
     }
 
     // group items under a per-page header once 2+ pages have been scanned
@@ -920,6 +1078,11 @@
   function plainText(r) {
     var out = [];
     if (r.__title) { out.push(r.__title, "=".repeat(Math.min(40, r.__title.length)), ""); }
+    if (vehLoaded(r)) {
+      out.push("VEHICLE");
+      VEH_FIELDS.forEach(function (f) { out.push("   " + f.label + ": " + (r.__vehicle[f.k] || "—")); });
+      out.push("");
+    }
     var multiSrc = srcCount(r) >= 2;
     SECTIONS.forEach(function (s) {
       var items = r[s.key] || [];
@@ -954,6 +1117,8 @@
     "body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111;margin:24px;font-size:13px}" +
     "h1{font-size:20px;margin:0 0 2px}" +
     ".meta{color:#555;font-size:11px;margin-bottom:14px;border-bottom:1px solid #bbb;padding-bottom:8px}" +
+    ".veh{margin:0 0 14px;padding:8px 10px;border:1px solid #bbb;border-radius:5px;font-size:12px;background:#f6f8f6}" +
+    ".veh b{color:#000}.veh span{display:inline-block;margin-right:16px}" +
     "h2{font-size:15px;margin:16px 0 4px;border-bottom:1px solid #ccc;padding-bottom:2px}" +
     "h3{font-size:12px;margin:9px 0 2px;color:#333}" +
     "ul{margin:2px 0 6px;padding-left:18px}" +
@@ -971,6 +1136,11 @@
       esc(r.__title || "H.A.H.N.S job") + "</title><style>" + PRINT_CSS + "</style></head><body>"];
     p.push("<h1>" + esc(r.__title || "H.A.H.N.S — Job sheet") + "</h1>");
     p.push('<div class="meta">H.A.H.N.S · printed ' + esc(when) + "</div>");
+    if (vehLoaded(r)) {
+      p.push('<div class="veh">' + VEH_FIELDS.map(function (f) {
+        return "<span><b>" + esc(f.label) + ":</b> " + esc(r.__vehicle[f.k] || "—") + "</span>";
+      }).join("") + "</div>");
+    }
     var any = false;
     var li = function (it) { return "<li>" + (it.sev ? "<b>" + esc(it.sev.toUpperCase()) + ":</b> " : "") + (it.part ? "<b>" + esc(it.part) + "</b> " : "") + esc(it.text) + "</li>"; };
     SECTIONS.forEach(function (s) {
@@ -1041,8 +1211,14 @@
     try { cands = gatherImages(document); picked = pickDiagrams(cands); } catch (e) {}
     var remindSeen;
     try { remindSeen = localStorage.getItem(REMIND_KEY) || "(unset)"; } catch (e) { remindSeen = "(unreadable)"; }
+    var veh = {}, isSum = false;
+    try { veh = extractVehicle(lastSegments) || {}; } catch (e) {}
+    try { isSum = isVehicleSummaryPage(lastSegments); } catch (e) {}
+    var vehLine = VEH_FIELDS.map(function (f) { return f.label + "=" + (veh[f.k] || "(none)"); }).join(" · ");
     return "H.A.H.N.S diagnostic — version " + BUILD + "\n" +
       "update reminder — last acknowledged week: " + remindSeen + " · this week: " + wedMarker(Date.now()) + "\n" +
+      "looks like Vehicle Summary page: " + (isSum ? "yes" : "no") + "\n" +
+      "vehicle grab (from last scan): " + vehLine + "\n" +
       "flags: B=read as bold, H=recognised as a part heading\n" +
       "detected page header: \"" + hdr + "\"\n" +
       "large images on page: " + cands.length + " · diagrams kept: " + picked.length +
@@ -1097,6 +1273,7 @@
     var prevBody = root.querySelector(".body");
     var prevScroll = prevBody ? prevBody.scrollTop : 0;
     root.innerHTML = "<style>" + CSS + "</style>" + buildHTML(r, options.embed);
+    vehNotice = "";   // a blocked-scan note shows once, then clears on next render
     var newBody = root.querySelector(".body");
     if (newBody) newBody.scrollTop = prevScroll;
 
@@ -1122,6 +1299,35 @@
           if (done) return;
           done = true;
           if (save) { r[k][i].part = inp.value.trim(); persist(); }
+          renderInto(host, r, options);
+        };
+        inp.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") { e.preventDefault(); commit(true); }
+          else if (e.key === "Escape") { e.preventDefault(); commit(false); }
+        });
+        inp.addEventListener("blur", function () { commit(true); });
+      });
+    });
+
+    // editable vehicle fields — fix a mis-read value or fill a blank by hand.
+    // Stored in memory + sessionStorage (alongside the job), nothing leaves the page.
+    root.querySelectorAll(".vval").forEach(function (cell) {
+      cell.addEventListener("click", function () {
+        if (!r.__vehicle) return;
+        var vk = cell.getAttribute("data-vk");
+        var inp = document.createElement("input");
+        inp.type = "text";
+        inp.className = "vvalin";
+        inp.value = r.__vehicle[vk] || "";
+        inp.placeholder = "type the value";
+        cell.replaceWith(inp);
+        inp.focus();
+        inp.select();
+        var done = false;
+        var commit = function (save) {
+          if (done) return;
+          done = true;
+          if (save) { r.__vehicle[vk] = inp.value.trim(); persist(); }
           renderInto(host, r, options);
         };
         inp.addEventListener("keydown", function (e) {
@@ -1317,13 +1523,38 @@
       saveJob(job);
       renderInto(host, job, { onRescan: scan, onNewJob: newJob, persist: true });
     };
-    // scan this page and ADD its specs to the running job list, tagged with the
-    // page's header so they group under it
+    // one Scan button, auto-detected:
+    //  - until a vehicle is loaded, a scan MUST be the Vehicle Summary page.
+    //    Finding a VIN loads the vehicle (other fields fill in / get flagged);
+    //    finding none is blocked with a prompt — no procedure specs collected.
+    //  - once a vehicle is loaded, a scan ADDS the page's specs to the job.
     function scan() {
       var job = loadJob() || emptyResults();
+      var segs = gatherSegments(document);
+      lastSegments = segs;   // keep the diagnostic dump in sync even when blocked
+
+      if (!vehLoaded(job)) {
+        // a VIN in ELSA's header is NOT enough — only load from the real Vehicle
+        // Summary page, so a repair page can't seed a wrong/partial vehicle
+        if (isVehicleSummaryPage(segs)) {
+          var veh = extractVehicle(segs);
+          if (veh && veh.vin) {
+            job.__vehicle = veh;   // accept + flag any blank fields in the bar
+            vehNotice = "";
+          } else {
+            vehNotice = "Read the Vehicle Summary but couldn’t find a VIN — click Scan page again.";
+          }
+        } else {
+          // gating: don't collect anything until a vehicle is loaded
+          vehNotice = "This isn’t the Vehicle Summary page. Open ELSA’s Vehicle Summary, then click Scan page.";
+        }
+        show(job);
+        return;
+      }
+
       var header = detectTitle(document) || ("Page " + (srcCount(job) + 1));
       if (!job.__title) job.__title = header;
-      var pageR = extractSegments(gatherSegments(document));
+      var pageR = extractSegments(segs);
       SECTIONS.forEach(function (s) { pageR[s.key].forEach(function (it) { it.src = header; }); });
       // only capture a diagram on overview pages (those with numbered components),
       // and only the dominant image(s) — not logos, step photos or icons
@@ -1352,5 +1583,6 @@
   window.VWJB = { run: run, extract: extract, extractSegments: extractSegments,
     gatherSegments: gatherSegments, renderInto: renderInto, plainText: plainText,
     emptyResults: emptyResults, mergeInto: mergeInto, loadJob: loadJob,
-    saveJob: saveJob, clearJob: clearJob };
+    saveJob: saveJob, clearJob: clearJob, extractVehicle: extractVehicle,
+    isVehicleSummaryPage: isVehicleSummaryPage };
 })();

@@ -9,6 +9,42 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.3-alpha — in progress
+
+Vehicle loading is now locked to the Vehicle Summary page.
+
+### Fixed
+- **Only the Vehicle Summary page loads a vehicle now.** ELSA shows the selected
+  VIN in its header on *every* page, so scanning a repair-manual page used to load
+  a half-wrong vehicle (right VIN, but garbage Model Name / Trans Type). H.A.H.N.S
+  now checks for the summary's own layout (the **Vehicle Data** section with its
+  Model Name / Engine Code / Model Year / Trans Type fields) before loading
+  anything — scan any other page first and it just says that isn't the summary.
+- **Tighter field reading.** The five fields are now read straight from their
+  ELSA labels, so values like Engine Code (**CDVC**) and Trans Type
+  (**09PA – AQ450-8A**) come through exactly.
+
+## v0.3.2-alpha — folded into v0.3.3
+
+Start every job by loading the vehicle.
+
+### Added
+- **Load the vehicle first.** Open ELSA's **Vehicle Summary** page and click
+  **Scan page** — H.A.H.N.S reads the **VIN, Model Year, Model Name, Engine Code,
+  and Trans Type** and pins them in a green "Vehicle loaded" strip at the top of
+  the panel, so you can see at a glance that it got a good grab. The vehicle stays
+  loaded for the whole job and clears when you Exit or start a New job.
+- **Fill in anything it missed.** If a field comes up blank, it's flagged and you
+  can click it to type the value by hand. The vehicle also prints and copies at
+  the top of the job sheet.
+
+### Changed
+- **A vehicle is required before collecting specs.** If you click **Scan page** on
+  a repair procedure before loading a vehicle, H.A.H.N.S asks you to scan the
+  Vehicle Summary page first instead of collecting anything.
+
+---
+
 ## v0.3.1-alpha — 2026-06-25
 
 Bug fixes for how safety banners are read and shown.
