@@ -9,7 +9,22 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.5-alpha — in progress
+## v0.3.5.1-alpha — in progress
+
+More fluid years.
+
+### Added
+- **2020 through 2026 fluid data.** The Fluids & Capacities lookup now covers
+  **2020** (Jetta/GLI, Golf/GTI, Golf R, e-Golf, Passat, Arteon, Tiguan, Atlas/Atlas
+  Cross Sport), **2021** (adds **Taos** and **ID.4**), **2022** (Jetta/GLI, GTI/Golf
+  R, Passat, Arteon, Taos, Tiguan, Atlas/Atlas Cross Sport, ID.4), **2023** (Arteon,
+  Atlas Family, Golf Family, ID.4, Jetta, Taos, Tiguan), **2024** (same lineup as
+  2023), **2025** (Atlas Family, Golf Family, **ID.Buzz**, ID.4, **ID.7**, Jetta,
+  Taos, Tiguan), and **2026** (Atlas Family, Golf Family, ID.Buzz, ID.4, Jetta, Taos,
+  Tiguan) in addition to 2019. No need to re-drag the bookmark — new years are served
+  automatically.
+
+## v0.3.5-alpha — 2026-06-27
 
 Fluids polish.
 

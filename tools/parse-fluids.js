@@ -53,11 +53,14 @@ function codesIn(text) {
 
 // the capacity value(s) in a cell. Handles "650 +/- 25 g" (tolerance before unit)
 // AND "6.8 L +/- 0.1 L (7.2 qt)" (tolerance after unit), plus a trailing "(… qt)".
-var VAL_RE = /(?:Approximately\s+)?\d[\d.]*(?:\s*\+\/-\s*[\d.]+)?\s*(?:L|g|cc)(?:\s*\+\/-\s*[\d.]+\s*(?:L|g|cc))?(?:\s*\([^)]*\))?/g;
+var VAL_RE = /(?:Approximately\s+)?\d[\d.]*(?:\s*\+\/-\s*[\d.]+)?\s*(?:L|g|cc|ml)(?:\s*\+\/-\s*[\d.]+\s*(?:L|g|cc|ml))?(?:\s*\([^)]*\))?/g;
+// a number can never have two decimal points — VW's 2023 PDF has a "(0.6.3 qt)"
+// typo for "(0.63 qt)". Collapse a stray middle dot so it reads correctly.
+function fixDecimals(s) { return s.replace(/(\d+\.\d+)\.(\d+)/g, "$1$2"); }
 function valuesIn(text) {
   var out = [], m;
   VAL_RE.lastIndex = 0;
-  while ((m = VAL_RE.exec(text || ""))) out.push(m[0].replace(/\s+/g, " ").trim());
+  while ((m = VAL_RE.exec(text || ""))) out.push(fixDecimals(m[0].replace(/\s+/g, " ").trim()));
   return out;
 }
 
@@ -107,6 +110,10 @@ function parseOil(lines, hdrIdx) {
   if (idxType < 0) return [];
   var rows = [], cur = null;
   for (var i = hdrIdx + 1; i < lines.length; i++) {
+    // the footnote paragraph ("1) If you must add oil…") always sits BELOW the
+    // last engine row; stop here so its wrapped continuation lines can't bleed
+    // into the engine description column.
+    if (/^\s*\d\)\s/.test(lines[i])) break;
     if (isNoise(lines[i])) continue;
     var ln = normHyphens(lines[i]);
     if (/^\s*Engine\s+Engine Oil Type/.test(ln)) { idxType = ln.indexOf("Engine Oil Type"); continue; }  // repeated header (page break)
@@ -116,9 +123,16 @@ function parseOil(lines, hdrIdx) {
     else if (cur) { if (col1) cur.eng += " " + col1; cur.rest += " " + rest; }    // spec / engine-wrap continuation
   }
   return rows.map(function (r) {
+    var engines = codesIn(r.eng);
+    var bare = !engines.length;
+    // 2021+ layout lists the engine code BARE in the Engine column ("DLRB",
+    // "1.5L - DNKA") instead of parenthesised — fall back to a 4-letter code.
+    if (bare) engines = (r.eng.replace(/\([^)]*\)/g, " ").match(/\b[A-Z]{4}\b/g) || []);
+    var desc = r.eng.replace(/\([^)]*\)/g, "");
+    if (bare) engines.forEach(function (c) { desc = desc.replace(new RegExp("\\b" + c + "\\b", "g"), " "); });
     return {
-      engines: codesIn(r.eng),
-      desc: r.eng.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").replace(/[—-]\s*$/, "").trim(),
+      engines: engines.map(function (s) { return s.toUpperCase(); }),
+      desc: desc.replace(/\s+/g, " ").replace(/^\s*[—-]\s*/, "").replace(/[—-]\s*$/, "").trim(),
       specs: (r.rest.match(SPEC_RE) || []).map(function (s) { return s.replace(/\s+/g, " ").trim(); }),
       capacity: ((r.rest.match(CAP_RE) || [""])[0]).replace(/\s+/g, " ").trim()
     };
@@ -166,11 +180,11 @@ function parseCAC(lines, hdrIdx) {
     r.fills.forEach(function (f) { f.label = (f.label || "").replace(/\s+/g, " ").replace(/\s*\/\s*/g, " / ").trim(); });
     r.application = (r.application || "").replace(/\s+/g, " ").trim();
     r.component = (r.component || "").replace(/\s+/g, " ").trim();
-    var rt = /R\s?1234yf|R\s?134a/i.exec(r.component);
+    var rt = /R\s?1234yf|R\s?134a|R\s?744/i.exec(r.component);
     if (rt) {
       r.refrigerant = rt[0].replace(/\s+/g, "").replace(/^r/, "R");
       // a wrapped second refrigerant can arrive as just "(R1234yf)" — restore the name
-      if (/^\(?R\s?(1234yf|134a)\)?$/i.test(r.component)) r.component = "A/C System Refrigerant " + r.component;
+      if (/^\(?R\s?(1234yf|134a|744)\)?$/i.test(r.component)) r.component = "A/C System Refrigerant " + r.component;
     }
   });
   return rows.filter(function (r) { return r.fills.length; });
@@ -181,6 +195,7 @@ function parseCAC(lines, hdrIdx) {
 var SYS_HEADERS = {
   "ENGINE OIL CAPACITY": "engineOil",
   "ENGINE COOLANT": "engineCoolant",
+  "E-MOTOR COOLANT": "engineCoolant",   // EVs (ID.4) label coolant this way
   "AIR CONDITIONING": "airConditioning",
   "DRIVETRAIN": "drivetrain"
   // BRAKE HYDRAULIC SYSTEM intentionally skipped (not one of the four systems)
@@ -193,7 +208,11 @@ function parsePdf(text) {
   var sections = [];
   for (var i = 0; i < lines.length; i++) {
     var m = MODEL_HDR.exec(lines[i]);
-    if (m && !/^(ENGINE|AIR|DRIVE|BRAKE|Component|Engine)/.test(lines[i].trim())) {
+    // an ENGINE OIL data row can start "1.5 - DNKA … 4.3 L (4.6 qt)", which looks
+    // like a "1.5  Model (CODE)" header — reject anything carrying table data
+    // (an oil spec or a capacity) so it can't spawn a phantom model section.
+    var looksLikeData = /VW\s*\d{3}|\bqt\b|\d\s*L\s*\(|\+\/-/.test(lines[i]);
+    if (m && !looksLikeData && !/^(ENGINE|AIR|DRIVE|BRAKE|Component|Engine)/.test(lines[i].trim())) {
       sections.push({ name: m[1].replace(/\s+/g, " ").trim(), code: m[2].replace(/\s+/g, " ").trim(), at: i });
     }
   }
@@ -216,7 +235,7 @@ function parsePdf(text) {
       // header row of the table is the first line with the column titles
       var hdr = -1;
       for (var h = 0; h < sub.length; h++) {
-        if (/^(Engine\s+Engine Oil Type|Component\s+Application)/.test(sub[h])) { hdr = h; break; }
+        if (/^\s*(Engine\s+Engine Oil Type|Component\s+Application)/.test(sub[h])) { hdr = h; break; }
       }
       if (hdr < 0) continue;
       model[sys[k].key] = (sys[k].key === "engineOil") ? parseOil(sub, hdr) : parseCAC(sub, hdr);
