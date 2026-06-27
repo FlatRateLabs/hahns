@@ -5,6 +5,42 @@ permanent project reference.
 
 ---
 
+## 2026-06-27 — v0.3.5.6-alpha: fluids opens in a sized pop-up window
+
+Branch **`0.3.5.6`** (off `main`). **Bookmarklet code change → re-drag required.**
+Owner: the fluids lookup opening as a full new tab was confusing (easy to lose / forget
+to close). Wanted a **separate, smaller window** sized so the data fits with **no
+side-scrolling** (up/down ok).
+
+### Change (`src/helper.js`)
+- The Fluids & Capacities link (`fluidsBar`) now carries `data-act="fluids"`; the
+  `[data-act]` click handler gained a **`fluids` case** that `preventDefault()`s and
+  opens the URL via **`window.open(url, "hahns_fluids", feats)`**:
+  - **Size:** `width=620, height=820`, each clamped to `screen.avail*-40/-80` for small
+    screens; **centered** via computed `left/top`. 620px chosen because the lookup page
+    is `max-width:580px` + 14px side padding → 620 fits it with room for the scrollbar.
+  - **Named window** `hahns_fluids` → a second lookup **reuses the same pop-up** instead
+    of stacking windows; `win.focus()` brings it forward.
+  - **Fallback:** if `window.open` is blocked/returns null, falls back to a plain tab
+    (`window.open(url, "_blank")`). Kept `href`/`target=_blank` on the anchor as a
+    no-JS fallback too.
+
+### Verified (browser preview)
+- `fluids.html` at **620px viewport**: `horizScroll=false`, `vertScroll=true` (exactly
+  the goal); content fills width cleanly; screenshot captured; no console errors.
+- Panel harness with `window.open` stubbed: clicking the link calls open with the
+  correct URL (`fluids.html?y/m/e/t`, **no VIN**), name `hahns_fluids`, and the
+  sized/centered feature string; default navigation prevented. (Width read 580 in the
+  preview only because its own screen is 620 → the `availWidth-40` clamp; real monitors
+  get the full 620×820.)
+- `node --check` clean; rebuilt `v0.3.5.6-alpha`.
+
+### Next
+- **Deploy:** commit branch `0.3.5.6` → PR → `main` (`git pull --rebase` first); confirm
+  live stamp `v0.3.5.6-alpha`. **Owner: hard-refresh setup page + re-drag** (code change).
+
+---
+
 ## 2026-06-27 — v0.3.5.5-alpha: UI cleanup (header color + SCAN button)
 
 Branch **`0.3.5.5`** (off `main`, after v0.3.5.4 merged). **Bookmarklet code change**

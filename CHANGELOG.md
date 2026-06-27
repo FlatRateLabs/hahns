@@ -9,7 +9,19 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.5.5-alpha — in progress
+## v0.3.5.6-alpha — in progress
+
+### Changed
+- **Fluids & Capacities now opens in a small pop-up window** instead of a full new
+  tab. It’s sized to fit the data with no side-scrolling (just scroll up/down) and
+  centered on screen, so it reads as a quick reference you can glance at and close —
+  no hunting for a stray tab. Opening it again reuses the same pop-up. (If your
+  browser blocks pop-ups, it falls back to opening a tab.)
+
+> **Re-drag needed:** this changes the bookmarklet itself, so hard-refresh the setup
+> page and re-drag the bookmark.
+
+## v0.3.5.5-alpha — 2026-06-27
 
 A fresh look so H.A.H.N.S stands out from ELSA.
 

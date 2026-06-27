@@ -1014,7 +1014,9 @@
     if (!vehLoaded(r)) return "";
     var url = vehFluidsUrl(r);
     if (!url) return '<div class="fluidbar"><div class="fluidnote">Add the <b>Model Year</b> above to look up fluids &amp; capacities.</div></div>';
-    return '<div class="fluidbar"><a class="fluidbtn" href="' + esc(url) + '" target="_blank" rel="noopener">' +
+    // opens in a small, centered pop-up window (see the "fluids" click handler) so
+    // it reads as a quick reference, not a full tab the tech has to find and close.
+    return '<div class="fluidbar"><a class="fluidbtn" href="' + esc(url) + '" data-act="fluids" target="_blank" rel="noopener">' +
       svg(DROPLET) + "Fluids &amp; capacities for this vehicle<span class=\"arr\">&#8599;</span></a></div>";
   }
 
@@ -1478,8 +1480,33 @@
     });
 
     root.querySelectorAll("[data-act]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
+      btn.addEventListener("click", function (e) {
         var act = btn.getAttribute("data-act");
+        if (act === "fluids") {
+          // open the lookup in a small, centered pop-up window (not a full tab):
+          // just wide enough for the content (page is max-width 580px) so there's
+          // no side-scrolling, and tall with vertical scroll. A fixed window name
+          // means a second lookup reuses the same pop-up instead of stacking up.
+          if (e && e.preventDefault) e.preventDefault();
+          var url = btn.getAttribute("href");
+          var w = 620, h = 820;
+          try {
+            if (screen && screen.availWidth) w = Math.min(w, screen.availWidth - 40);
+            if (screen && screen.availHeight) h = Math.min(h, screen.availHeight - 80);
+          } catch (e2) {}
+          var left = 0, top = 0;
+          try {
+            left = Math.max(0, Math.round(((screen.availWidth || w) - w) / 2));
+            top = Math.max(0, Math.round(((screen.availHeight || h) - h) / 2));
+          } catch (e3) {}
+          var feats = "width=" + w + ",height=" + h + ",left=" + left + ",top=" + top +
+            ",scrollbars=yes,resizable=yes,menubar=no,toolbar=no,location=no,status=no";
+          var win = null;
+          try { win = window.open(url, "hahns_fluids", feats); } catch (e4) {}
+          if (win) { try { win.focus(); } catch (e5) {} }
+          else { try { window.open(url, "_blank"); } catch (e6) {} }   // pop-up blocked → fall back to a tab
+          return;
+        }
         if (act === "close") {
           // the job lives only in memory/sessionStorage, so closing discards it —
           // guard against an accidental click with an explicit confirmation
