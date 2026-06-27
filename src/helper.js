@@ -433,6 +433,15 @@
     engine: /^engine\s*code\b/i,
     trans:  /^trans(?:mission)?\s*type\b|^gearbox\s*type\b/i
   };
+  // Electric vehicles' Vehicle Summary has NO single "Engine Code" / "Trans Type" —
+  // it lists Front/Rear motor and transaxle codes instead. Match those so EVs load
+  // their codes too (used by the fluids lookup for the single-speed reduction gear).
+  var VEH_LABELS_EV = {
+    engine: /^(?:front|rear)\s*(?:e-?motor|engine|motor)\s*code(?:\(s\))?/i,
+    trans:  /^(?:front|rear)\s*(?:trans(?:mission)?|gearbox|transaxle)\.?\s*(?:type|code)(?:\(s\))?/i
+  };
+  // value cell for an engine/motor code: a 2–5 letter code, optional digits/suffix
+  var ENG_VAL = /^([A-Za-z]{2,5}\d{0,2}[A-Za-z]?)\b/;
 
   // value for a labelled field: the rest of the label's own line if anything
   // follows it, otherwise the NEXT line (ELSA's label-cell / value-cell layout).
@@ -449,6 +458,24 @@
     return "";
   }
 
+  // like vehField, but collects EVERY matching label's value (EVs carry a Front and
+  // a Rear code), deduped and order-preserving. Returns an array.
+  function vehFieldAll(lines, labelRe, valRe) {
+    var out = [];
+    for (var i = 0; i < lines.length; i++) {
+      var m = lines[i].match(labelRe);
+      if (!m) continue;
+      var rest = lines[i].slice(m[0].length).replace(/^[\s:#.\-–—=|]+/, "").trim();
+      var raw = rest || (i + 1 < lines.length ? lines[i + 1].trim() : "");
+      if (!raw) continue;
+      var val;
+      if (valRe) { var vm = raw.match(valRe); val = vm ? (vm[1] || vm[0]).trim() : ""; }
+      else { val = raw.replace(/\s+/g, " ").slice(0, 60).trim(); }
+      if (val && out.indexOf(val) < 0) out.push(val);
+    }
+    return out;
+  }
+
   // Is the scanned page actually ELSA's Vehicle Summary? A VIN alone isn't enough
   // (it's in the header on every page), so we require the summary's own structure:
   // the "Vehicle Data" section, and/or its labelled identity fields on their own
@@ -457,8 +484,9 @@
     var lines = vehLines(segments);
     var hasHeader = lines.some(function (l) { return /^vehicle\s*data\b/i.test(l); });
     var hits = 0;
-    Object.keys(VEH_LABELS).forEach(function (k) {
-      if (lines.some(function (l) { return VEH_LABELS[k].test(l); })) hits++;
+    [VEH_LABELS.year, VEH_LABELS.model, VEH_LABELS.engine, VEH_LABELS.trans,
+     VEH_LABELS_EV.engine, VEH_LABELS_EV.trans].forEach(function (re) {
+      if (lines.some(function (l) { return re.test(l); })) hits++;
     });
     return hits >= 2 || (hasHeader && hits >= 1);
   }
@@ -486,8 +514,12 @@
 
     v.year   = vehField(lines, VEH_LABELS.year, /\b((?:19|20)\d{2})\b/);
     v.model  = vehField(lines, VEH_LABELS.model, null);
-    v.engine = vehField(lines, VEH_LABELS.engine, /^([A-Za-z]{2,5}\d{0,2}[A-Za-z]?)\b/);
+    v.engine = vehField(lines, VEH_LABELS.engine, ENG_VAL);
     v.trans  = vehField(lines, VEH_LABELS.trans, null);
+    // EV summaries have no single Engine Code / Trans Type — collect the Front/Rear
+    // motor + transaxle codes instead (joined "FRONT / REAR" for display + lookup).
+    if (!v.engine) v.engine = vehFieldAll(lines, VEH_LABELS_EV.engine, ENG_VAL).join(" / ");
+    if (!v.trans)  v.trans  = vehFieldAll(lines, VEH_LABELS_EV.trans, null).join(" / ");
     return v;
   }
 

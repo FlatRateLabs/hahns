@@ -70,7 +70,10 @@ function qs(k){ try { return new URLSearchParams(location.search).get(k) || ""; 
 
 /* ---- the vehicle, from the panel's URL params (no VIN, by design) ---- */
 var VEH = { year: qs("y"), model: qs("m"), engine: up(qs("e")), trans: up(qs("t")) };
-VEH.transCode = VEH.trans.split(/[^A-Z0-9]/)[0] || "";        // "09PA - AQ450-8A" -> "09PA"
+// a vehicle can carry more than one trans code — EVs list front + rear drive
+// units (e.g. "0MH / 0MK"); ICE is one ("09PA - AQ450-8A"). Keep them all.
+VEH.transCodes = up(VEH.trans).split(/[^A-Z0-9]/).filter(function(s){ return /^[A-Z0-9]{3,6}$/.test(s); });
+VEH.transCode = VEH.transCodes[0] || "";                      // first, for the "no match" note
 VEH.awd = /\bAWD\b|4 ?MOTION|4MOT/i.test(VEH.model);
 
 var ICON = {
@@ -91,22 +94,37 @@ function codesIn(text){
 }
 function bareCodes(text){ return up(text).split(/[\/,]/).map(function(s){ return s.trim(); }).filter(function(s){ return /^[A-Z0-9]{2,6}$/.test(s); }); }
 
+// normalise a model name for comparison: drop the generic word "Family" and ALL
+// punctuation/spaces so "ID.4" matches ELSA's "ID.4 AWD PRO S", "ID.Buzz" matches
+// "ID. BUZZ 1ST EDITION AWD", and "Atlas Family" matches "ATLAS SEL AWD".
+function modelNorm(s){ return up(s).replace(/\bFAMILY\b/g, " ").replace(/[^A-Z0-9]/g, ""); }
 function pickModel(models){
+  var vm = modelNorm(VEH.model);
+  if (/GTI|GOLFR/.test(vm)) vm += "GOLF";   // GTI / Golf R are grouped under "Golf Family"
   var best = null, score = -1;
   models.forEach(function(m){
     up(m.model).split("/").forEach(function(tok){
-      tok = tok.replace(/[^A-Z0-9 ]/g, "").trim();
-      if (tok && up(VEH.model).indexOf(tok) >= 0 && tok.length > score) { score = tok.length; best = m; }
+      var t = modelNorm(tok);
+      if (t && vm.indexOf(t) >= 0 && t.length > score) { score = t.length; best = m; }
     });
   });
   return best;
 }
-function transHit(app){
+// trans codes from an Application cell — both parenthesised "(09P)" and bare
+// "Single Speed 0MH" (EV reduction gears are often written without parens).
+function appTransCodes(app){
   var cs = codesIn(app);
-  if (!cs.length || !VEH.transCode) return false;
-  return cs.some(function(c){ return c && (VEH.transCode.indexOf(c) === 0 || c.indexOf(VEH.transCode) === 0); });
+  (up(app).match(/\b0[A-Z0-9]{2,3}\b/g) || []).forEach(function(c){ if (cs.indexOf(c) < 0) cs.push(c); });
+  return cs;
 }
-var TRANS_RE = /\d+\s*-?\s*speed|single gear|direct shift|gearbox|automatic|manual|dsg|tiptronic/i;
+function transHit(app){
+  var cs = appTransCodes(app);
+  if (!cs.length || !VEH.transCodes.length) return false;
+  return cs.some(function(c){
+    return VEH.transCodes.some(function(t){ return t && (t.indexOf(c) === 0 || c.indexOf(t) === 0); });
+  });
+}
+var TRANS_RE = /\d+\s*-?\s*speed|single\s*(?:gear|speed)|direct shift|gearbox|automatic|manual|dsg|tiptronic/i;
 
 /* ----------------------------- render ------------------------------- */
 function capHtml(fills){

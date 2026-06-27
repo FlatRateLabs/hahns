@@ -9,7 +9,24 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.5.1-alpha — in progress
+## v0.3.5.2-alpha — in progress
+
+Electric-vehicle fixes for the Fluids & Capacities lookup.
+
+### Fixed
+- **Electric vehicles now find their fluids.** Clicking Fluids & Capacities for an
+  EV (e.g. *ID. Buzz 1st Edition AWD*, *ID.4 AWD PRO S*) used to say “No fluid entry
+  found.” The lookup now matches the vehicle to the right table even when the model
+  name carries trim/options (and regardless of spacing or punctuation like the dot in
+  “ID.4”). This also fixes a related gap where **2023–2026 Atlas** (“Atlas Family”)
+  and **GTI / Golf R** (under “Golf Family”) weren’t matching.
+- **EV engine & transmission codes are read from the Vehicle Summary.** EV summaries
+  don’t have a single “Engine Code” / “Trans Type” — they list **Front/Rear** motor
+  and transaxle codes. H.A.H.N.S now reads those (shown as “FRONT / REAR”), so the
+  green vehicle bar fills in and the drivetrain lookup can match the EV’s single-speed
+  reduction gear.
+
+## v0.3.5.1-alpha — 2026-06-27
 
 More fluid years.
 
