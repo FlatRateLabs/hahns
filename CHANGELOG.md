@@ -9,7 +9,18 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.4-alpha — in progress
+## v0.3.5-alpha — in progress
+
+Fluids polish.
+
+### Changed
+- **Fluids & Capacities link moved up.** It now sits right under the green vehicle
+  box (above the version line), so it's the first thing you reach once a vehicle is
+  loaded.
+- **Clearer system icons** on the lookup page — an oil can, a thermometer, a
+  snowflake, and a gear for Engine Oil / Coolant / A/C / Drivetrain.
+
+## v0.3.4-alpha — 2026-06-27
 
 Fluids & Capacities is now a vehicle-matched lookup.
 
