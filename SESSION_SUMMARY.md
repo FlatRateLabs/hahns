@@ -5,6 +5,57 @@ permanent project reference.
 
 ---
 
+## 2026-06-27 — v0.3.5.2-alpha: electric-vehicle fluids fixes
+
+Branch **`0.3.5.2`** (off `main`). Owner reported EVs broken in the Fluids lookup:
+(1) clicking Fluids for an EV said "No fluid entry found"; (2) the Vehicle Summary
+didn't pull engine/trans codes for EVs.
+
+### Bug 1 — "No fluid entry found" (model matching) — `src/fluids.html`
+- **Root cause:** `pickModel` stripped punctuation from the *table* model token
+  (“ID.4”→“ID4”, “ID.Buzz”→“IDBUZZ”) but compared it against the **raw** ELSA model
+  string (“ID.4 AWD PRO S”, “ID. BUZZ 1ST EDITION AWD (TWO TONE)”) — so the dot/space
+  never lined up → no match. Reproduced in a harness first.
+- **Fix:** `modelNorm()` normalizes **both** sides identically (drop the generic word
+  “Family”, strip all non-alphanumerics), so “ID.4”↔“ID.4 AWD PRO S”, “ID.Buzz”↔“ID.
+  BUZZ …”, and “Atlas Family”↔“ATLAS SEL AWD” all match. Added a small alias so
+  **GTI / Golf R** map to the “Golf Family” entry.
+- **Bonus:** this also fixed a *latent* break — **2023–2026 “Atlas Family”** never
+  matched any ELSA Atlas name (only the older “Atlas / Atlas Cross Sport” did).
+
+### Bug 2 — EV engine/trans not read from Vehicle Summary — `src/helper.js`
+- EV summaries list **Front/Rear (E-)Motor Code(s)** and **Front/Rear Trans. Code(s)**
+  instead of a single “Engine Code”/“Trans Type”. Added `VEH_LABELS_EV` + `vehFieldAll`
+  (collects every matching label, deduped), and `extractVehicle` falls back to these
+  when the standard fields are blank → `engine`/`trans` become “FRONT / REAR” (e.g.
+  `EAXA / APA`, `0MH / 0MK`). Had to absorb the trailing “(s)” in “Code(s)” so the
+  value (next line) is read, not the “(s)”. `isVehicleSummaryPage` now counts the EV
+  labels too. **ICE extraction is byte-for-byte unchanged** (verified in harness).
+
+### Drivetrain matching (EV) — `src/fluids.html`
+- A vehicle can now carry **multiple trans codes** (`VEH.transCodes`); `transHit`
+  matches any of them and also reads **bare** codes from the Application (EV gears are
+  written “Single Speed 0MH”, no parens). Added “single speed” to `TRANS_RE` so those
+  rows route through trans-matching (with the existing “all shown” fallback). No ICE
+  row says “single speed”, so zero ICE risk.
+
+### Verified (browser preview, real data)
+- **ID.Buzz 2025** (the reported case): renders — A/C (R1234yf + R744) + Drivetrain
+  matched to **Single Speed 0MH** 0.8 L; vehicle bar shows EAXA / APA, 0MH / 0MK · AWD.
+  Screenshot captured. No console errors.
+- **ID.4 2023** ✓ · **Atlas 2024 (Family)** ✓ (was silently broken) · **Atlas 2019
+  ICE** ✓ (regression clean, 09P matched) · **GTI 2025** ✓ (alias works).
+- `node --check src/helper.js` clean; rebuilt → `v0.3.5.2-alpha`.
+
+### Next
+- **Deploy:** PR `0.3.5.2` → `main`; confirm live stamp `v0.3.5.2-alpha`.
+- **Real-ELSA confirm:** the EV Front/Rear label wording is matched defensively
+  (e-motor/motor/engine, trans/transaxle/gearbox, optional “(s)”). If a real EV
+  summary still shows blank engine/trans, grab a diagnostic dump and tune
+  `VEH_LABELS_EV`.
+
+---
+
 ## 2026-06-27 — v0.3.5.1-alpha: add 2021–2026 fluid data (+ parser robustness)
 
 Branch **`0.3.5.1`** (off `main`, carries the 2020 work below). Version bumped to
