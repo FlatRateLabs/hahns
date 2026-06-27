@@ -99,16 +99,12 @@
     {
       key: "fluids",
       title: "Fluids & capacities",
-      label: true,
       icon: "M12 2.7s6 6.6 6 10.3a6 6 0 0 1-12 0c0-3.7 6-10.3 6-10.3z",
-      // a quantity with a volume unit, or a fluid noun paired with capacity/filling wording
-      test: function (line) {
-        var hasQty = /\b\d+(?:[.,]\d+)?\s*(l\b|ltr|litres?|liters?|ml\b|cc\b|ccm|qt\b|quarts?|fl\.?\s?oz)\b/i.test(line);
-        var fluid = /\b(oil|coolant|antifreeze|atf|gear\s*oil|brake\s*fluid|fluid|haldex|dsg|capacity|filling|refill|g\s?0?1[23]|g\s?0?5[25])\b/i.test(line);
-        if (hasQty && fluid) return true;
-        if (hasQty && /\b(approx|capacity|fill|total)\b/i.test(line)) return true;
-        return false;
-      }
+      // NOT scanned from the repair manual (fluids live in a separate per-year PDF).
+      // Instead this section is a link that opens the vehicle-matched fluid lookup
+      // page in a new window (off ELSA, so it can load the data). See vehFluidsUrl().
+      linkOnly: true,
+      test: function () { return false; }
     },
     {
       key: "tools",
@@ -507,6 +503,17 @@
   function vehMissing(v) {
     return VEH_FIELDS.filter(function (f) { return !(v && v[f.k]); }).map(function (f) { return f.label; });
   }
+  // the fluid-lookup URL for the loaded vehicle. Opens on OUR origin (off ELSA, so
+  // its CSP doesn't apply), carrying the specs needed to match — year/model/engine/
+  // trans. Deliberately NO VIN (not needed, and shouldn't ride in a URL). Needs a
+  // year to pick the data file; "" if the year is blank.
+  function vehFluidsUrl(r) {
+    var v = (r && r.__vehicle) || {};
+    if (!v.year) return "";
+    var q = "y=" + encodeURIComponent(v.year) + "&m=" + encodeURIComponent(v.model || "") +
+      "&e=" + encodeURIComponent(v.engine || "") + "&t=" + encodeURIComponent(v.trans || "");
+    return SITE_URL + "fluids.html?" + q;
+  }
 
   /* ------------------------------------------------------------------ *
    * 2b. JOB — accumulate specs across pages. The running list lives in
@@ -893,6 +900,12 @@
     ".chipx{appearance:none;-webkit-appearance:none;background:transparent;border:0;color:#9fb2d6;cursor:pointer;font-size:11px;line-height:1;padding:0 1px;border-radius:4px}" +
     ".chipx:hover{color:#fff;background:rgba(255,255,255,.18)}" +
     ".c-torque{color:#185fa5}.c-replace{color:#0f6e56}.c-fluids{color:#185fa5}.c-tools{color:#534ab7}.c-warnings{color:#a32d2d}.c-diagram{color:#5f5e5a}" +
+    // fluids = a link out to the vehicle-matched lookup page (not scanned)
+    ".fluidbtn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;appearance:none;-webkit-appearance:none;text-decoration:none;background:#eef6ff;border:1px solid #cfe0f5;color:#0a3d6e;font:600 13px inherit;padding:10px 12px;border-radius:9px;cursor:pointer;margin-top:2px}" +
+    ".fluidbtn:hover{background:#e2eefc;border-color:#185fa5}" +
+    ".fluidbtn svg{width:17px;height:17px;flex-shrink:0;fill:none;stroke:#185fa5;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
+    ".fluidbtn .arr{margin-left:auto;font-size:14px;color:#185fa5}" +
+    ".fluidnote{font-size:12px;color:#7a7a7a;line-height:1.4;margin-top:6px}" +
     ".dgmhdr{font:600 11px inherit;color:#5f6b80;margin:9px 0 4px}" +
     ".dgmwrap{position:relative;margin:6px 0}" +
     ".dgm{display:block;max-width:100%;height:auto;border:1px solid #e3e3e3;border-radius:6px;cursor:zoom-in;background:#fff}" +
@@ -1016,6 +1029,21 @@
 
     SECTIONS.forEach(function (s) {
       var items = r[s.key] || [];
+
+      // fluids: not scanned — render a link out to the vehicle-matched lookup page
+      if (s.linkOnly) {
+        html += '<div class="sec ' + s.key + '"><div class="st c-' + s.key + '">' + svg(s.icon) + s.title + "</div>";
+        var furl = vehFluidsUrl(r);
+        if (vehLoaded(r) && furl) {
+          html += '<a class="fluidbtn" href="' + esc(furl) + '" target="_blank" rel="noopener">' +
+            svg(s.icon) + "Open fluids &amp; capacities for this vehicle<span class=\"arr\">&#8599;</span></a>";
+        } else {
+          html += '<div class="fluidnote">Load the vehicle (scan the <b>Vehicle Summary</b>) to open its matched fluids &amp; capacities.</div>';
+        }
+        html += "</div>";
+        return;
+      }
+
       html += '<div class="sec ' + s.key + '"><div class="st c-' + s.key + '">' +
         svg(s.icon) + s.title + '<span class="ct">' + items.length + "</span></div>";
 
