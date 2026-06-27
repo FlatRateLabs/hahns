@@ -9,7 +9,22 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.2-alpha — in progress
+## v0.3.3-alpha — in progress
+
+Vehicle loading is now locked to the Vehicle Summary page.
+
+### Fixed
+- **Only the Vehicle Summary page loads a vehicle now.** ELSA shows the selected
+  VIN in its header on *every* page, so scanning a repair-manual page used to load
+  a half-wrong vehicle (right VIN, but garbage Model Name / Trans Type). H.A.H.N.S
+  now checks for the summary's own layout (the **Vehicle Data** section with its
+  Model Name / Engine Code / Model Year / Trans Type fields) before loading
+  anything — scan any other page first and it just says that isn't the summary.
+- **Tighter field reading.** The five fields are now read straight from their
+  ELSA labels, so values like Engine Code (**CDVC**) and Trans Type
+  (**09PA – AQ450-8A**) come through exactly.
+
+## v0.3.2-alpha — folded into v0.3.3
 
 Start every job by loading the vehicle.
 

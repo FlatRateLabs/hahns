@@ -5,10 +5,33 @@ permanent project reference.
 
 ---
 
-## 2026-06-26 — v0.3.2-alpha: vehicle init (load the car first)
+## 2026-06-26 — v0.3.2 → v0.3.3-alpha: vehicle init + real-page gating fix
 
-**Current version:** `v0.3.2-alpha` (built, **not committed/pushed** — lives on branch
-`v0.3.2`, working tree). All in `src/helper.js` + version bump in `tools/build.js`.
+**Current version:** `v0.3.3-alpha` (built). Branch `v0.3.2`, PR
+[#19](https://github.com/FlatRateLabs/hahns/pull/19). All in `src/helper.js` +
+version bump in `tools/build.js`.
+
+### v0.3.3 fix — load ONLY from the real Vehicle Summary (owner-tested)
+- **Owner tested on real ELSA (ATLAS VIN `1V2MR2CAXKC537000`):** the summary scan
+  was **perfect** — all 5 fields correct (`Model Name=ATLAS 3.6 SEL AWD`,
+  `Engine Code=CDVC`, `Trans Type=09PA - AQ450-8A`, `Model Year=2019`).
+- **Bug found:** scanning a **repair-manual** page with no vehicle loaded still
+  grabbed a vehicle — ELSA shows the selected VIN in its header on EVERY page
+  (`Select VIN:…`), so the old "VIN present = summary page" signal mis-fired, then
+  loose matchers filled Model Name with "code" and Trans Type with "in the
+  illustration may differ from the".
+- **Fix:** added **`isVehicleSummaryPage(segments)`** — requires the summary's own
+  structure (the "Vehicle Data" section header and/or ≥2 of the anchored labels
+  Model Name / Model Year / Engine Code / Trans Type on their own lines). `scan()`
+  now loads only when that's true; otherwise it's blocked with "this isn't the
+  Vehicle Summary page." Rewrote extraction to **anchored, exact-label** matching
+  (`VEH_LABELS` + `vehField`, label-cell → next-line value), keyed to ELSA's real
+  layout. Diagnostic dump now prints `looks like Vehicle Summary: yes/no`.
+- **Verified** with the actual readout segments: real summary → `isSummary:true` +
+  all 5 correct; a simulated repair page (header VIN + junk) → `isSummary:false`
+  (loads nothing). Browser: helper loads clean, `v0.3.3-alpha` stamp, no errors.
+
+### v0.3.2 base (vehicle init)
 
 New up-front step: the tech scans ELSA's **Vehicle Summary** page before anything
 else, and H.A.H.N.S captures the vehicle's identity. This is **groundwork for a
@@ -51,13 +74,13 @@ later feature** (owner's note), plus a clear "good grab" confirmation.
   edit of a blank Engine Code saved + re-rendered.
 
 ### Next session
-- **TUNE THE EXTRACTOR against a real page.** The matchers are heuristic. Have the
-  owner open a real ELSA **Vehicle Summary**, click the version stamp to copy the
-  **diagnostic dump** (now reports the per-field grab + raw segments), and paste it
-  back. Adjust `VIN_RE`/`vehVal` label regexes + value shapes to ELSA's actual
-  labels (esp. Engine Code token shape and Trans Type wording).
-- **Deploy when ready:** `git add -A` → commit → `git pull --rebase` → push; confirm
-  the live stamp reads `v0.3.2-alpha`. Tell the owner to hard-refresh + re-drag.
+- **Extractor is now tuned to the real ATLAS summary** (anchored labels) — if a
+  future vehicle/page reads wrong, grab a fresh diagnostic dump and adjust
+  `VEH_LABELS`/`vehField`. Watch for non-English ELSA labels (matchers are English).
+- **Re-test the gate on a repair page** on real ELSA to confirm the header VIN no
+  longer loads a vehicle (verified in the harness; confirm in the bay).
+- **Deploy:** push to update PR #19; confirm the live stamp reads `v0.3.3-alpha`;
+  owner hard-refresh + re-drag.
 - The "feature we'll add later" that consumes the vehicle data is still TBD.
 
 ---

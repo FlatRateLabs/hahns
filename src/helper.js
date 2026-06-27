@@ -406,47 +406,71 @@
    * 2a. VEHICLE — read the ELSA "Vehicle Summary" page once, up front.
    *     We pull five identity fields (VIN, Model Year, Model Name, Engine
    *     Code, Trans Type) so the rest of the job is anchored to a known
-   *     vehicle. A valid VIN is the signal that a scan IS the summary page;
-   *     the other four fill in when present and are flagged when missing.
-   *     These matchers are HEURISTIC — they key off the field labels and
-   *     value shapes; tune the regexes against a real-page diagnostic dump
-   *     (the build-stamp dump now reports exactly what each one grabbed).
+   *     vehicle. Tuned against a real Vehicle Summary dump (ATLAS, 2026-06):
+   *     ELSA lays each field out as a "Vehicle Data" section where the label
+   *     ("Model Name", "Engine Code", …) is its own line and the value is the
+   *     NEXT line. We anchor the matchers to those exact labels so stray text
+   *     on a repair page can't trip them.
+   *
+   *     IMPORTANT: a VIN ALONE is NOT proof we're on the summary — ELSA shows
+   *     the selected VIN in its header on EVERY page. `isVehicleSummaryPage`
+   *     gates loading on the summary's own structure (see below), so a repair
+   *     page's header VIN never loads a vehicle.
    * ------------------------------------------------------------------ */
 
   // a VIN is 17 chars from A–Z/0–9 with I, O and Q excluded
   var VIN_RE = /\b[A-HJ-NPR-Z0-9]{17}\b/;
   function looksVin(t) { return VIN_RE.test(t) && /[0-9]/.test(t) && /[A-Z]/.test(t); }
 
-  // find the value that follows a field label on the same line (or the next
-  // line if the label sits alone). valRe, when given, plucks a specific shape
-  // out of the remaining text; otherwise we take the first chunk up to a
-  // delimiter. excludeRe skips look-alike labels (e.g. "Model Year" for "Model").
-  function vehVal(lines, labelRe, valRe, excludeRe) {
+  function vehLines(segments) {
+    return (segments || [])
+      .map(function (s) { return String(s.text || "").replace(/\s+/g, " ").trim(); })
+      .filter(function (l) { return l; });
+  }
+
+  // the four identity labels as they appear on the Vehicle Summary, each
+  // ANCHORED to the start of its own line (so "model" buried in a sentence on a
+  // repair page can't match). Shared by extraction and the page-type gate.
+  var VEH_LABELS = {
+    year:   /^model\s*year\b/i,
+    model:  /^model\s*name\b/i,
+    engine: /^engine\s*code\b/i,
+    trans:  /^trans(?:mission)?\s*type\b|^gearbox\s*type\b/i
+  };
+
+  // value for a labelled field: the rest of the label's own line if anything
+  // follows it, otherwise the NEXT line (ELSA's label-cell / value-cell layout).
+  function vehField(lines, labelRe, valRe) {
     for (var i = 0; i < lines.length; i++) {
-      var ln = lines[i];
-      if (excludeRe && excludeRe.test(ln)) continue;
-      var m = ln.match(labelRe);
+      var m = lines[i].match(labelRe);
       if (!m) continue;
-      var pick = function (str) {
-        if (!str) return "";
-        if (valRe) { var vm = str.match(valRe); return vm ? (vm[1] || vm[0]).trim() : ""; }
-        var val = str.split(/\s{2,}|\s*[|·•;]\s*/)[0].trim();
-        return val.slice(0, 40);
-      };
-      var after = ln.slice(m.index + m[0].length).replace(/^[\s:#\-–—=.|]+/, "").trim();
-      var got = pick(after);
-      if (!got && i + 1 < lines.length) got = pick(lines[i + 1].replace(/^[\s:#\-–—=.|]+/, ""));
-      if (got) return got;
+      var rest = lines[i].slice(m[0].length).replace(/^[\s:#.\-–—=|]+/, "").trim();
+      var raw = rest || (i + 1 < lines.length ? lines[i + 1].trim() : "");
+      if (!raw) continue;
+      if (valRe) { var vm = raw.match(valRe); if (vm) return (vm[1] || vm[0]).trim(); continue; }
+      return raw.replace(/\s+/g, " ").slice(0, 60).trim();
     }
     return "";
   }
 
+  // Is the scanned page actually ELSA's Vehicle Summary? A VIN alone isn't enough
+  // (it's in the header on every page), so we require the summary's own structure:
+  // the "Vehicle Data" section, and/or its labelled identity fields on their own
+  // lines. Two label hits — or the section header plus one — is the threshold.
+  function isVehicleSummaryPage(segments) {
+    var lines = vehLines(segments);
+    var hasHeader = lines.some(function (l) { return /^vehicle\s*data\b/i.test(l); });
+    var hits = 0;
+    Object.keys(VEH_LABELS).forEach(function (k) {
+      if (lines.some(function (l) { return VEH_LABELS[k].test(l); })) hits++;
+    });
+    return hits >= 2 || (hasHeader && hits >= 1);
+  }
+
   // returns { vin, year, model, engine, trans } — any field may be "" (blank).
-  // The caller treats a non-empty VIN as "this scan was the Vehicle Summary".
+  // Only meaningful when isVehicleSummaryPage() is true for the same page.
   function extractVehicle(segments) {
-    var lines = (segments || [])
-      .map(function (s) { return String(s.text || "").replace(/\s+/g, " ").trim(); })
-      .filter(function (l) { return l; });
+    var lines = vehLines(segments);
     var v = { vin: "", year: "", model: "", engine: "", trans: "" };
 
     // VIN — prefer a line that names it; fall back to any VIN-shaped token
@@ -464,10 +488,10 @@
       }
     }
 
-    v.year   = vehVal(lines, /\bmodel\s*year\b|\bm\.?y\.?\b|\byear\b/i, /\b((?:19|20)\d{2})\b/);
-    v.model  = vehVal(lines, /\bmodel(?:\s*(?:name|designation))?\b/i, null, /\bmodel\s*year\b/i);
-    v.engine = vehVal(lines, /\bengine(?:\s*code)?(?:\s*letters?)?\b/i, /\b([A-Z]{2,5}\d{0,2}[A-Z]?)\b/);
-    v.trans  = vehVal(lines, /\b(?:transmission|gearbox|trans(?:mission)?)\b(?:\s*(?:type|code))?/i, null);
+    v.year   = vehField(lines, VEH_LABELS.year, /\b((?:19|20)\d{2})\b/);
+    v.model  = vehField(lines, VEH_LABELS.model, null);
+    v.engine = vehField(lines, VEH_LABELS.engine, /^([A-Za-z]{2,5}\d{0,2}[A-Za-z]?)\b/);
+    v.trans  = vehField(lines, VEH_LABELS.trans, null);
     return v;
   }
 
@@ -1187,11 +1211,13 @@
     try { cands = gatherImages(document); picked = pickDiagrams(cands); } catch (e) {}
     var remindSeen;
     try { remindSeen = localStorage.getItem(REMIND_KEY) || "(unset)"; } catch (e) { remindSeen = "(unreadable)"; }
-    var veh = {};
+    var veh = {}, isSum = false;
     try { veh = extractVehicle(lastSegments) || {}; } catch (e) {}
+    try { isSum = isVehicleSummaryPage(lastSegments); } catch (e) {}
     var vehLine = VEH_FIELDS.map(function (f) { return f.label + "=" + (veh[f.k] || "(none)"); }).join(" · ");
     return "H.A.H.N.S diagnostic — version " + BUILD + "\n" +
       "update reminder — last acknowledged week: " + remindSeen + " · this week: " + wedMarker(Date.now()) + "\n" +
+      "looks like Vehicle Summary page: " + (isSum ? "yes" : "no") + "\n" +
       "vehicle grab (from last scan): " + vehLine + "\n" +
       "flags: B=read as bold, H=recognised as a part heading\n" +
       "detected page header: \"" + hdr + "\"\n" +
@@ -1508,13 +1534,19 @@
       lastSegments = segs;   // keep the diagnostic dump in sync even when blocked
 
       if (!vehLoaded(job)) {
-        var veh = extractVehicle(segs);
-        if (veh && veh.vin) {
-          job.__vehicle = veh;     // accept + flag any blank fields in the bar
-          vehNotice = "";
+        // a VIN in ELSA's header is NOT enough — only load from the real Vehicle
+        // Summary page, so a repair page can't seed a wrong/partial vehicle
+        if (isVehicleSummaryPage(segs)) {
+          var veh = extractVehicle(segs);
+          if (veh && veh.vin) {
+            job.__vehicle = veh;   // accept + flag any blank fields in the bar
+            vehNotice = "";
+          } else {
+            vehNotice = "Read the Vehicle Summary but couldn’t find a VIN — click Scan page again.";
+          }
         } else {
-          // gating: don't collect specs until a vehicle is loaded
-          vehNotice = "No VIN found on this page. Open ELSA’s Vehicle Summary page, then click Scan page.";
+          // gating: don't collect anything until a vehicle is loaded
+          vehNotice = "This isn’t the Vehicle Summary page. Open ELSA’s Vehicle Summary, then click Scan page.";
         }
         show(job);
         return;
@@ -1551,5 +1583,6 @@
   window.VWJB = { run: run, extract: extract, extractSegments: extractSegments,
     gatherSegments: gatherSegments, renderInto: renderInto, plainText: plainText,
     emptyResults: emptyResults, mergeInto: mergeInto, loadJob: loadJob,
-    saveJob: saveJob, clearJob: clearJob, extractVehicle: extractVehicle };
+    saveJob: saveJob, clearJob: clearJob, extractVehicle: extractVehicle,
+    isVehicleSummaryPage: isVehicleSummaryPage };
 })();
