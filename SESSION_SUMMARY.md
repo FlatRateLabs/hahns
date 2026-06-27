@@ -5,6 +5,53 @@ permanent project reference.
 
 ---
 
+## 2026-06-27 — v0.3.5.5-alpha: UI cleanup (header color + SCAN button)
+
+Branch **`0.3.5.5`** (off `main`, after v0.3.5.4 merged). **Bookmarklet code change**
+(`src/helper.js` CSS + `buildHTML`), so this one **requires a re-drag** (unlike the
+data-only fluids work). All in `src/helper.js` + VERSION bump.
+
+### Owner asks (UI polish)
+1. **Header blended into ELSA2Go** (both VW blue `#001e50`). → Header is now dark
+   graphite **`#1b232b`** with a **green accent bottom border** + **green wrench**
+   (`#2fb84d`), so the panel reads as its own overlay against ELSA's blue.
+2. **Rename "Scan page" → "SCAN"** (also updated the hint/notice text that named it).
+3. **Move SCAN off the header** into its own **`.scanbar`** directly above the job-title/
+   New-job row; made it a **large, full-width green button (`#2fb84d`) with black
+   text**, `font-weight:800`, 17px.
+4. **(follow-up)** Fixed the broken `font:… inherit` shorthand **file-wide** (13
+   buttons/inputs: job, newjob, addrow, fluidbtn, confirm, exitbtns, srch, etc.) →
+   converted each to explicit `font-family/weight/size` longhands so they all render at
+   their intended **weight 600** instead of falling back to 400. Everything looks tied
+   together now (verified newjob computed weight = 600).
+5. **(follow-up)** Moved the **version bar (`.sub`)** to the very top — directly under
+   the title bar (order is now `hd → sub → vbar → fluidbar → scanbar → jobbar → body`).
+
+### Gotcha fixed
+- First pass the SCAN button rendered at weight 400. Cause: the file's common
+  `font:<weight> <size> inherit` shorthand is **invalid CSS** (CSS-wide keyword
+  `inherit` isn't allowed as the family in the `font` shorthand → whole declaration
+  dropped). Set `.scan` weight/size/family as **separate properties** instead.
+  (The other buttons share this latent quirk but weren't in scope.)
+
+### Verified (browser preview)
+- Non-embed harness (seeded a loaded 2019 ATLAS + specs over a VW-blue fake ELSA bg):
+  header graphite + green accent, green wrench, SCAN big/green/black above the job bar;
+  computed styles confirmed (scanBg `rgb(47,184,77)`, color `rgb(10,10,10)`, weight
+  **800**, width full; headerBg `rgb(27,35,43)`, border green). No console errors.
+- Setup-page embed demo: SCAN in `.scanbar` (not header), real stamp `v0.3.5.5-alpha`.
+- `node --check` clean; rebuilt.
+
+### Next
+- **Deploy:** commit branch `0.3.5.5` → PR → `main` (`git pull --rebase` first); confirm
+  live stamp `v0.3.5.5-alpha`. **Tell owner to hard-refresh the setup page + re-drag**
+  the bookmark (code change).
+- Possible follow-on UI polish: the same broken `font:… inherit` shorthand on other
+  buttons (newjob/etc.) leaves them at weight 400 — could fix file-wide if desired.
+  Mascot art still pending.
+
+---
+
 ## 2026-06-27 — v0.3.5.4-alpha: add 2014–2018 fluid data + identity rename
 
 Branch **`0.3.5.4`** (off `main`). Version → `v0.3.5.4-alpha`. Two things:

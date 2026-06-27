@@ -9,7 +9,25 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.5.4-alpha — in progress
+## v0.3.5.5-alpha — in progress
+
+A fresh look so H.A.H.N.S stands out from ELSA.
+
+### Changed
+- **New header color.** The top bar is now dark graphite with a green accent (and a
+  green wrench) instead of VW blue, so the panel no longer blends into ELSA2Go.
+- **The SCAN button moved and got bigger.** It’s no longer tucked in the header — it’s
+  now a large green button (renamed from “Scan page” to **SCAN**) sitting right above
+  the job title, so it’s easy to hit at the bay.
+- **Version line moved to the very top**, directly under the H.A.H.N.S title bar.
+- **Buttons look consistent now.** A long-standing styling bug left most buttons (New
+  job, + add, Copy list, Print, etc.) thinner than intended; they’re now uniformly
+  bold so the whole panel looks tied together.
+
+> **Re-drag needed:** this changes the bookmarklet itself, so hard-refresh the setup
+> page and re-drag the bookmark to get the new look.
+
+## v0.3.5.4-alpha — 2026-06-27
 
 More model years for Fluids & Capacities.
 

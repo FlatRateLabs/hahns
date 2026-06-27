@@ -845,15 +845,15 @@
     ".wrap{position:fixed;top:12px;right:16px;width:330px;max-height:94vh;display:flex;flex-direction:column;" +
       "background:#fff;color:#1c1c1c;border:1px solid #d4d4d4;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.18);z-index:2147483647;overflow:hidden}" +
     ".wrap.embed{position:static;width:100%;max-height:none;box-shadow:none}" +
-    ".hd{display:flex;align-items:center;gap:9px;padding:11px 13px;background:#001e50;color:#fff;cursor:move;user-select:none;touch-action:none}" +
-    ".hd svg{width:20px;height:20px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
+    ".hd{display:flex;align-items:center;gap:9px;padding:11px 13px;background:#1b232b;color:#fff;border-bottom:3px solid #2fb84d;cursor:move;user-select:none;touch-action:none}" +
+    ".hd svg{width:20px;height:20px;stroke:#2fb84d;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".hd b{font-size:14px;font-weight:600;flex:1}" +
     ".hd button{background:transparent;border:0;color:#cdd7ea;cursor:pointer;font-size:13px;padding:3px 6px;border-radius:6px}" +
     ".hd button:hover{background:rgba(255,255,255,.15);color:#fff}" +
     ".hd .hbtn{display:inline-flex;align-items:center;justify-content:center;padding:3px 5px}" +
     ".hd .hbtn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".wrap.min{max-height:none}" +
-    ".wrap.min .sub,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar,.wrap.min .vbar,.wrap.min .fluidbar{display:none}" +
+    ".wrap.min .sub,.wrap.min .scanbar,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar,.wrap.min .vbar,.wrap.min .fluidbar{display:none}" +
     // vehicle bar — the up-front "what car is this" identity strip
     ".vbar{padding:9px 13px;border-bottom:1px solid #eee;font-size:12px;line-height:1.4}" +
     ".vbar.empty{background:#eef1f6;color:#3a4a63}" +
@@ -865,7 +865,7 @@
     ".vk{color:#5a6b8c;font-weight:600;white-space:nowrap}" +
     ".vval{color:#1c1c1c;font-weight:600;cursor:text;word-break:break-all}" +
     ".vval.miss{color:#b06a00;font-style:italic;font-weight:600}" +
-    ".vvalin{font:600 12px inherit;padding:2px 5px;border:1px solid #001e50;border-radius:5px;outline:none;width:100%;max-width:190px}" +
+    ".vvalin{font-family:inherit;font-weight:600;font-size:12px;padding:2px 5px;border:1px solid #001e50;border-radius:5px;outline:none;width:100%;max-width:190px}" +
     ".vwarn{margin-top:7px;font-size:11px;color:#8a5a00;background:#fff6e0;border:1px solid #f0dca6;border-radius:6px;padding:5px 8px;line-height:1.35}" +
     ".sub{padding:6px 13px;background:#eef1f6;display:flex;align-items:center}" +
     ".bld{font-size:11px;color:#5a6b8c;white-space:nowrap;cursor:pointer}" +
@@ -875,19 +875,24 @@
     // weekly "App may be out of date" update-check reminder banner (yellow)
     ".updbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 13px;background:#fff8e6;border-bottom:1px solid #f3e2b3;font-size:12px;color:#6b5300;line-height:1.3}" +
     ".updmsg2{flex:1;min-width:120px;font-weight:600;color:#5a4300}" +
-    ".updget{flex-shrink:0;appearance:none;-webkit-appearance:none;background:#185fa5;color:#fff;text-decoration:none;font:600 11.5px inherit;padding:6px 11px;border-radius:7px;white-space:nowrap;border:0;cursor:pointer}" +
+    ".updget{flex-shrink:0;appearance:none;-webkit-appearance:none;background:#185fa5;color:#fff;text-decoration:none;font-family:inherit;font-weight:600;font-size:11.5px;padding:6px 11px;border-radius:7px;white-space:nowrap;border:0;cursor:pointer}" +
     ".updget:hover{background:#134c84}" +
-    ".updx{flex-shrink:0;appearance:none;-webkit-appearance:none;border:1px solid #e0cf9a;background:#fff;color:#6b5300;font:600 11.5px inherit;padding:6px 10px;border-radius:7px;cursor:pointer}" +
+    ".updx{flex-shrink:0;appearance:none;-webkit-appearance:none;border:1px solid #e0cf9a;background:#fff;color:#6b5300;font-family:inherit;font-weight:600;font-size:11.5px;padding:6px 10px;border-radius:7px;cursor:pointer}" +
     ".updx:hover{background:#fdf6e3}" +
+    // big primary action — its own bar, directly above the job title row
+    ".scanbar{padding:11px 13px 4px}" +
+    ".scan{width:100%;appearance:none;-webkit-appearance:none;background:#2fb84d;color:#0a0a0a;font-family:inherit;font-size:17px;font-weight:800;letter-spacing:.1em;padding:13px;border:0;border-radius:9px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.18)}" +
+    ".scan:hover{background:#28a344}" +
+    ".scan:active{background:#22923b}" +
     ".jobbar{padding:9px 13px;border-bottom:1px solid #eee;display:flex;gap:7px;align-items:center}" +
-    ".job{flex:1;min-width:0;font:600 14px inherit;color:#001e50;border:1px solid #dfe4ee;border-radius:8px;padding:8px 10px;outline:none;background:#fff}" +
+    ".job{flex:1;min-width:0;font-family:inherit;font-weight:600;font-size:14px;color:#001e50;border:1px solid #dfe4ee;border-radius:8px;padding:8px 10px;outline:none;background:#fff}" +
     ".job::placeholder{color:#b3b9c4;font-weight:400}" +
     ".job:focus{border-color:#001e50}" +
-    ".newjob{flex-shrink:0;appearance:none;-webkit-appearance:none;background:#fff;border:1px solid #cfd6e4;color:#001e50;font:600 12px inherit;padding:8px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}" +
+    ".newjob{flex-shrink:0;appearance:none;-webkit-appearance:none;background:#fff;border:1px solid #cfd6e4;color:#001e50;font-family:inherit;font-weight:600;font-size:12px;padding:8px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}" +
     ".newjob:hover{background:#f3f6fb;border-color:#001e50}" +
     ".confirm{flex-shrink:0;display:flex;align-items:center;gap:5px}" +
     ".ctxt{font-size:11px;font-weight:600;color:#a32d2d;white-space:nowrap}" +
-    ".confirm button{appearance:none;-webkit-appearance:none;border:1px solid #cfd6e4;background:#fff;font:600 12px inherit;padding:6px 9px;border-radius:7px;cursor:pointer}" +
+    ".confirm button{appearance:none;-webkit-appearance:none;border:1px solid #cfd6e4;background:#fff;font-family:inherit;font-weight:600;font-size:12px;padding:6px 9px;border-radius:7px;cursor:pointer}" +
     ".cyes{color:#a32d2d;border-color:#e6b0b0}" +
     ".cyes:hover{background:#fff5f5}" +
     ".cno{color:#001e50}" +
@@ -898,7 +903,7 @@
     ".exittl{font-size:14px;font-weight:700;color:#001e50;margin:0 0 5px}" +
     ".exitmsg{font-size:12.5px;color:#3a4a63;line-height:1.45;margin:0 0 14px}" +
     ".exitbtns{display:flex;gap:8px;justify-content:flex-end}" +
-    ".exitbtns button{appearance:none;-webkit-appearance:none;font:600 12.5px inherit;padding:8px 14px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4}" +
+    ".exitbtns button{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:600;font-size:12.5px;padding:8px 14px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4}" +
     ".exyes{background:#a32d2d;border-color:#a32d2d;color:#fff}" +
     ".exyes:hover{background:#8f2626}" +
     ".exno{background:#fff;color:#001e50}" +
@@ -917,12 +922,12 @@
     ".lbl{appearance:none;-webkit-appearance:none;flex-shrink:0;border:1px solid;cursor:text;font:600 11px/1.3 inherit;padding:3px 7px;border-radius:6px;white-space:nowrap;max-width:118px;overflow:hidden;text-overflow:ellipsis}" +
     ".lbl.set{background:#eef1f6;border-color:#cfd6e4;color:#001e50}" +
     ".lbl.add{background:transparent;border-style:dashed;border-color:#cfcfcf;color:#9a9a9a}" +
-    ".lblin{flex-shrink:0;width:118px;font:600 12px inherit;padding:3px 6px;border:1px solid #001e50;border-radius:6px;outline:none}" +
-    ".addrow{appearance:none;-webkit-appearance:none;background:transparent;border:1px dashed #cfcfcf;color:#5a6b8c;cursor:pointer;font:600 11px inherit;padding:4px 9px;border-radius:6px;margin-top:7px}" +
+    ".lblin{flex-shrink:0;width:118px;font-family:inherit;font-weight:600;font-size:12px;padding:3px 6px;border:1px solid #001e50;border-radius:6px;outline:none}" +
+    ".addrow{appearance:none;-webkit-appearance:none;background:transparent;border:1px dashed #cfcfcf;color:#5a6b8c;cursor:pointer;font-family:inherit;font-weight:600;font-size:11px;padding:4px 9px;border-radius:6px;margin-top:7px}" +
     ".addrow:hover{border-color:#001e50;color:#001e50}" +
     ".addin{width:100%;font:13px inherit;padding:6px 8px;border:1px solid #001e50;border-radius:6px;outline:none;margin-top:7px}" +
     ".empty{font-size:12px;color:#9a9a9a;font-style:italic}" +
-    ".srch{width:100%;font:600 11px inherit;letter-spacing:.02em;color:#5f6b80;background:#eef1f6;border:1px solid transparent;border-radius:6px;padding:5px 8px;outline:none;margin:9px 0 4px}" +
+    ".srch{width:100%;font-family:inherit;font-weight:600;font-size:11px;letter-spacing:.02em;color:#5f6b80;background:#eef1f6;border:1px solid transparent;border-radius:6px;padding:5px 8px;outline:none;margin:9px 0 4px}" +
     ".srch:hover{border-color:#cfd6e4}" +
     ".srch:focus{border-color:#001e50;background:#fff;color:#001e50}" +
     ".hint{font-size:13px;color:#5a6b8c;background:#eef1f6;border-radius:8px;padding:11px 13px;margin:6px 0 4px;line-height:1.5}" +
@@ -935,12 +940,12 @@
     // fluids = a link out to the vehicle-matched lookup page (not scanned),
     // pinned right under the green vehicle bar
     ".fluidbar{padding:9px 13px;border-bottom:1px solid #eee;background:#fff}" +
-    ".fluidbtn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;appearance:none;-webkit-appearance:none;text-decoration:none;background:#eef6ff;border:1px solid #cfe0f5;color:#0a3d6e;font:600 13px inherit;padding:10px 12px;border-radius:9px;cursor:pointer}" +
+    ".fluidbtn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;appearance:none;-webkit-appearance:none;text-decoration:none;background:#eef6ff;border:1px solid #cfe0f5;color:#0a3d6e;font-family:inherit;font-weight:600;font-size:13px;padding:10px 12px;border-radius:9px;cursor:pointer}" +
     ".fluidbtn:hover{background:#e2eefc;border-color:#185fa5}" +
     ".fluidbtn svg{width:17px;height:17px;flex-shrink:0;fill:none;stroke:#185fa5;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".fluidbtn .arr{margin-left:auto;font-size:14px;color:#185fa5}" +
     ".fluidnote{font-size:12px;color:#7a7a7a;line-height:1.4}" +
-    ".dgmhdr{font:600 11px inherit;color:#5f6b80;margin:9px 0 4px}" +
+    ".dgmhdr{font-family:inherit;font-weight:600;font-size:11px;color:#5f6b80;margin:9px 0 4px}" +
     ".dgmwrap{position:relative;margin:6px 0}" +
     ".dgm{display:block;max-width:100%;height:auto;border:1px solid #e3e3e3;border-radius:6px;cursor:zoom-in;background:#fff}" +
     ".dgmdel{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}" +
@@ -984,7 +989,7 @@
     if (!vehLoaded(r)) {
       return '<div class="vbar empty"><div class="vmsg">' +
         '<b>No vehicle loaded.</b> Open ELSA’s <b>Vehicle Summary</b> page and click ' +
-        '<b>Scan page</b> to load the vehicle before collecting specs.</div>' + note + "</div>";
+        '<b>SCAN</b> to load the vehicle before collecting specs.</div>' + note + "</div>";
     }
     var v = r.__vehicle;
     var grid = VEH_FIELDS.map(function (f) {
@@ -1018,9 +1023,12 @@
     var html = "" +
       '<div class="wrap' + (embed ? " embed" : "") + (mini ? " min" : "") + '"><div class="hd">' + svg(WRENCH) +
         '<b title="Hardware, Advisories, Highlights, &amp; Navigation Specialist">H.A.H.N.S</b>' +
-        '<button data-act="rescan" title="Read this page and add its specs to the job">Scan page</button>' +
         (embed ? "" : '<button data-act="min" class="hbtn" title="' + (mini ? "Expand" : "Minimize") + '">' + svg(mini ? "M7 7h10v10H7z" : "M6 12h12") + "</button>") +
         '<button data-act="close" title="Close">&#10005;</button></div>' +
+      // version stamp — pinned to the very top, directly under the title bar
+      '<div class="sub">' +
+        '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span>" +
+        '<a class="upd" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Opens the H.A.H.N.S page so you can compare versions">check for latest &#8599;</a></div>' +
       // vehicle identity strip (required before any procedure page is collected)
       (embed ? "" : vehicleBar(r)) +
       // fluids & capacities link — pinned directly under the vehicle bar
@@ -1033,9 +1041,7 @@
             '<a class="updget" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Open the H.A.H.N.S setup page to compare versions">Check for update?</a>' +
             '<button class="updx" data-act="reminddismiss" title="Hide this">Dismiss</button></div>'
         : "") +
-      '<div class="sub">' +
-        '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span>" +
-        '<a class="upd" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Opens the H.A.H.N.S page so you can compare versions">check for latest &#8599;</a></div>' +
+      '<div class="scanbar"><button class="scan" data-act="rescan" title="Read this page and add its specs to the job">SCAN</button></div>' +
       '<div class="jobbar">' +
         '<input class="job" type="text" placeholder="Job title — e.g. Rear Brakes" value="' + esc(r.__title || "") + '">' +
         '<button class="newjob" data-act="newjob" title="Clear everything and start a new job">New job</button>' +
@@ -1046,8 +1052,8 @@
     SECTIONS.forEach(function (s) { total += (r[s.key] || []).length; });
     if (total === 0) {
       html += vehLoaded(r)
-        ? '<div class="hint">Vehicle loaded. Open a repair procedure and click <b>Scan page</b> to collect its specs.</div>'
-        : '<div class="hint">Start on ELSA’s <b>Vehicle Summary</b> page and click <b>Scan page</b> to load the vehicle. Procedure specs can be collected after that.</div>';
+        ? '<div class="hint">Vehicle loaded. Open a repair procedure and click <b>SCAN</b> to collect its specs.</div>'
+        : '<div class="hint">Start on ELSA’s <b>Vehicle Summary</b> page and click <b>SCAN</b> to load the vehicle. Procedure specs can be collected after that.</div>';
     }
 
     // group items under a per-page header once 2+ pages have been scanned
@@ -1607,11 +1613,11 @@
             job.__vehicle = veh;   // accept + flag any blank fields in the bar
             vehNotice = "";
           } else {
-            vehNotice = "Read the Vehicle Summary but couldn’t find a VIN — click Scan page again.";
+            vehNotice = "Read the Vehicle Summary but couldn’t find a VIN — click SCAN again.";
           }
         } else {
           // gating: don't collect anything until a vehicle is loaded
-          vehNotice = "This isn’t the Vehicle Summary page. Open ELSA’s Vehicle Summary, then click Scan page.";
+          vehNotice = "This isn’t the Vehicle Summary page. Open ELSA’s Vehicle Summary, then click SCAN.";
         }
         show(job);
         return;
