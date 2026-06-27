@@ -9,7 +9,30 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.3-alpha — in progress
+## v0.3.4-alpha — in progress
+
+Fluids & Capacities is now a vehicle-matched lookup.
+
+### Added
+- **Fluids & Capacities opens a matched lookup page.** Instead of scanning fluids
+  from the repair manual (they're rarely there — they live in a separate per-year
+  PDF), the **Fluids & Capacities** section is now a button. With a vehicle loaded,
+  it opens a new window showing **Engine Oil, Engine Coolant, Air Conditioning, and
+  Drivetrain** for *your* vehicle — capacities and fluid specs matched to your
+  Engine Code, Transmission, Model, and Model Year. No digging through the PDF.
+- The A/C section shows the **refrigerant type** (R1234yf / R134a) next to each
+  charge, and Drivetrain shows all the sub-fills (transmission, bevel box, AWD
+  clutch, final drive), with AWD-only parts hidden on front-wheel-drive vehicles.
+
+### Changed
+- **Fluids are no longer scanned** from procedure pages. The button needs a vehicle
+  loaded (scan the Vehicle Summary first), same as the rest of the job.
+
+### Notes
+- Fluid data is published per model year and only the **2019** tables are loaded so
+  far. Other years show "no data published yet" until their PDF is processed.
+
+## v0.3.3-alpha — 2026-06-27
 
 Vehicle loading is now locked to the Vehicle Summary page.
 

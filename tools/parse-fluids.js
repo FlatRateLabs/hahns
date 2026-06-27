@@ -1,0 +1,295 @@
+/*
+ * parse-fluids.js — turn a year's "VW Fluid Capacity Tables" PDF into the data
+ * Hahns serves to the fluid-lookup page. PROGRAMMER-ONLY, run locally.
+ *
+ *   node tools/parse-fluids.js "~/Downloads/2019 VW Fluid Capacity Tables.pdf"
+ *   node tools/parse-fluids.js <pdf> --year 2019
+ *
+ * Requires poppler's `pdftotext` on PATH (brew install poppler). We shell out to
+ * it so the project stays dependency-free (no npm packages).
+ *
+ * Emits:
+ *   docs/fluids/<year>.json          — obfuscated data the lookup page loads
+ *   tools/fluids-review/<year>.txt   — PLAIN-TEXT review sheet. ALWAYS eyeball
+ *                                      this against the PDF before committing —
+ *                                      wrong capacities are a real-world problem.
+ *
+ * The PDF is organised as model sections ("1.9  Atlas (CA1)"), each holding the
+ * tables ENGINE OIL CAPACITY / ENGINE COOLANT / AIR CONDITIONING / DRIVETRAIN
+ * (and BRAKE HYDRAULIC SYSTEM, which we skip). Columns are space-aligned, so we
+ * slice each table by the column positions found in its header row.
+ */
+"use strict";
+
+var fs = require("fs");
+var path = require("path");
+var cp = require("child_process");
+var codec = require("./fluids-codec");
+
+var ROOT = path.join(__dirname, "..");
+
+/* ----------------------------- helpers ------------------------------ */
+
+// strip a glued footnote marker like the "1)" in "VW 504 001) (0W-30)"
+function dropFootnote(s) { return String(s || "").replace(/(\d{2})\d\)/g, "$1"); }
+
+// normalise Unicode hyphens to ASCII and rejoin words split across a line wrap
+// ("Mecha‐ tronic" -> "Mechatronic")
+function normHyphens(s) {
+  return String(s || "").replace(/[‐‑­]/g, "-").replace(/([a-z])-\s+([a-z])/g, "$1$2");
+}
+
+// capacity value(s): "7.0 L (7.4 qt)", "650 +/- 25 g", "6.8 L +/- 0.1 L (7.2 qt)"
+var CAP_RE = /\d[\d.]*\s*L\s*\([^)]*qt[^)]*\)/;
+var SPEC_RE = /VW\s*\d{3}\s*\d{2}(?:\s*\(\s*\d[0-9W\s-]*\))?/g;
+
+// pull engine/trans codes out of "(DDSA / DDSB)" or "(0CR / 0CQ)"
+function codesIn(text) {
+  var m = /\(([^)]*)\)/.exec(text || "");
+  if (!m) return [];
+  return m[1].split(/[\/,]/).map(function (s) { return s.trim().toUpperCase(); })
+    .filter(function (s) { return /^[A-Z0-9]{2,5}$/.test(s); });
+}
+
+// the capacity value(s) in a cell. Handles "650 +/- 25 g" (tolerance before unit)
+// AND "6.8 L +/- 0.1 L (7.2 qt)" (tolerance after unit), plus a trailing "(… qt)".
+var VAL_RE = /(?:Approximately\s+)?\d[\d.]*(?:\s*\+\/-\s*[\d.]+)?\s*(?:L|g|cc)(?:\s*\+\/-\s*[\d.]+\s*(?:L|g|cc))?(?:\s*\([^)]*\))?/g;
+function valuesIn(text) {
+  var out = [], m;
+  VAL_RE.lastIndex = 0;
+  while ((m = VAL_RE.exec(text || ""))) out.push(m[0].replace(/\s+/g, " ").trim());
+  return out;
+}
+
+// noise lines that appear inside tables (page chrome, footnotes, the Note block)
+function isNoise(line) {
+  var t = line.trim();
+  if (!t) return true;
+  if (/^\d{1,3}$/.test(t)) return true;                 // bare page numbers / column "3"
+  if (/^\d{2}\.\d{4}$/.test(t)) return true;            // "03.2024" footer date
+  if (/^\d{1,3}\s+\d{2}\.\d{4}$/.test(t)) return true;  // "5    03.2024" page-number + date footer
+  if (/^Note$/i.test(t)) return true;
+  if (/^All quantities are approximate/i.test(t)) return true;
+  if (/^filling instructions\.?$/i.test(t)) return true;
+  if (/^\d\)\s/.test(t)) return true;                   // footnote paragraph "1) If you must…"
+  if (/^(engine oil that meets|Using oil with|Only use different)/i.test(t)) return true;
+  return false;
+}
+
+// column boundaries from a header row: the start index of each title, in order
+function boundaries(headerLine, titles) {
+  var idx = [], from = 0;
+  for (var i = 0; i < titles.length; i++) {
+    var at = headerLine.indexOf(titles[i], from);
+    if (at < 0) return null;
+    idx.push(at); from = at + titles[i].length;
+  }
+  return idx;
+}
+function slice(line, idx) {
+  var cells = [];
+  for (var i = 0; i < idx.length; i++) {
+    var end = (i + 1 < idx.length) ? idx[i + 1] : line.length + 999;
+    // pad 1 char left so values that start just under the header still land right
+    cells.push((line.substring(Math.max(0, idx[i] - 1), end) || "").trim());
+  }
+  return cells;
+}
+
+/* -------------------------- table parsers --------------------------- */
+
+// ENGINE OIL CAPACITY: Engine | Engine Oil Type | Capacity (one capacity, 1+ specs).
+// We split off the Engine column by the header position (so a wrapped engine code
+// like "(DDSA /" → "DDSB)" stays together) and pull the spec(s)/capacity out of the
+// remainder by regex — far more robust than 3-way column slicing for these cells.
+function parseOil(lines, hdrIdx) {
+  var idxType = lines[hdrIdx].indexOf("Engine Oil Type");
+  if (idxType < 0) return [];
+  var rows = [], cur = null;
+  for (var i = hdrIdx + 1; i < lines.length; i++) {
+    if (isNoise(lines[i])) continue;
+    var ln = normHyphens(lines[i]);
+    if (/^\s*Engine\s+Engine Oil Type/.test(ln)) { idxType = ln.indexOf("Engine Oil Type"); continue; }  // repeated header (page break)
+    var col1 = ln.substring(0, idxType).trim();
+    var rest = dropFootnote(ln.substring(idxType));
+    if (CAP_RE.test(rest)) { cur = { eng: col1, rest: rest }; rows.push(cur); }   // a capacity = a new engine row
+    else if (cur) { if (col1) cur.eng += " " + col1; cur.rest += " " + rest; }    // spec / engine-wrap continuation
+  }
+  return rows.map(function (r) {
+    return {
+      engines: codesIn(r.eng),
+      desc: r.eng.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").replace(/[—-]\s*$/, "").trim(),
+      specs: (r.rest.match(SPEC_RE) || []).map(function (s) { return s.replace(/\s+/g, " ").trim(); }),
+      capacity: ((r.rest.match(CAP_RE) || [""])[0]).replace(/\s+/g, " ").trim()
+    };
+  });
+}
+
+// COMPONENT/APPLICATION/CAPACITY tables (coolant, A/C, drivetrain). Returns rows
+// of { component, application, fills:[{label,value}] }. A new row starts when the
+// Application cell names a new thing; capacity values + fill labels accumulate.
+function parseCAC(lines, hdrIdx) {
+  var idx = null, rows = [], cur = null, lastComp = "";
+  for (var i = hdrIdx; i < lines.length; i++) {
+    var ln = normHyphens(lines[i]);
+    // a page break repeats the header — and its columns can sit at DIFFERENT
+    // positions, so re-read the boundaries every time one appears
+    if (/^\s*Component\s+Application\s+Capacity/.test(ln)) {
+      idx = boundaries(ln, ["Component", "Application", "Capacity"]); cur = null; continue;
+    }
+    if (!idx || isNoise(ln)) continue;
+    var c = slice(ln, idx), comp = c[0], app = c[1], capCell = c[2];
+    if (comp) lastComp = comp;
+    var vals = valuesIn(capCell);
+    var label = capCell.replace(VAL_RE, "").replace(/\s+/g, " ").trim();   // "Initial Fill / Refill", "Initial", "Refill"…
+    var codeOnly = /^\([A-Z0-9/\s]+\)$/.test(app);   // a wrapped code line like "(0GC)"
+    var madeRow = false;
+    if (codeOnly && cur) { cur.application += " " + app; }   // fold the wrapped code into the row above
+    // otherwise a row begins on a new Application descriptor
+    else if (app && (comp || /[A-Za-z]/.test(app)) && !/^(Fill|Refill|Initial|Approximately)/i.test(app)) {
+      cur = { component: comp || lastComp, application: app, fills: [] };
+      rows.push(cur); madeRow = true;
+    }
+    if (!cur) { cur = { component: comp || lastComp, application: app || "", fills: [] }; rows.push(cur); madeRow = true; }
+    // a Component-column continuation — e.g. the refrigerant TYPE "(R1234yf)" that
+    // wraps under "A/C System Refrigerant". Critical: never drop it.
+    if (comp && !madeRow && !codeOnly) cur.component += " " + comp;
+    // attach a value (carry the fill label; "Fill / Refill" continuations refine the last label)
+    for (var v = 0; v < vals.length; v++) cur.fills.push({ label: label, value: vals[v] });
+    if (!vals.length && label && cur.fills.length) {
+      var f = cur.fills[cur.fills.length - 1];
+      f.label = (f.label ? f.label + " " : "") + label;   // e.g. "Initial" + "Fill / Refill"
+    }
+  }
+  // tidy labels + pull the refrigerant type (R134a / R1234yf) out of the component
+  rows.forEach(function (r) {
+    r.fills.forEach(function (f) { f.label = (f.label || "").replace(/\s+/g, " ").replace(/\s*\/\s*/g, " / ").trim(); });
+    r.application = (r.application || "").replace(/\s+/g, " ").trim();
+    r.component = (r.component || "").replace(/\s+/g, " ").trim();
+    var rt = /R\s?1234yf|R\s?134a/i.exec(r.component);
+    if (rt) {
+      r.refrigerant = rt[0].replace(/\s+/g, "").replace(/^r/, "R");
+      // a wrapped second refrigerant can arrive as just "(R1234yf)" — restore the name
+      if (/^\(?R\s?(1234yf|134a)\)?$/i.test(r.component)) r.component = "A/C System Refrigerant " + r.component;
+    }
+  });
+  return rows.filter(function (r) { return r.fills.length; });
+}
+
+/* ----------------------------- driver ------------------------------- */
+
+var SYS_HEADERS = {
+  "ENGINE OIL CAPACITY": "engineOil",
+  "ENGINE COOLANT": "engineCoolant",
+  "AIR CONDITIONING": "airConditioning",
+  "DRIVETRAIN": "drivetrain"
+  // BRAKE HYDRAULIC SYSTEM intentionally skipped (not one of the four systems)
+};
+var MODEL_HDR = /^\d+\.\d+\s+(.+?)\s*\(([^)]*)\)\s*$/;
+
+function parsePdf(text) {
+  var lines = text.split(/\r?\n/);
+  // locate model section headers
+  var sections = [];
+  for (var i = 0; i < lines.length; i++) {
+    var m = MODEL_HDR.exec(lines[i]);
+    if (m && !/^(ENGINE|AIR|DRIVE|BRAKE|Component|Engine)/.test(lines[i].trim())) {
+      sections.push({ name: m[1].replace(/\s+/g, " ").trim(), code: m[2].replace(/\s+/g, " ").trim(), at: i });
+    }
+  }
+  var models = [];
+  for (var s = 0; s < sections.length; s++) {
+    var start = sections[s].at, end = (s + 1 < sections.length) ? sections[s + 1].at : lines.length;
+    var model = { model: sections[s].name, modelCode: sections[s].code,
+      engineOil: [], engineCoolant: [], airConditioning: [], drivetrain: [] };
+    // find system tables within this section
+    var sys = [];
+    for (var j = start; j < end; j++) {
+      var key = SYS_HEADERS[lines[j].trim()];
+      if (key) sys.push({ key: key, at: j });
+    }
+    for (var k = 0; k < sys.length; k++) {
+      var sStart = sys[k].at, sEnd = (k + 1 < sys.length) ? sys[k + 1].at : end;
+      // also stop at a BRAKE header if it falls between
+      for (var b = sStart + 1; b < sEnd; b++) { if (/^BRAKE HYDRAULIC SYSTEM$/.test(lines[b].trim())) { sEnd = b; break; } }
+      var sub = lines.slice(sStart, sEnd);
+      // header row of the table is the first line with the column titles
+      var hdr = -1;
+      for (var h = 0; h < sub.length; h++) {
+        if (/^(Engine\s+Engine Oil Type|Component\s+Application)/.test(sub[h])) { hdr = h; break; }
+      }
+      if (hdr < 0) continue;
+      model[sys[k].key] = (sys[k].key === "engineOil") ? parseOil(sub, hdr) : parseCAC(sub, hdr);
+    }
+    models.push(model);
+  }
+  return models;
+}
+
+/* ------------------------- review + output -------------------------- */
+
+function reviewSheet(year, models) {
+  var L = ["VW FLUID CAPACITIES — " + year + " — PARSER REVIEW SHEET",
+    "Check every line against the PDF before committing. " + models.length + " models.\n"];
+  models.forEach(function (m) {
+    L.push("================================================================");
+    L.push(m.model + "  (" + m.modelCode + ")");
+    L.push("  ENGINE OIL:");
+    m.engineOil.forEach(function (r) {
+      L.push("    [" + (r.engines.join(", ") || "?") + "] " + r.desc + " — " + r.capacity + "  | " + r.specs.join(" / "));
+    });
+    L.push("  ENGINE COOLANT:");
+    m.engineCoolant.forEach(function (r) {
+      L.push("    " + r.application + " — " + r.fills.map(function (f) { return f.value; }).join(" ; "));
+    });
+    L.push("  AIR CONDITIONING:");
+    m.airConditioning.forEach(function (r) {
+      L.push("    " + r.component + (r.refrigerant ? "  <" + r.refrigerant + ">" : "") +
+        " (" + r.application + ") — " + r.fills.map(function (f) { return f.value; }).join(" ; "));
+    });
+    L.push("  DRIVETRAIN:");
+    m.drivetrain.forEach(function (r) {
+      L.push("    " + (r.component ? r.component + " / " : "") + r.application + " — " +
+        r.fills.map(function (f) { return (f.label ? f.label + ": " : "") + f.value; }).join(" ; "));
+    });
+    L.push("");
+  });
+  return L.join("\n");
+}
+
+function main() {
+  var args = process.argv.slice(2);
+  var pdf = args.filter(function (a) { return a.indexOf("--") !== 0; })[0];
+  var yArg = (args.indexOf("--year") >= 0) ? args[args.indexOf("--year") + 1] : null;
+  if (!pdf) { console.error("usage: node tools/parse-fluids.js <pdf> [--year YYYY]"); process.exit(1); }
+  pdf = pdf.replace(/^~/, process.env.HOME || "");
+  if (!fs.existsSync(pdf)) { console.error("not found: " + pdf); process.exit(1); }
+  var year = yArg || (path.basename(pdf).match(/\b(19|20)\d{2}\b/) || [])[0];
+  if (!year) { console.error("could not infer year — pass --year YYYY"); process.exit(1); }
+
+  var text;
+  try { text = cp.execFileSync("pdftotext", ["-layout", pdf, "-"], { encoding: "utf8", maxBuffer: 1 << 24 }); }
+  catch (e) { console.error("pdftotext failed — is poppler installed? (brew install poppler)\n" + e.message); process.exit(1); }
+
+  var models = parsePdf(text);
+  if (!models.length) { console.error("no model sections found — PDF layout may have changed"); process.exit(1); }
+
+  var data = { _: "hahns-fluids", v: 1, year: Number(year), models: models };
+
+  var outDir = path.join(ROOT, "docs", "fluids");
+  var revDir = path.join(ROOT, "tools", "fluids-review");
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.mkdirSync(revDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, year + ".json"),
+    JSON.stringify({ _: "hahns-fluids", v: 1, y: Number(year), d: codec.encode(data) }));
+  var review = reviewSheet(year, models);
+  fs.writeFileSync(path.join(revDir, year + ".txt"), review);
+
+  console.log("Parsed " + models.length + " models for " + year + ".");
+  console.log("  data   -> docs/fluids/" + year + ".json  (obfuscated)");
+  console.log("  review -> tools/fluids-review/" + year + ".txt  (CHECK THIS)\n");
+  console.log(review);
+}
+
+if (require.main === module) main();
+module.exports = { parsePdf: parsePdf };

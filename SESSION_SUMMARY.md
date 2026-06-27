@@ -5,6 +5,69 @@ permanent project reference.
 
 ---
 
+## 2026-06-27 — v0.3.4-alpha: Fluids & Capacities vehicle-matched lookup
+
+**Current version:** `v0.3.4-alpha` (built, verified, **not committed/pushed**).
+Branch `v0.3.4`. The feature the vehicle-init work was groundwork for.
+
+### What it does
+Fluids/capacities aren't in the repair manual — they're in a separate per-year VW
+PDF. So the panel's **Fluids & Capacities** section is no longer scanned: it's a
+**link** (active once a vehicle is loaded) that opens a new window showing Engine
+Oil, Engine Coolant, Air Conditioning, Drivetrain — capacities + fluid specs
+matched to the loaded vehicle.
+
+### The key architectural unlock
+ELSA's CSP blocks the bookmarklet from fetching our data. But the link does
+`window.open` to a page on **our** origin → not bound by ELSA's CSP → it CAN load
+the data. The bookmarklet itself still makes zero network calls. Only
+year/model/engine/trans ride in the URL (**no VIN**).
+
+### Decisions (asked the owner)
+- PDF→data = **local Node command** (programmer-only). Display = **capacity + fluid
+  spec**. Data protection = **light obfuscation** (key in page; owner accepted it's
+  not real security). Show **all** drivetrain sub-fills. Trans match = **prefix**
+  (PDF `09P` ⊂ ELSA `09PA`; codes are 3–4 char).
+
+### Built
+- **`tools/parse-fluids.js`** — shells out to poppler `pdftotext -layout` (kept the
+  project npm-dependency-free), parses model sections → 4 system tables. Handles
+  the nasty bits: wrapped engine cells, footnote markers (`001)`), `+/-` tolerances,
+  page-break-repeated headers **with shifted columns** (re-reads boundaries each
+  header — this fixed the Golf R compressor-oil mangling), page-footer (`N 03.2024`)
+  filtering, unicode-hyphen wraps, and the **refrigerant type** (R1234yf/R134a) which
+  wraps onto its own line. Emits obfuscated `docs/fluids/<year>.json` + a **plaintext
+  review sheet** (gitignored).
+- **`tools/fluids-codec.js`** — XOR+base64 light obfuscation (shared key).
+- **`src/fluids.html`** → built to `docs/fluids.html` — the lookup page. Matching:
+  engine code → oil/coolant; trans-prefix + AWD/FWD → drivetrain; model → A/C.
+- **`src/helper.js`** — fluids SECTION now `linkOnly:true` (not scanned, `test`→false);
+  `vehFluidsUrl(r)` builds the URL; `buildHTML` renders the link card.
+- **`tools/build.js`** — emits + mirrors `fluids.html`/data to dist & docs.
+- **`.gitignore`** — `tools/fluids-review/` + `*.pdf` (keep plaintext data / licensed
+  PDFs out of the public repo).
+
+### Verified in browser (preview)
+- 2019 ATLAS (CDVC / 09PA / AWD): oil **5.5 L · VW 504 00 (0W-30)**, coolant **20 L**,
+  A/C **650 g [R1234yf]** + compressor oil 110 cc, drivetrain **09P 7.0 L** + bevel
+  box + AWD clutch + rear final drive. All correct.
+- **FWD** Atlas → AWD-only drivetrain parts hidden. **Multi-trans** Jetta (t=09S) →
+  only the 09S shown (manuals/DSG excluded). No-params → friendly prompt. Panel link
+  URL correct (no VIN). No console errors.
+
+### Parser data quality (review sheet)
+All 10 models parse; **values correct throughout**. A few exotic SECONDARY rows have
+messy *labels* only (Golf SportW `0D9` DSG range values + "Mechatronic Only"; a Golf R
+"check the type plate" note) — flagged for the owner's review pass.
+
+### Next session
+- **Owner: review `tools/fluids-review/2019.txt` against the PDF**, then we commit
+  `docs/fluids/2019.json`. Process more model years as PDFs come in.
+- Deploy: push branch → confirm live `v0.3.4-alpha` + `flatratelabs.github.io/hahns/fluids.html`.
+- Possible polish: print/copy could mention the fluids lookup; mascot art still pending.
+
+---
+
 ## 2026-06-26 — v0.3.2 → v0.3.3-alpha: vehicle init + real-page gating fix
 
 **Current version:** `v0.3.3-alpha` (built). Branch `v0.3.2`, PR
