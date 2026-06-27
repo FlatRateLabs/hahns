@@ -821,7 +821,7 @@
     ".hd .hbtn{display:inline-flex;align-items:center;justify-content:center;padding:3px 5px}" +
     ".hd .hbtn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".wrap.min{max-height:none}" +
-    ".wrap.min .sub,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar,.wrap.min .vbar{display:none}" +
+    ".wrap.min .sub,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar,.wrap.min .vbar,.wrap.min .fluidbar{display:none}" +
     // vehicle bar — the up-front "what car is this" identity strip
     ".vbar{padding:9px 13px;border-bottom:1px solid #eee;font-size:12px;line-height:1.4}" +
     ".vbar.empty{background:#eef1f6;color:#3a4a63}" +
@@ -900,12 +900,14 @@
     ".chipx{appearance:none;-webkit-appearance:none;background:transparent;border:0;color:#9fb2d6;cursor:pointer;font-size:11px;line-height:1;padding:0 1px;border-radius:4px}" +
     ".chipx:hover{color:#fff;background:rgba(255,255,255,.18)}" +
     ".c-torque{color:#185fa5}.c-replace{color:#0f6e56}.c-fluids{color:#185fa5}.c-tools{color:#534ab7}.c-warnings{color:#a32d2d}.c-diagram{color:#5f5e5a}" +
-    // fluids = a link out to the vehicle-matched lookup page (not scanned)
-    ".fluidbtn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;appearance:none;-webkit-appearance:none;text-decoration:none;background:#eef6ff;border:1px solid #cfe0f5;color:#0a3d6e;font:600 13px inherit;padding:10px 12px;border-radius:9px;cursor:pointer;margin-top:2px}" +
+    // fluids = a link out to the vehicle-matched lookup page (not scanned),
+    // pinned right under the green vehicle bar
+    ".fluidbar{padding:9px 13px;border-bottom:1px solid #eee;background:#fff}" +
+    ".fluidbtn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;appearance:none;-webkit-appearance:none;text-decoration:none;background:#eef6ff;border:1px solid #cfe0f5;color:#0a3d6e;font:600 13px inherit;padding:10px 12px;border-radius:9px;cursor:pointer}" +
     ".fluidbtn:hover{background:#e2eefc;border-color:#185fa5}" +
     ".fluidbtn svg{width:17px;height:17px;flex-shrink:0;fill:none;stroke:#185fa5;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".fluidbtn .arr{margin-left:auto;font-size:14px;color:#185fa5}" +
-    ".fluidnote{font-size:12px;color:#7a7a7a;line-height:1.4;margin-top:6px}" +
+    ".fluidnote{font-size:12px;color:#7a7a7a;line-height:1.4}" +
     ".dgmhdr{font:600 11px inherit;color:#5f6b80;margin:9px 0 4px}" +
     ".dgmwrap{position:relative;margin:6px 0}" +
     ".dgm{display:block;max-width:100%;height:auto;border:1px solid #e3e3e3;border-radius:6px;cursor:zoom-in;background:#fff}" +
@@ -968,6 +970,17 @@
       '<div class="vgrid">' + grid + "</div>" + warn + note + "</div>";
   }
 
+  // the Fluids & Capacities link, pinned right under the vehicle bar. Only shown
+  // once a vehicle is loaded (you can't look fluids up without one).
+  var DROPLET = "M12 2.7s6 6.6 6 10.3a6 6 0 0 1-12 0c0-3.7 6-10.3 6-10.3z";
+  function fluidsBar(r) {
+    if (!vehLoaded(r)) return "";
+    var url = vehFluidsUrl(r);
+    if (!url) return '<div class="fluidbar"><div class="fluidnote">Add the <b>Model Year</b> above to look up fluids &amp; capacities.</div></div>';
+    return '<div class="fluidbar"><a class="fluidbtn" href="' + esc(url) + '" target="_blank" rel="noopener">' +
+      svg(DROPLET) + "Fluids &amp; capacities for this vehicle<span class=\"arr\">&#8599;</span></a></div>";
+  }
+
   function buildHTML(r, embed) {
     var mini = !embed && isMin();
     var html = "" +
@@ -978,6 +991,8 @@
         '<button data-act="close" title="Close">&#10005;</button></div>' +
       // vehicle identity strip (required before any procedure page is collected)
       (embed ? "" : vehicleBar(r)) +
+      // fluids & capacities link — pinned directly under the vehicle bar
+      (embed ? "" : fluidsBar(r)) +
       // gentle once-a-week nudge to open the setup page and compare versions —
       // shown only on Wednesdays, once that day. Network-free (we can't actually
       // know if the app is stale), so it behaves the same inside and outside ELSA.
@@ -1030,19 +1045,9 @@
     SECTIONS.forEach(function (s) {
       var items = r[s.key] || [];
 
-      // fluids: not scanned — render a link out to the vehicle-matched lookup page
-      if (s.linkOnly) {
-        html += '<div class="sec ' + s.key + '"><div class="st c-' + s.key + '">' + svg(s.icon) + s.title + "</div>";
-        var furl = vehFluidsUrl(r);
-        if (vehLoaded(r) && furl) {
-          html += '<a class="fluidbtn" href="' + esc(furl) + '" target="_blank" rel="noopener">' +
-            svg(s.icon) + "Open fluids &amp; capacities for this vehicle<span class=\"arr\">&#8599;</span></a>";
-        } else {
-          html += '<div class="fluidnote">Load the vehicle (scan the <b>Vehicle Summary</b>) to open its matched fluids &amp; capacities.</div>';
-        }
-        html += "</div>";
-        return;
-      }
+      // fluids isn't a body section anymore — it's a link pinned under the vehicle
+      // bar (see fluidsBar). Skip it here.
+      if (s.linkOnly) return;
 
       html += '<div class="sec ' + s.key + '"><div class="st c-' + s.key + '">' +
         svg(s.icon) + s.title + '<span class="ct">' + items.length + "</span></div>";
