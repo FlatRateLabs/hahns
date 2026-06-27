@@ -5,6 +5,30 @@ permanent project reference.
 
 ---
 
+## 2026-06-27 — v0.3.5.7-alpha: fluids page header → new color scheme
+
+Branch **`0.3.5.7`** (off `main`). **Served-page change (`src/fluids.html`) → no
+re-drag needed.** Owner: the lookup page header was still VW blue; bring it in line
+with the new panel scheme.
+
+### Change (`src/fluids.html`)
+- Added `--hd:#1b232b` + `--grn:#2fb84d` CSS vars; header now `background:var(--hd)`
+  with `border-bottom:3px solid var(--grn)`, **green wrench** (`header svg` stroke →
+  `var(--grn)`), and the version span recolored `#aebfe0`→`#9ba6b2` (neutral grey reads
+  better on graphite). **Left `--vw` navy** for the on-white accent text (`.veh .v`
+  values, refrigerant `.tag`) — matches the panel's navy text accents, so cohesive.
+
+### Verified (browser preview)
+- 2018 Atlas lookup: header computed `bg rgb(27,35,43)` (#1b232b), border `rgb(47,184,77)`
+  (#2fb84d), wrench stroke green. Matches the panel. Stamp `v0.3.5.7-alpha`. No console
+  errors. Rebuilt.
+
+### Next
+- **Deploy:** commit branch `0.3.5.7` → PR → `main` (`git pull --rebase` first); confirm
+  live stamp `v0.3.5.7-alpha`. Served change — **no re-drag needed**.
+
+---
+
 ## 2026-06-27 — v0.3.5.6-alpha: fluids opens in a sized pop-up window
 
 Branch **`0.3.5.6`** (off `main`). **Bookmarklet code change → re-drag required.**

@@ -9,7 +9,14 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.5.6-alpha — in progress
+## v0.3.5.7-alpha — in progress
+
+### Changed
+- **Fluids & Capacities page now matches the new look** — its header is the same dark
+  graphite with green accent and green wrench as the main panel, instead of VW blue.
+  (This is the served lookup page, so you don’t need to re-drag the bookmark for it.)
+
+## v0.3.5.6-alpha — 2026-06-27
 
 ### Changed
 - **Fluids & Capacities now opens in a small pop-up window** instead of a full new
