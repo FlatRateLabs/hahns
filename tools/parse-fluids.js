@@ -190,6 +190,30 @@ function parseCAC(lines, hdrIdx) {
   return rows.filter(function (r) { return r.fills.length; });
 }
 
+// The EV single-speed "0MP" gearbox prints TWO service scenarios in a cramped
+// 4-column cell that pdftotext collapses badly — and the second scenario's spec is
+// TEXT ("Up to the lower edge…"), not a number, so it gets dropped. Rebuild the row
+// cleanly: keep the captured numeric fill, restore the text fill. (Fixed VW wording,
+// identical across ID models/years.)
+function fixEvSingleSpeed(rows) {
+  return rows.map(function (r) {
+    if (!/\b0MP\b/.test(r.application || "")) return r;
+    var blob = (r.fills || []).map(function (f) { return (f.label || "") + " " + (f.value || ""); }).join(" ");
+    if (!/residue/i.test(blob)) return r;   // only the mangled residue row
+    var num = "";
+    (r.fills || []).forEach(function (f) { if (!num && /\d/.test(f.value || "")) num = f.value; });
+    num = num.replace(/(\d)\s*L\b/g, "$1 L");   // "3.18L" -> "3.18 L"
+    return {
+      component: r.component, application: r.application,
+      fills: [
+        { label: "Refilling transmission that had residue removed", value: num || "—" },
+        { label: "Transmission fluid drained, residue not removed",
+          value: "Up to the lower edge of the transmission fluid fill and check hole" }
+      ]
+    };
+  });
+}
+
 /* ----------------------------- driver ------------------------------- */
 
 var SYS_HEADERS = {
@@ -239,6 +263,7 @@ function parsePdf(text) {
       }
       if (hdr < 0) continue;
       model[sys[k].key] = (sys[k].key === "engineOil") ? parseOil(sub, hdr) : parseCAC(sub, hdr);
+      if (sys[k].key === "drivetrain") model[sys[k].key] = fixEvSingleSpeed(model[sys[k].key]);
     }
     models.push(model);
   }

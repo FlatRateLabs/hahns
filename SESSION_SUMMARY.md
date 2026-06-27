@@ -5,6 +5,37 @@ permanent project reference.
 
 ---
 
+## 2026-06-27 — v0.3.5.3-alpha: EV 0MP gearbox detail + recovered 2019 spec
+
+Branch **`0.3.5.3`** (off `main`). Owner follow-up: the EV **0MP** single-speed
+gearbox displayed as one garbled line.
+
+### 0MP fix — `tools/parse-fluids.js`
+- The 0MP cell holds **two** service scenarios in a cramped 4-column block that
+  pdftotext collapses, and the 2nd scenario's spec is **text** ("Up to the lower
+  edge…"), not a number, so it was dropped while the 1st scenario's label absorbed
+  all the wrapped text. Added `fixEvSingleSpeed()` (post-parse, applied to drivetrain):
+  detects the 0MP residue row and rebuilds two clean fills —
+  *Refilling transmission that had residue removed* → 3.18 L (3.36 qt), and
+  *Transmission fluid drained, residue not removed* → "Up to the lower edge of the
+  transmission fluid fill and check hole". Reuses the captured numeric (not
+  hardcoded); the text scenario is fixed VW boilerplate. Re-parsed **2025 + 2026**.
+- **Verified in browser** (ID.Buzz 2025, t=0MP): drivetrain shows both scenarios
+  cleanly; screenshot captured; no console errors.
+
+### Bonus — 2019 AWD-clutch spec recovered
+- Re-running the regression check re-parsed the **2019** PDF with the current parser
+  and it gained one row the **original** (v0.3.4) parser had dropped: Golf SportWagen
+  / Alltrack **Rear Final Drive / AWD Clutch — 655 ml** (the old parser predated
+  `ml`-unit support; confirmed against the PDF, line 371). Kept it — strictly better,
+  only adds a verified row. 2020–2024 re-parsed byte-identical.
+
+### Deployed
+- Version → `v0.3.5.3-alpha`; PR/merge to `main`; live stamp confirmed. Data-only +
+  parser-tool change — no bookmarklet re-drag needed.
+
+---
+
 ## 2026-06-27 — v0.3.5.2-alpha: electric-vehicle fluids fixes
 
 Branch **`0.3.5.2`** (off `main`). Owner reported EVs broken in the Fluids lookup:

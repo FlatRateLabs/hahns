@@ -9,7 +9,21 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.5.2-alpha — in progress
+## v0.3.5.3-alpha — in progress
+
+EV drivetrain detail + a recovered 2019 spec.
+
+### Fixed
+- **ID.Buzz / ID.4 / ID.7 “0MP” single-speed gearbox now reads clearly.** It used to
+  show one mangled line. It now shows the two real service cases: *Refilling
+  transmission that had residue removed* → **3.18 L (3.36 qt)**, and *Transmission
+  fluid drained, residue not removed* → *fill up to the lower edge of the fill/check
+  hole*.
+- **2019 Golf SportWagen / Alltrack — AWD Clutch capacity restored.** The
+  **655 ml** AWD-clutch fill was being dropped (the original parser didn’t read “ml”).
+  It now appears.
+
+## v0.3.5.2-alpha — 2026-06-27
 
 Electric-vehicle fixes for the Fluids & Capacities lookup.
 
