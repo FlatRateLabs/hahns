@@ -544,6 +544,10 @@
     if (!v.year) return "";
     var q = "y=" + encodeURIComponent(v.year) + "&m=" + encodeURIComponent(v.model || "") +
       "&e=" + encodeURIComponent(v.engine || "") + "&t=" + encodeURIComponent(v.trans || "");
+    // cache-buster: GitHub Pages serves fluids.html with max-age=600, so without this
+    // a tech can see a stale (old-color / old-data) copy for ~10 min after an update.
+    // Keyed to BUILD so it changes every release → a re-drag always loads the fresh page.
+    q += "&_=" + encodeURIComponent(BUILD);
     return SITE_URL + "fluids.html?" + q;
   }
 
