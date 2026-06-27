@@ -5,6 +5,55 @@ permanent project reference.
 
 ---
 
+## 2026-06-27 — v0.3.5.4-alpha: add 2014–2018 fluid data + identity rename
+
+Branch **`0.3.5.4`** (off `main`). Version → `v0.3.5.4-alpha`. Two things:
+
+### GitHub identity rename (`rvanpolen89` → `senditbro`)
+- Owner renamed their GitHub account (didn't want their full name on contributions).
+  Removed `rvanpolen89` from the project: **`CLAUDE.md`** (2 refs → `senditbro`) and
+  **git config** (global + this repo's local): name → `senditbro`, email → the GitHub
+  private noreply **`81943271+senditbro@users.noreply.github.com`**. Verified no
+  `rvanpolen89` remains in files or any git config scope. Past commits unchanged
+  (not rewritten — public `main`). GitHub auto-redirects the old handle.
+
+### Fluids data — 2014–2018 added (lookup now covers 2014–2026)
+- **Key finding — the 19 missing years (2000–2018) split into three tiers:**
+  - **2014–2018** (5 yrs): modern format, mostly 4-letter engine codes → parse cleanly
+    and work with the existing engine-code matching. **Shipped this session.**
+  - **2006–2013** (8 yrs): modern table structure BUT **displacement-only** (no 4-letter
+    codes; engines shown as `[?]` "2.0L"). Data parses, but `fluids.html` matches by
+    engine code → would need a **displacement-based matching fallback** (and confirmation
+    of what ELSA shows for old vehicles). **Deferred.**
+  - **2000–2005** (6 yrs): **completely different old 2-column** `Component/System |
+    Capacity` layout → parser produces empty tables. Needs a **second parser path** plus
+    the displacement-matching work. **Deferred** (rarest vehicles).
+- **Owner decided: 2014–2018 only this session** (the clean win). Also declined a
+  standalone self-service parsing app — the parser regex tuning (needed almost every
+  year) is the real bottleneck, not the tooling, so an app wouldn't remove the
+  dependency on a developer for new layouts. **Kept current flow.**
+- All PDFs (2000–2026) are in `~/Downloads` (gitignored, not in repo). Parsed
+  2014–2018 → obfuscated `docs/fluids/<year>.json` + review sheets. **Cleanup:** my
+  probe runs had written 2000–2013 JSON into `docs/fluids/`; deleted those (+ dist
+  mirror) so only **2014–2026** ship.
+- **Verified:** decode round-trip clean for all 5 new years; browser preview —
+  **2018 Atlas** (CDVC → oil 5.5 L, coolant 20 L, A/C R1234yf, 09P drivetrain) and
+  **2015 Golf** (CXBA → oil 5.7 L, coolant 10 L, R134a 15 g, 02Q 2.3 L) both render
+  correctly, no console errors. Same known cosmetic label-wrap class on DSG/AWD-clutch
+  secondary rows (values correct — flagged for owner review of the sheets).
+
+### Uncommitted on branch `0.3.5.4` (fold into the deploy commit)
+- `CLAUDE.md` (identity), `tools/build.js` (VERSION), `CHANGELOG.md`, this summary,
+  `docs/fluids/2014–2018.json` + `dist/fluids/2014–2018.json`, rebuilt `docs/`+`dist/`.
+
+### Next
+- **Deploy:** PR `0.3.5.4` → `main` (`git pull --rebase` first); confirm live stamp
+  `v0.3.5.4-alpha`. Data-only + version bump — **no bookmark re-drag needed**.
+- Later: tackle 2006–2013 (needs displacement matching + a real old-vehicle ELSA
+  summary to design against), then 2000–2005 (second parser).
+
+---
+
 ## 2026-06-27 — v0.3.5.3-alpha: EV 0MP gearbox detail + recovered 2019 spec
 
 Branch **`0.3.5.3`** (off `main`). Owner follow-up: the EV **0MP** single-speed

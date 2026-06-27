@@ -9,7 +9,17 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.5.3-alpha — in progress
+## v0.3.5.4-alpha — in progress
+
+More model years for Fluids & Capacities.
+
+### Added
+- **Fluid & capacity data for model years 2014–2018.** The lookup now covers
+  **2014 through 2026**. Older years (2006–2013 and 2000–2005) use a different VW
+  table format and will come in a later update. New fluid years are served data, so
+  you do **not** need to re-drag the bookmark to get them.
+
+## v0.3.5.3-alpha — 2026-06-27
 
 EV drivetrain detail + a recovered 2019 spec.
 
