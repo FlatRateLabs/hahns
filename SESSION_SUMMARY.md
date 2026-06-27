@@ -5,10 +5,14 @@ permanent project reference.
 
 ---
 
-## 2026-06-27 — v0.3.4-alpha: Fluids & Capacities vehicle-matched lookup
+## 2026-06-27 — v0.3.4 → v0.3.5-alpha: Fluids & Capacities vehicle-matched lookup
 
-**Current version:** `v0.3.4-alpha` (built, verified, **not committed/pushed**).
-Branch `v0.3.4`. The feature the vehicle-init work was groundwork for.
+**Current version:** `v0.3.5-alpha` — **DEPLOYED & LIVE** (PRs #20 + #23 merged to
+`main`; Pages serving it). The feature the vehicle-init work was groundwork for.
+**v0.3.5** is a small post-test polish: moved the Fluids link to directly under the
+green vehicle bar (new `fluidsBar(r)`; removed from the body) and gave the lookup
+page recognizable system icons (oil can / thermometer / snowflake / gear). Owner
+tested the live flow on the shop machine — "looks perfect."
 
 ### What it does
 Fluids/capacities aren't in the repair manual — they're in a separate per-year VW
@@ -61,10 +65,15 @@ messy *labels* only (Golf SportW `0D9` DSG range values + "Mechatronic Only"; a 
 "check the type plate" note) — flagged for the owner's review pass.
 
 ### Next session
-- **Owner: review `tools/fluids-review/2019.txt` against the PDF**, then we commit
-  `docs/fluids/2019.json`. Process more model years as PDFs come in.
-- Deploy: push branch → confirm live `v0.3.4-alpha` + `flatratelabs.github.io/hahns/fluids.html`.
+- **Process more model-year PDFs:** `node tools/parse-fluids.js "<year>.pdf"` → review
+  the (gitignored) sheet → the obfuscated `docs/fluids/<year>.json` ships. **Only 2019
+  is loaded so far**; other years show "no data published yet" in the lookup.
+- **Owner can still review `tools/fluids-review/2019.txt`** against the PDF for the few
+  exotic SECONDARY rows flagged (Golf SportW `0D9` DSG range values; Golf R type-plate
+  note) — values are correct, labels are messy. Re-run the parser if any need tuning.
 - Possible polish: print/copy could mention the fluids lookup; mascot art still pending.
+- **Note:** this session's doc updates (this entry) were left uncommitted on `main` —
+  fold them into the next commit, as before.
 
 ---
 
