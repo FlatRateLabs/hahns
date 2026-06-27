@@ -9,6 +9,27 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.2-alpha — in progress
+
+Start every job by loading the vehicle.
+
+### Added
+- **Load the vehicle first.** Open ELSA's **Vehicle Summary** page and click
+  **Scan page** — H.A.H.N.S reads the **VIN, Model Year, Model Name, Engine Code,
+  and Trans Type** and pins them in a green "Vehicle loaded" strip at the top of
+  the panel, so you can see at a glance that it got a good grab. The vehicle stays
+  loaded for the whole job and clears when you Exit or start a New job.
+- **Fill in anything it missed.** If a field comes up blank, it's flagged and you
+  can click it to type the value by hand. The vehicle also prints and copies at
+  the top of the job sheet.
+
+### Changed
+- **A vehicle is required before collecting specs.** If you click **Scan page** on
+  a repair procedure before loading a vehicle, H.A.H.N.S asks you to scan the
+  Vehicle Summary page first instead of collecting anything.
+
+---
+
 ## v0.3.1-alpha — 2026-06-25
 
 Bug fixes for how safety banners are read and shown.

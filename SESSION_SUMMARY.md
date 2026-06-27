@@ -5,6 +5,63 @@ permanent project reference.
 
 ---
 
+## 2026-06-26 — v0.3.2-alpha: vehicle init (load the car first)
+
+**Current version:** `v0.3.2-alpha` (built, **not committed/pushed** — lives on branch
+`v0.3.2`, working tree). All in `src/helper.js` + version bump in `tools/build.js`.
+
+New up-front step: the tech scans ELSA's **Vehicle Summary** page before anything
+else, and H.A.H.N.S captures the vehicle's identity. This is **groundwork for a
+later feature** (owner's note), plus a clear "good grab" confirmation.
+
+### Decisions (asked the owner)
+- **Gating:** *Block + prompt* — clicking Scan on a procedure before a vehicle is
+  loaded collects nothing and shows "scan the Vehicle Summary first."
+- **Partial grab:** *Accept + flag blanks* — a found VIN loads the vehicle; any of
+  the other four blank fields are flagged amber and click-to-edit.
+- **Scan UX:** *Auto-detect on the same Scan button* — a found VIN means "this was
+  the summary page"; no VIN means it's a procedure page (blocked until loaded).
+
+### Shipped
+- **`extractVehicle(segments)`** → `{vin, year, model, engine, trans}`. VIN via
+  `VIN_RE` (17 chars, excl. I/O/Q) + `looksVin`; the other four via `vehVal()`, a
+  label→value scan (same line or next line). **Heuristic** — keyed off field
+  labels; will need tuning against a real Vehicle Summary page (see below).
+- **Vehicle rides inside `vwjb_job_v1` as `r.__vehicle`** (no new storage key) — so
+  Exit and New job clear it automatically and it survives page navigation.
+  `emptyResults`/`saveJob`/`loadJob`/`mergeInto` updated to carry it.
+- **Vehicle bar** (`vehicleBar(r)`): green "Vehicle loaded" strip with a check + the
+  5 fields, pinned under the header; blanks show "+ add" + a "Missing: …" note;
+  each value is click-to-edit (`.vval`, mirrors the part-label editor). Hidden in
+  `embed` (setup-page demo) mode. Added to `plainText`, print (`.veh` block), and
+  the diagnostic dump (which now prints the **per-field grab** — the tuning hook).
+- **Gating** in `run().scan()`: until `vehLoaded(job)`, a scan only tries the
+  vehicle; a found VIN loads it, otherwise `vehNotice` prompts and nothing is
+  collected. After that, scans collect procedure specs as before.
+- Version bumped to `v0.3.2-alpha`; CHANGELOG entry added.
+
+### Verified
+- `node --check` clean. Eval harness: `extractVehicle` pulls all 5 from a synthetic
+  summary (both same-line and label-on-own-line layouts); a no-VIN procedure page
+  yields blanks (correctly "not a summary"); `mergeInto` preserves a loaded vehicle
+  across a page scan; `plainText` prints the vehicle block (blank → "—").
+- Browser preview (temp harness, since the demo is embed-mode): all three states
+  render clean with no console errors — **loaded/complete** (green + 5 fields),
+  **loaded/blanks** (amber "+ add" + Missing note), **no-vehicle** (prompt). Inline
+  edit of a blank Engine Code saved + re-rendered.
+
+### Next session
+- **TUNE THE EXTRACTOR against a real page.** The matchers are heuristic. Have the
+  owner open a real ELSA **Vehicle Summary**, click the version stamp to copy the
+  **diagnostic dump** (now reports the per-field grab + raw segments), and paste it
+  back. Adjust `VIN_RE`/`vehVal` label regexes + value shapes to ELSA's actual
+  labels (esp. Engine Code token shape and Trans Type wording).
+- **Deploy when ready:** `git add -A` → commit → `git pull --rebase` → push; confirm
+  the live stamp reads `v0.3.2-alpha`. Tell the owner to hard-refresh + re-drag.
+- The "feature we'll add later" that consumes the vehicle data is still TBD.
+
+---
+
 ## 2026-06-25 — v0.3.1-alpha: warning banners + special-tools rework
 
 **Current version:** `v0.3.1-alpha`. Branch `v0.3.1` → merged to `main`.
