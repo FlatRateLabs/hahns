@@ -5,6 +5,37 @@ permanent project reference.
 
 ---
 
+## 2026-06-27 — v0.3.5.8-alpha: cache-bust the fluids page
+
+Branch **`0.3.5.8`** (off `main`). **Bookmarklet code change → re-drag needed.**
+Owner reported the fluids pop-up still showed **v0.3.5.6 + the blue header** even though
+the panel showed v0.3.5.7.
+
+### Root cause
+- The live `fluids.html` was already correct (verified via curl: v0.3.5.7, `--hd`/`--grn`,
+  graphite header). The culprit: **GitHub Pages serves `fluids.html` with
+  `cache-control: max-age=600`** → the browser held the old copy for ~10 min. The
+  bookmarklet opened the URL with no cache-buster, so `window.open` reused the stale page.
+
+### Fix (`src/helper.js` → `vehFluidsUrl`)
+- Append **`&_=" + encodeURIComponent(BUILD)`** to the fluids URL. Keyed to `BUILD`, so it
+  changes every release → after a re-drag the pop-up always loads the fresh page. (Extra
+  param is ignored by the page's `qs()`; still **no VIN** in the URL.)
+
+### Verified
+- Built bookmarklet: `BUILD` substitutes to `v0.3.5.8-alpha …`; embedded helper has
+  `q += "&_=" + encodeURIComponent(BUILD)`; bookmarklet.txt carries the URL-encoded
+  `_%3D`. Harness (raw source) → URL ends `&_=__BUILD__` (placeholder, real value in the
+  build). `node --check` clean.
+
+### Next
+- **Deploy:** commit branch `0.3.5.8` → PR → `main`; confirm live stamp `v0.3.5.8-alpha`.
+- **Owner immediate workaround (pre-re-drag):** hard-refresh the fluids pop-up
+  (Cmd/Ctrl+Shift+R) or wait ~10 min. After re-dragging the 0.3.5.8 bookmark, the
+  cache-buster prevents this going forward.
+
+---
+
 ## 2026-06-27 — v0.3.5.7-alpha: fluids page header → new color scheme
 
 Branch **`0.3.5.7`** (off `main`). **Served-page change (`src/fluids.html`) → no

@@ -9,7 +9,17 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.5.7-alpha — in progress
+## v0.3.5.8-alpha — in progress
+
+### Fixed
+- **Fluids & Capacities now always opens the latest version.** GitHub caches the page
+  for ~10 minutes, so after an update you could briefly see the old look/data. The
+  fluids link now forces a fresh load every time, so what you see is always current.
+
+> **Re-drag needed:** this changes the bookmarklet itself, so hard-refresh the setup
+> page and re-drag the bookmark.
+
+## v0.3.5.7-alpha — 2026-06-27
 
 ### Changed
 - **Fluids & Capacities page now matches the new look** — its header is the same dark
