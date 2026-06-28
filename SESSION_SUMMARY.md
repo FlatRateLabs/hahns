@@ -5,6 +5,44 @@ permanent project reference.
 
 ---
 
+## 2026-06-28 — v0.3.7-alpha: collapsible vehicle bar (+ v0.3.6 deployed)
+
+Branch **`0.3.7`** (off `main`). **Bookmarklet code change → re-drag needed.** Two items:
+
+### 1. Follow-up: flipped the v0.3.6 changelog heading
+- `v0.3.6-alpha — in progress` → `— 2026-06-28` (the merge-day convention). v0.3.6
+  (locate-on-page magnifier) is **merged + LIVE** (PR #38).
+
+### 2. New feature — collapsible green vehicle bar (owner request)
+Reclaims vertical space. The green "Vehicle loaded" strip **auto-collapses to one line
+~3 s after it first appears**, with a chevron to expand for edits.
+- **State:** `sessionStorage["vwjb_vehexp_v1"]` — `null` (never set) → render expanded +
+  arm a one-shot 3 s auto-collapse; `"1"` expanded; `"0"` collapsed. Helpers
+  `vehExpState()`/`setVehExp()`; `vehAutoArmed` (per-load) so the timer arms once;
+  `vehCollapseTimer` + `cancelVehAuto()`.
+- **`vehicleBar(r)`:** collapsed branch renders just `✓ Vehicle loaded` + a `.vmiss`
+  "N to add" tag when fields are blank + a `data-act="vehexpand"` chevron; expanded
+  branch keeps the 5-field grid + a `data-act="vehcollapse"` chevron. Head label
+  wrapped in `.vheadl`; toggle is `.vtog` (`CHEV_DOWN`/`CHEV_UP` icons).
+- **Wiring:** `[data-act]` handler gained `vehcollapse`/`vehexpand` (cancel auto + set
+  state + re-render). `renderInto` arms the 3 s timer (guarded: not embed, vehicle
+  loaded, not minimized, state null, not already armed). Clicking a `.vval` to edit
+  **cancels the auto-collapse and pins expanded** so it can't fold mid-edit. Exit now
+  also clears `vwjb_vehexp_v1`.
+- Print/copy/diagnostic show the full vehicle regardless (collapse is UI-only).
+
+### Verified (browser, non-embed harness)
+- Fresh state → **expanded** (5 fields, collapse chevron). Auto-collapsed to one line
+  after 3 s. Toggle works both ways (collapse → one line "Vehicle loaded" + expand
+  chevron; expand → grid back). Blank fields → collapsed strip shows **"2 to add"**.
+  Screenshots of both states captured; no console errors. `node --check` clean; built
+  `v0.3.7-alpha`.
+
+### Next
+- **Deploy:** PR `0.3.7` → `main`; confirm live stamp `v0.3.7-alpha`. **Re-drag needed.**
+
+---
+
 ## 2026-06-28 — v0.3.6-alpha: locate-on-page magnifier (NOT yet deployed)
 
 Branch **`0.3.6`** (off `main`). New owner-requested feature. **Bookmarklet code

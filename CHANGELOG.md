@@ -9,7 +9,21 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.6-alpha — in progress
+## v0.3.7-alpha — in progress
+
+### Changed
+- **The green "Vehicle loaded" box now collapses to save space.** A few seconds after
+  it appears it tucks itself away to a single "✓ Vehicle loaded" line, giving the rest
+  of the panel more room. Click the little arrow on the right to open it back up and
+  edit any field, and click again to collapse it. If any fields are still blank, the
+  collapsed line shows a small "N to add" tag so you don't miss them.
+
+> **Re-drag needed:** this changes the bookmarklet itself, so hard-refresh the setup
+> page and re-drag the bookmark.
+
+---
+
+## v0.3.6-alpha — 2026-06-28
 
 ### Added
 - **Find-on-page magnifier.** Every spec, part, tool, and warning that Hahns collected
