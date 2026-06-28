@@ -5,6 +5,40 @@ permanent project reference.
 
 ---
 
+## 2026-06-27 — v0.3.5.12-alpha: seq diagram first-scan + sequence grouping
+
+Branch **`0.3.5.12`** (off `main`). **Re-drag needed.** Two owner follow-ups after the
+sequence-table parse (v0.3.5.11) tested clean.
+
+### 1. Sequence diagram didn't appear until the 2nd SCAN
+- A 2nd, lower-down image (the sequence diagram) is often still loading on the first
+  scan → `gatherImages` reads size 0 → skipped; the 2nd scan caught it once cached.
+- Added `pendingImages(doc)` (incomplete `<img>` across same-origin frames) +
+  `scheduleImageRescan(scan)` (module flag `imgRescanDone`): after a successful scan,
+  if any images are still loading, re-run the scan ONCE when they settle (4 s cap).
+  Idempotent (mergeInto dedups), one auto-rescan per page load.
+
+### 2. Give the tightening sequence its own labeled break
+- `extractSegments`: capture the heading above the table/diagram (line with
+  `tightening`+`sequence`, not `refer to`, not starting with `Step`) into `seqTitle`,
+  consumed (not emitted). Each step row carries `seqTitle`. `results.__seqSeen` set when
+  a title/table is found.
+- `run().scan()`: sequence steps get `it.src = seqTitle`; the supplementary
+  (non-dominant) **sequence diagram** also gets `src = seqTitle`. This reuses the
+  existing per-source grouping → the steps + their diagram break out under
+  "Cylinder Head – Tightening Specifications and Sequence", like a separately-scanned
+  page. `hasSeqRef` now also honors `__seqSeen`.
+
+### Verified (harness from real rows)
+- Steps + sequence diagram grouped under the captured title; component torque under the
+  page header; both diagrams kept; `multiFig=false`. The 2026 "refer to Fig" reference
+  case is unaffected (reference kept on the bolt, not swallowed as a title).
+
+### Deployed
+- Version → `v0.3.5.12-alpha`; branch `0.3.5.12` → PR → `main`. **Re-drag required.**
+
+---
+
 ## 2026-06-27 — v0.3.5.11-alpha: parse the tightening-sequence TABLE
 
 Branch **`0.3.5.11`** (off `main`). **Re-drag needed.** Owner tested v0.3.5.10 on a

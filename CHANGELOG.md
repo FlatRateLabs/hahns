@@ -9,6 +9,25 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.5.12-alpha — 2026-06-27
+
+### Fixed
+- **Sequence diagram now shows on the first scan.** A diagram lower on the page (like
+  the tightening-sequence figure) sometimes only appeared after pressing SCAN a second
+  time. Hahns now waits for any still-loading images and grabs them automatically, so
+  one scan is enough.
+
+### Changed
+- **The tightening sequence gets its own labeled section.** The sequence steps and its
+  diagram are now grouped under their own heading (the table/figure title, e.g.
+  "Cylinder Head – Tightening Specifications and Sequence"), separated from the regular
+  bolt torques — like a freshly scanned page — so the list stays organized.
+
+> **Re-drag needed:** this changes the bookmarklet itself, so hard-refresh the setup
+> page and re-drag the bookmark.
+
+---
+
 ## v0.3.5.11-alpha — 2026-06-27
 
 ### Fixed
