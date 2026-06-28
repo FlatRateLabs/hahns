@@ -5,6 +5,45 @@ permanent project reference.
 
 ---
 
+## 2026-06-27 — v0.3.5.11-alpha: parse the tightening-sequence TABLE
+
+Branch **`0.3.5.11`** (off `main`). **Re-drag needed.** Owner tested v0.3.5.10 on a
+real page (2022 GTI, DRNA) and the sequence was still wrong — screenshots showed the
+sequence is an inline **table** on the *same* page, not just a referenced figure.
+
+### The real structure (from owner screenshots)
+A table with columns **Step | Bolts | Tightening Specification/Additional Turn**:
+1. 1 through 10 — All the way by hand · 2. 50 Nm · 3. 90° · 4. 90° · 5. (bolt 11) 8 Nm
+· 6. (bolt 11) 90°. Plus the sequence diagram (bolt callouts 1–11) to the right.
+
+### Why it was mangled
+The Step column ("1.", "2." …) looks exactly like a component callout ("1. Part"), so:
+- row 1 became a fake component `1. 1 through 10 All the way by hand`;
+- the Nm rows (2, 5) attached under it; the °-only rows (3, 4, 6) were **dropped**
+  (a lone 90° isn't captured without stage/step/tighten context);
+- the header row matched `SEQ_REF_RE` and stuck onto the last real part (24. Alignment
+  Pin → "Step Bolts Tightening Specification/Additional Turn").
+
+### Fix (`extractSegments`)
+- Detect the table **header** (line with `step` + `bolts` + `tightening`) → enter
+  `inSeqTable`, consume it.
+- Each following `^\d+[.)]? …` row is parsed into a step: split bolts
+  (`1 through 10`, `11`, ranges/lists) from the spec, push to **torque** as
+  `part:"Step N", text:"Bolts X — <spec>", seq:true`. Rows return early so the
+  component/torque heuristics never see them. A non-step row ends the table.
+- `run()` `hasSeqRef` now also fires on `it.seq`, so the **sequence diagram is kept**
+  for display (alongside the overview), not as a figure boundary.
+
+### Verified (harness from the real rows)
+- All 6 steps listed **in order** incl. the 90° rows; header not captured; component 24
+  not polluted; real component torques intact; both diagrams kept; `multiFig=false`
+  (no split).
+
+### Deployed
+- Version → `v0.3.5.11-alpha`; branch `0.3.5.11` → PR → `main`. **Re-drag required.**
+
+---
+
 ## 2026-06-27 — v0.3.5.10-alpha: tightening sequences + multi-diagram hardening
 
 Branch **`0.3.5.10`** (off `main`). **Bookmarklet code change → re-drag needed.**

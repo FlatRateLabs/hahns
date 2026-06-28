@@ -317,6 +317,7 @@
     var figIdx = 0;          // which diagram (figure) on the page we're under
     var sawPart = false;     // a numbered part has been collected for this figure
     var figImages = [];      // [{url, fig}] diagram markers in DOM order
+    var inSeqTable = false;  // inside a "Step | Bolts | Tightening Spec" table
 
     segments.forEach(function (seg) {
       // a diagram image marker (from gatherSegments). If we've already numbered a
@@ -335,6 +336,34 @@
       }
       var line = String(seg.text || "").replace(/\s+/g, " ").trim();
       if (!line) return;
+
+      // ---- tightening-sequence TABLE (Step | Bolts | Tightening Spec) ----
+      // ELSA renders this as a table whose Step column ("1.", "2." …) looks exactly
+      // like a component callout, which used to mangle it (fake parts, dropped °-only
+      // rows, header stuck onto the last component). Detect the header, then parse
+      // each row into an ordered step and keep it OUT of the component/torque
+      // heuristics. Steps land in torque as "Step N → Bolts X — spec", with seq:true.
+      if (/^step\b/i.test(line) && /\bbolts?\b/i.test(line) && /tightening/i.test(line)) {
+        inSeqTable = true;                 // header row — consume it, emit nothing
+        return;
+      }
+      if (inSeqTable) {
+        var srow = line.match(/^(\d{1,3})[.)]?\s+(.+)$/);
+        if (srow) {
+          var srest = srow[2];
+          var bsplit = srest.match(/^(\d+(?:\s*(?:through|thru|to|[-–—])\s*\d+)?(?:\s*(?:,|and|\+|&)\s*\d+(?:\s*(?:through|thru|to|[-–—])\s*\d+)?)*)\s+(.+)$/i);
+          var sbolts = bsplit ? bsplit[1].replace(/\s+/g, " ").trim() : "";
+          var sspec = bsplit ? bsplit[2].trim() : srest.trim();
+          var stext = (sbolts ? "Bolts " + sbolts + " — " : "") + sspec;
+          var skey = ("seq||" + srow[1] + "||" + stext).toLowerCase();
+          if (!seen.torque[skey]) {
+            seen.torque[skey] = 1;
+            results.torque.push({ text: stext, part: "Step " + srow[1], fig: figIdx, seq: true });
+          }
+          return;
+        }
+        inSeqTable = false;                // a non-step row ends the table
+      }
 
       var handled = false;
       var ph = partFromHeading(line);            // explicit "2. Torx Bolt" in the text
@@ -1773,7 +1802,7 @@
       // smaller (dominance would drop it) — keep it too, for display only (NOT as a
       // figure boundary, so it can't restart the bolt numbering).
       var displayUrls = dominant.slice();
-      var hasSeqRef = (pageR.torque || []).some(function (it) { return SEQ_REF_RE.test(it.text || ""); });
+      var hasSeqRef = (pageR.torque || []).some(function (it) { return it.seq || SEQ_REF_RE.test(it.text || ""); });
       if (hasSeqRef) {
         var have = {}; displayUrls.forEach(function (u) { have[u] = 1; });
         var byUrl = {}; cands.forEach(function (c) { if (!(c.url in byUrl) || c.area > byUrl[c.url]) byUrl[c.url] = c.area; });
