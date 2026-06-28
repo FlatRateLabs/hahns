@@ -5,6 +5,67 @@ permanent project reference.
 
 ---
 
+## 2026-06-27 — v0.3.5.9-alpha: extractor bug-fix pass (4 fixes)
+
+Branch **`0.3.5.9`** (off `main`). **Bookmarklet code change → re-drag needed.**
+Four owner-reported extraction bugs, all in `src/helper.js`. Verified with
+`node --check` + node logic harnesses (the project's standard for extractor logic;
+the print/multi-diagram cases can't be exercised in the embed-mode demo).
+
+### 1. Replace-after-removal missed a bare "Replace"
+- A standalone **Replace** / **Renew** note (ELSA's one-time-use legend marker on a
+  component) matched none of the `replace` test patterns. Added an anchored check
+  `^(?:replac\w*|renew\w*)\.?$` — fires only on the lone word (not "Replace the
+  cover" = reinstall). Now picks up its numbered component like the others.
+
+### 2. Special tools: missing numbers + torque wrench misfiled
+- **`TOOL_RE` extended:** new hyphenated branch `\d{1,3}-\d{2,3}\s?[A-Z](?:\/\d+)?`
+  for `10-222 A` + sub-parts `10-222 A/1, /2`; the trailing letter is required so
+  ranges like `6-50 Nm` aren't matched. Added a trailing letter (+ optional space)
+  to the V.A.G branch (`\d{3,4}\s?[A-Z]?`) so `VAG 1331A` / `V.A.G 1332A` /
+  `1332 A` match (with or without dots). Word-boundary protected (`VAG 1331
+  Adapter` → `VAG 1331`).
+- **Torque wrench no longer lands in Torque specs.** First attempt (skip any line
+  with "torque wrench") **broke real specs** — confirmed in a harness that
+  "Using a torque wrench, tighten to 23 Nm" lost its 23 Nm. Refined: only skip when
+  the line is a wrench **listing** (carries a tool number AND "torque wrench"
+  directly followed by an Nm **range** = the tool's capacity). Real tightening
+  instructions keep their spec; "Tighten to 50 Nm using torque wrench -VAG 1331A-"
+  yields **both** a tool and a torque spec. 11/11 routing cases pass.
+
+### 3. Print sometimes showed blank diagrams (2nd try worked)
+- `printJob` called `w.print()` on a fixed 250 ms timer; remote ELSA diagram
+  `<img>`s often hadn't loaded yet (worked on retry once cached). Now waits for all
+  iframe images to **settle** (load OR error) before printing, with a 3 s safety
+  cap and a `fired` once-guard. Simulated load/error/stall cases → prints exactly
+  once every time.
+
+### 4. Multiple diagrams on one page — only the first usable
+- Two root causes: (a) one **running** component counter never reset, so diagram 2's
+  bolts were numbered 4,5,6 (not matching its 1,2,3 callouts); (b) dedup key was
+  `part+text` with no figure dimension, so a spec identical on both diagrams was
+  **dropped**. Fix: `gatherSegments` emits diagram **markers** (DOM order, same size
+  filter as capture); `extractSegments` uses them as **figure boundaries** —
+  restarts numbering per figure, tags torque/replace items with `.fig`, scopes the
+  dedup key to the figure. `run().scan()` labels items/diagrams `Title · Fig N` only
+  when a page truly has ≥2 figures, reusing the **existing per-source grouping**
+  (panel/print/copy/edit/merge) — single-diagram pages are unchanged. `debugDump`
+  shows the markers. Verified: per-figure numbering restarts, repeated spec kept,
+  single/multi/no-image labeling correct, vehicle detection unaffected by markers.
+
+### Deployed
+- Version → `v0.3.5.9-alpha`; branch `0.3.5.9` → PR → `main`. **Bookmarklet code
+  change → owner must hard-refresh the setup page + re-drag.**
+
+### Open / honest caveats
+- Diagrams still render in their own section (now grouped by `Fig N`); an *inline*
+  per-figure layout would be a larger change (offered).
+- Figure boundary triggers on any captured-size image on an overview page; a large
+  non-diagram image *between* two bolts of the same legend could split mid-diagram
+  (judged unlikely — confirm against a real two-diagram page if one shows up).
+
+---
+
 ## 2026-06-27 — v0.3.5.8-alpha: cache-bust the fluids page
 
 Branch **`0.3.5.8`** (off `main`). **Bookmarklet code change → re-drag needed.**

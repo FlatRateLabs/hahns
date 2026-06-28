@@ -63,6 +63,18 @@
       icon: "M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 2 2 6-6a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3z",
       // a number immediately followed by Nm, OR an angle/stage line near torque wording
       test: function (line) {
+        // a torque WRENCH is a special tool, not a torque spec. Only skip it when
+        // the line is clearly a wrench LISTING: it carries a tool number AND has
+        // "torque wrench" directly followed by an Nm RANGE (the tool's capacity,
+        // e.g. "VAG 1331A, Torque Wrench 6-50 Nm"). A real tightening instruction
+        // that merely mentions a torque wrench (a single target value) is KEPT.
+        if (/\btorque\s+wrench\b/i.test(line)) {
+          TOOL_RE.lastIndex = 0;
+          var wrenchListing = TOOL_RE.test(line) &&
+            /\btorque\s+wrench\b[^.]*?\d+(?:[.,]\d+)?\s*-\s*\d+(?:[.,]\d+)?\s*N\s*m\b/i.test(line);
+          TOOL_RE.lastIndex = 0;
+          if (wrenchListing) return false;
+        }
         if (/\d+(?:[.,]\d+)?\s*N\s*m\b/i.test(line)) return true;
         if (/\b(stage|step)\b/i.test(line) && /(\d+\s*°|\d+\s*degrees?|turn\s+(?:a\s+)?(?:further\s+)?\d+)/i.test(line)) return true;
         if (/\btighten\b/i.test(line) && /(\d+\s*°|\d+\s*degrees?)/i.test(line)) return true;
@@ -81,6 +93,11 @@
       //   "single use", "renew the bolts after loosening", etc.
       // We match the strong phrasings on their own, plus replace/renew + a fastener.
       test: function (line) {
+        // a bare "Replace" / "Renew" note on its own line — ELSA's one-time-use
+        // legend marker against a numbered component. Anchored ^...$ so it only
+        // fires on the lone word (incl. "Replaced"/"Renewal", trailing period),
+        // never on instructions like "Replace the cover" (= reinstall, not one-use).
+        if (/^(?:replac\w*|renew\w*)\.?$/i.test(line)) return true;
         // replace / renew ... after|if|when removed|loosened|undone|disturbed
         if (/\b(?:replac\w*|renew\w*)(?:\s+\w+){0,4}\s+(?:after|if|when|once|whenever|each\s+time|every\s+time|prior\s+to|before)\s+(?:it\s+is\s+|they\s+are\s+|being\s+|been\s+|re-?)?(?:remov\w*|loosen\w*|undone|undoing|slacken\w*|disturb\w*|unscrew\w*|detach\w*|disconnect\w*|opening|opened)\b/i.test(line)) return true;
         // mandatory replacement / replacement is mandatory
@@ -204,8 +221,15 @@
     return "warning";
   }
 
-  // matches a VW special-tool number, incl. a trailing "/N" sub-part
-  var TOOL_RE = /\b(?:T\d{3,5}[A-Z]?(?:\/\d+)?|VAS\s?\d{3,5}[A-Z]?(?:\/\d+)?|V\.?A\.?[SG]\.?\s?\d{3,4}(?:\/\d+)?)\b/gi;
+  // matches a VW special-tool number, incl. a trailing "/N" sub-part. Forms:
+  //   T10145 / T10145/1            (T-numbers)
+  //   VAS 6395 / VAS6395A          (VAS numbers)
+  //   VAG 1331A / V.A.G 1332A      (V.A.G/VAG numbers, with or without the dots,
+  //                                 now incl. a trailing letter like 1331A)
+  //   10-222 A / 10-222A/1         (classic hyphenated tool numbers + sub-parts;
+  //                                 the trailing letter is REQUIRED here so plain
+  //                                 ranges like "6-50 Nm" / "40-200 Nm" don't match)
+  var TOOL_RE = /\b(?:T\d{3,5}[A-Z]?(?:\/\d+)?|VAS\s?\d{3,5}[A-Z]?(?:\/\d+)?|V\.?A\.?[SG]\.?\s?\d{3,4}\s?[A-Z]?(?:\/\d+)?|\d{1,3}-\d{2,3}\s?[A-Z](?:\/\d+)?)\b/gi;
 
   // ELSA writes tools as "<Tool Name> - <number> -". Pull the tool name out of the
   // text BEFORE the number: drop a trailing separator, keep the nearest clause,
@@ -279,15 +303,29 @@
     var partNum = 0;         // running component count for ELSA "+ ADD" legends
     var expectName = false;  // the previous segment was an "+ ADD" button
     var pendingSev = "";     // a lone banner word (DANGER/…/NOTE) colours the next line
+    var figIdx = 0;          // which diagram (figure) on the page we're under
+    var sawPart = false;     // a numbered part has been collected for this figure
+    var figImages = [];      // [{url, fig}] diagram markers in DOM order
 
     segments.forEach(function (seg) {
+      // a diagram image marker (from gatherSegments). If we've already numbered a
+      // part under the current figure, this image starts the NEXT one: bump the
+      // figure and restart component numbering so each diagram reads 1, 2, 3…
+      if (seg.img) {
+        if (sawPart) {
+          figIdx++; partNum = 0; sawPart = false;
+          currentPart = ""; ttl = 0; pending = ""; expectName = false; pendingSev = "";
+        }
+        figImages.push({ url: seg.url, fig: figIdx });
+        return;
+      }
       var line = String(seg.text || "").replace(/\s+/g, " ").trim();
       if (!line) return;
 
       var handled = false;
       var ph = partFromHeading(line);            // explicit "2. Torx Bolt" in the text
       if (ph) {
-        currentPart = ph; ttl = 8; pending = ""; expectName = false; handled = true;
+        currentPart = ph; ttl = 8; pending = ""; expectName = false; handled = true; sawPart = true;
       } else if (/^(?:\+\s*)?(?:add|ajouter)$/i.test(line)) {
         // ELSA renders an "+ ADD" button right before each component name. The
         // visible "1./2./3." numbers are list markers (not text), so we count
@@ -299,13 +337,13 @@
         partNum++;                               // every ADD is one numbered component
         currentPart = partNum + ". " + (nm || line);
         ttl = 8; pending = "";
-        handled = true;
+        handled = true; sawPart = true;
       } else {
         var lm = loneMarker(line);               // a bare "2." (number split off)
         if (lm) { pending = lm; handled = true; }
         else if (pending) {                      // the line right after a lone number
           var nm2 = cleanPartName(line);
-          if (nm2) { currentPart = pending + ". " + nm2; ttl = 8; }
+          if (nm2) { currentPart = pending + ". " + nm2; ttl = 8; sawPart = true; }
           pending = "";
           handled = true;
         }
@@ -370,11 +408,15 @@
         // chip but won't grab a stray legend name (capacities aren't callout parts)
         var part = s.autoPart ? currentPart || "" : "";
         // dedup on part + text, so the SAME wording under different components
-        // (e.g. "Always replace after removing" on two separate bolts) is kept
-        var key = (part + "||" + line).toLowerCase();
+        // (e.g. "Always replace after removing" on two separate bolts) is kept.
+        // For figure-aware sections, scope the key to the figure too, so an
+        // identical spec that legitimately repeats on a 2nd diagram isn't dropped.
+        var key = ((s.autoPart ? figIdx + "::" : "") + part + "||" + line).toLowerCase();
         if (seen[s.key][key]) return;
         seen[s.key][key] = 1;
-        results[s.key].push({ text: line, part: part });
+        var rec = { text: line, part: part };
+        if (s.autoPart) rec.fig = figIdx;
+        results[s.key].push(rec);
       });
     });
 
@@ -382,6 +424,7 @@
     SECTIONS.forEach(function (s) {
       if (results[s.key].length > 40) results[s.key] = results[s.key].slice(0, 40);
     });
+    results.__figImages = figImages;   // diagram markers + their figure index
     return results;
   }
 
@@ -799,6 +842,23 @@
               var d = c.contentDocument || (c.contentWindow && c.contentWindow.document);
               if (d && d.body) { flush(); walk(d.body, false); flush(); }
             } catch (e) { /* cross-origin */ }
+            continue;
+          }
+          if (tag === "IMG") {
+            // emit a diagram MARKER in DOM order (same size filter as the diagram
+            // capture in gatherImages). The extractor uses these as figure
+            // boundaries so a page with two assembly diagrams numbers each one
+            // from 1 again and keeps their specs separate.
+            try {
+              var iw = c.naturalWidth || c.clientWidth || 0;
+              var ih = c.naturalHeight || c.clientHeight || 0;
+              var iu = c.currentSrc || c.src || "";
+              if (iu && iw >= 200 && ih >= 150 &&
+                  !/sprite|icon|logo|button|avatar|spacer|pixel|thumb|banner/i.test(iu)) {
+                flush();
+                segs.push({ text: "", img: true, url: iu, area: iw * ih });
+              }
+            } catch (e) {}
             continue;
           }
           var b = bold || tag === "B" || tag === "STRONG" || tag === "TH" || isBoldStyle(c);
@@ -1261,15 +1321,34 @@
     ifr.setAttribute("aria-hidden", "true");
     ifr.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0";
     (document.body || document.documentElement).appendChild(ifr);
+    var d;
     try {
-      var d = ifr.contentWindow.document;
+      d = ifr.contentWindow.document;
       d.open(); d.write(buildPrintHTML(r)); d.close();
     } catch (e) { ifr.remove(); return; }
     var w = ifr.contentWindow;
-    setTimeout(function () {
+    var fired = false;
+    var go = function () {
+      if (fired) return; fired = true;
       try { w.focus(); w.print(); } catch (e) {}
       setTimeout(function () { ifr.remove(); }, 800);
-    }, 250);
+    };
+    // Wait for the diagram images to finish downloading before printing — they're
+    // remote ELSA URLs, so a fixed delay sometimes fired before they loaded and the
+    // print preview came out blank (worked on a 2nd try once cached). Print once all
+    // images settle (load OR error), with a hard cap so a stalled image never hangs.
+    try {
+      var imgs = d.images ? Array.prototype.slice.call(d.images) : [];
+      var pending = 0;
+      imgs.forEach(function (im) {
+        if (im.complete) return;            // already loaded/cached
+        pending++;
+        var settle = function () { im.onload = im.onerror = null; if (--pending === 0) go(); };
+        im.onload = settle; im.onerror = settle;
+      });
+      if (pending === 0) setTimeout(go, 100);   // nothing to wait on — just let layout settle
+      else setTimeout(go, 3000);                // safety cap: print anyway if an image stalls
+    } catch (e) { setTimeout(go, 250); }
   }
 
   // a diagnostic of exactly what the page-walk captured: each line, whether it
@@ -1278,6 +1357,7 @@
   // a callout did or didn't attach, without me needing to see the page.
   function debugDump() {
     var lines = lastSegments.slice(0, 120).map(function (seg, i) {
+      if (seg.img) return ("000" + i).slice(-3) + " [IMG] diagram → " + (seg.url || "");
       var t = String(seg.text || "").replace(/\s+/g, " ").trim();
       var head = partFromHeading(t);
       var flag = (seg.bold ? "B" : ".") + (head ? "H" : " ");
@@ -1657,12 +1737,29 @@
       var header = detectTitle(document) || ("Page " + (srcCount(job) + 1));
       if (!job.__title) job.__title = header;
       var pageR = extractSegments(segs);
-      SECTIONS.forEach(function (s) { pageR[s.key].forEach(function (it) { it.src = header; }); });
       // only capture a diagram on overview pages (those with numbered components),
       // and only the dominant image(s) — not logos, step photos or icons
-      pageR.__images = hasNumberedParts(pageR)
-        ? pickDiagrams(gatherImages(document)).map(function (u) { return { src: header, url: u }; })
-        : [];
+      var keptUrls = hasNumberedParts(pageR) ? pickDiagrams(gatherImages(document)) : [];
+      // map each kept diagram URL to the figure it introduced (from the walk)
+      var figByUrl = {};
+      (pageR.__figImages || []).forEach(function (m) { if (!(m.url in figByUrl)) figByUrl[m.url] = m.fig; });
+      // how many distinct figures actually carry numbered parts or a kept diagram?
+      var figSet = {};
+      SECTIONS.forEach(function (s) { if (s.autoPart) pageR[s.key].forEach(function (it) { figSet[it.fig || 0] = 1; }); });
+      keptUrls.forEach(function (u) { figSet[figByUrl[u] || 0] = 1; });
+      var multiFig = Object.keys(figSet).length >= 2;
+      // when a page has several diagrams, tag each item/diagram with "… · Fig N" so
+      // the existing per-source grouping separates them and numbers restart per
+      // diagram. A normal single-diagram page keeps just the page header (unchanged).
+      var figLabel = function (f) { return header + " · Fig " + ((f || 0) + 1); };
+      SECTIONS.forEach(function (s) {
+        pageR[s.key].forEach(function (it) {
+          it.src = (multiFig && s.autoPart) ? figLabel(it.fig) : header;
+        });
+      });
+      pageR.__images = keptUrls.map(function (u) {
+        return { src: multiFig ? figLabel(figByUrl[u]) : header, url: u };
+      });
       mergeInto(job, pageR);
       show(job);
     }
