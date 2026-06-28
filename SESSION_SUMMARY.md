@@ -5,6 +5,48 @@ permanent project reference.
 
 ---
 
+## 2026-06-27 — v0.3.5.10-alpha: tightening sequences + multi-diagram hardening
+
+Branch **`0.3.5.10`** (off `main`). **Bookmarklet code change → re-drag needed.**
+Owner-reported via a real diagnostic dump (*Overview – Cylinder Head*, 2026 Tiguan
+2.0L, engine DNFH). All in `src/helper.js`. Verified with `node --check` + harnesses
+built from the actual dump segments.
+
+### Findings from the dump (key context)
+- The overview page itself reads **correctly** (14 components numbered 1–14, torques/
+  replaces attached). The cylinder-head **bolt (callout 8)** had two notes:
+  `Replace after removing` (captured) and seg 096 `Tightening Specifications and
+  Sequence. Refer to Fig …` (was **dropped** — no Nm number).
+- Diagnostic showed **large images: 2 · diagrams kept: 1** — the 2nd image is the
+  **tightening sequence diagram**, dropped by the dominant-only filter.
+
+### 1. Tightening-sequence reference + diagram now captured
+- New `SEQ_REF_RE = /\btightening\s+(?:specification|spec|sequence|procedure|order)/i`.
+- **torque test** now matches a seq-ref line → seg 096 is captured under Torque with
+  part `8. Bolt` (so the bolt visibly needs the sequence).
+- **`run().scan()`**: when a page has a seq-ref, the smaller **supplementary sequence
+  diagram** is kept for **display** (any candidate ≥45000 px²), in addition to the
+  dominant overview. Kept for display **only — NOT as a figure boundary**, so it can't
+  restart bolt numbering. Diagnostic now reports the display count + "(incl.
+  tightening-sequence diagram)".
+
+### 2. Multi-diagram hardening (follow-up to v0.3.5.9)
+- `extractSegments(segments, keepImgUrls)` — figure boundaries now fire **only on
+  dominant/kept diagrams**, never on a small non-dominant image. `multiFig` is based
+  on distinct **kept-diagram** figures. Fixes a latent v0.3.5.9 bug this page exposed:
+  a dropped 2nd image could have restarted/split the single-legend numbering.
+
+### Verified
+- Cylinder-head dump: bolt 8 gets the seq line; both diagrams kept; `multiFig=false`
+  (no split); numbering stays 1–14.
+- Regression: two genuine dominant diagrams still split into Fig 1/Fig 2 with restarted
+  numbering; a dropped small image (no seq ref) → no split, 1 diagram.
+
+### Deployed
+- Version → `v0.3.5.10-alpha`; branch `0.3.5.10` → PR → `main`. **Re-drag required.**
+
+---
+
 ## 2026-06-27 — v0.3.5.9-alpha: extractor bug-fix pass (4 fixes)
 
 Branch **`0.3.5.9`** (off `main`). **Bookmarklet code change → re-drag needed.**
