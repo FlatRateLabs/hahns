@@ -37,6 +37,13 @@ sequence-table parse (v0.3.5.11) tested clean.
 ### Deployed
 - Version → `v0.3.5.12-alpha`; branch `0.3.5.12` → PR → `main`. **Re-drag required.**
 
+### RESOLVED (owner-verified on v0.3.5.12)
+- Component **24 (Alignment Pin)** no longer gets the
+  "Cylinder Head – Tightening Specifications and Sequence" title as a spec — it isn't
+  populated at all, which is correct (a pin has no torque spec). The v0.3.5.12 title
+  detector *consumes* the heading line instead of letting `SEQ_REF_RE` attach it to the
+  last component. Owner confirmed in the bay. No further action.
+
 ---
 
 ## 2026-06-27 — v0.3.5.11-alpha: parse the tightening-sequence TABLE
