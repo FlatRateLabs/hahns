@@ -1137,12 +1137,16 @@
     ".scan{width:100%;appearance:none;-webkit-appearance:none;background:#2fb84d;color:#0a0a0a;font-family:inherit;font-size:17px;font-weight:800;letter-spacing:.1em;padding:13px;border:0;border-radius:9px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.18)}" +
     ".scan:hover{background:#28a344}" +
     ".scan:active{background:#22923b}" +
-    ".jobbar{padding:9px 13px;border-bottom:1px solid #eee;display:flex;gap:7px;align-items:center}" +
+    ".jobbar{padding:9px 13px;border-bottom:1px solid #eee;display:flex;gap:7px;align-items:flex-start}" +
+    ".jobbtns{flex-shrink:0;display:flex;flex-direction:column;gap:6px}" +
     ".job{flex:1;min-width:0;font-family:inherit;font-weight:600;font-size:14px;color:#001e50;border:1px solid #dfe4ee;border-radius:8px;padding:8px 10px;outline:none;background:#fff}" +
     ".job::placeholder{color:#b3b9c4;font-weight:400}" +
     ".job:focus{border-color:#001e50}" +
     ".newjob{flex-shrink:0;appearance:none;-webkit-appearance:none;background:#fff;border:1px solid #cfd6e4;color:#001e50;font-family:inherit;font-weight:600;font-size:12px;padding:8px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}" +
     ".newjob:hover{background:#f3f6fb;border-color:#001e50}" +
+    // "Clear info" — wipes recorded data but keeps the vehicle (red-tinted to mark it destructive)
+    ".clrinfo{appearance:none;-webkit-appearance:none;background:#fff;border:1px solid #e6b0b0;color:#a32d2d;font-family:inherit;font-weight:600;font-size:12px;padding:8px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}" +
+    ".clrinfo:hover{background:#fff5f5;border-color:#a32d2d}" +
     ".confirm{flex-shrink:0;display:flex;align-items:center;gap:5px}" +
     ".ctxt{font-size:11px;font-weight:600;color:#a32d2d;white-space:nowrap}" +
     ".confirm button{appearance:none;-webkit-appearance:none;border:1px solid #cfd6e4;background:#fff;font-family:inherit;font-weight:600;font-size:12px;padding:6px 9px;border-radius:7px;cursor:pointer}" +
@@ -1167,6 +1171,10 @@
     ".st{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;margin-bottom:7px}" +
     ".st svg{width:15px;height:15px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".st .ct{margin-left:auto;background:#eef1f6;color:#5a6b8c;border-radius:9px;padding:1px 8px;font-size:11px;font-weight:600}" +
+    // per-group clear button in each section header
+    ".clrsec{appearance:none;-webkit-appearance:none;background:transparent;border:0;cursor:pointer;font-family:inherit;font-weight:600;font-size:10px;letter-spacing:.03em;color:#aab0bb;padding:2px 6px;margin-left:7px;border-radius:5px}" +
+    ".clrsec:hover{color:#c0392b;background:#fdecec}" +
+    ".st .confirm{text-transform:none;margin-left:7px}" +
     ".item{display:flex;gap:7px;align-items:flex-start;font-size:13px;line-height:1.45;padding:5px 0 5px 10px;border-left:2px solid #e3e3e3;margin:3px 0;color:#222}" +
     ".txt{flex:1;min-width:0}" +
     ".del{flex-shrink:0;appearance:none;-webkit-appearance:none;background:transparent;border:0;cursor:pointer;padding:1px;margin-top:1px;color:#c3c7cf;display:flex;align-items:center}" +
@@ -1297,6 +1305,10 @@
 
   function buildHTML(r, embed) {
     var mini = !embed && isMin();
+    // any collected info (specs/tools/warnings/diagrams)? drives the "Clear info"
+    // button — which wipes the recorded data but keeps the loaded vehicle.
+    var hasInfo = (r.__images || []).length > 0;
+    SECTIONS.forEach(function (s) { if ((r[s.key] || []).length) hasInfo = true; });
     var html = "" +
       '<div class="wrap' + (embed ? " embed" : "") + (mini ? " min" : "") + '"><div class="hd">' + svg(WRENCH) +
         '<b title="Hardware, Advisories, Highlights, &amp; Navigation Specialist">H.A.H.N.S</b>' +
@@ -1321,7 +1333,10 @@
       '<div class="scanbar"><button class="scan" data-act="rescan" title="Read this page and add its specs to the job">SCAN</button></div>' +
       '<div class="jobbar">' +
         '<input class="job" type="text" placeholder="Job title — e.g. Rear Brakes" value="' + esc(r.__title || "") + '">' +
-        '<button class="newjob" data-act="newjob" title="Clear everything and start a new job">New job</button>' +
+        '<div class="jobbtns">' +
+          '<button class="newjob" data-act="newjob" title="Clear everything and start a new job">New job</button>' +
+          (hasInfo ? '<button class="clrinfo" data-act="clearinfo" title="Clear all collected specs, tools, warnings and diagrams — keeps the loaded vehicle">Clear info</button>' : "") +
+        "</div>" +
       "</div>" +
       '<div class="body">';
 
@@ -1375,7 +1390,9 @@
       if (s.linkOnly) return;
 
       html += '<div class="sec ' + s.key + '"><div class="st c-' + s.key + '">' +
-        svg(s.icon) + s.title + '<span class="ct">' + items.length + "</span></div>";
+        svg(s.icon) + s.title + '<span class="ct">' + items.length + "</span>" +
+        (items.length ? '<button class="clrsec" data-clear="' + s.key + '" title="Clear all ' + esc(s.title) + '">Clear</button>' : "") +
+        "</div>";
 
       // blue tool-number chips for a quick glance — each one removable
       if (s.key === "tools") {
@@ -1415,7 +1432,9 @@
           '<button class="dgmdel" data-imgdel="' + esc(u) + '" title="Remove image" aria-label="Remove image">&#10005;</button></div>';
       };
       html += '<div class="sec diagram"><div class="st c-diagram">' + svg(IMG_ICON) + "Diagram" +
-        '<span class="ct">' + imgs.length + "</span></div>";
+        '<span class="ct">' + imgs.length + "</span>" +
+        '<button class="clrsec" data-clear="__images" title="Clear all diagrams">Clear</button>' +
+        "</div>";
       if (multiSrc) {
         groupImagesBySource(imgs).forEach(function (g) {
           html += '<div class="dgmhdr">' + esc(g.src || "page") + "</div>";
@@ -1670,6 +1689,32 @@
     // persist manual edits so they survive navigating to the next page
     function persist() { if (options.persist) saveJob(r); }
 
+    // generic inline Yes/No confirm: swap `btn` for a small confirm, run onYes on
+    // Yes, just re-render on No. Used by the clear buttons (destructive actions).
+    function inlineConfirm(btn, msg, onYes) {
+      var cf = document.createElement("span");
+      cf.className = "confirm";
+      cf.innerHTML = '<span class="ctxt">' + esc(msg) + '</span>' +
+        '<button class="cyes">Yes</button><button class="cno">No</button>';
+      btn.replaceWith(cf);
+      cf.querySelector(".cyes").addEventListener("click", onYes);
+      cf.querySelector(".cno").addEventListener("click", function () { renderInto(host, r, options); });
+    }
+
+    // per-group "Clear" — empties just that section (or the diagrams), keeping the
+    // rest of the job and the vehicle. Confirmed inline so a stray click is safe.
+    root.querySelectorAll("[data-clear]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var key = btn.getAttribute("data-clear");
+        inlineConfirm(btn, "Clear all?", function () {
+          if (key === "__images") r.__images = [];
+          else if (r[key]) r[key] = [];
+          persist();
+          renderInto(host, r, options);
+        });
+      });
+    });
+
     // editable part labels — type the component name when auto-detection misses.
     // Stored only in memory for this view; nothing is written to disk.
     root.querySelectorAll(".lbl").forEach(function (lbl) {
@@ -1882,6 +1927,16 @@
           btn.replaceWith(cf);
           cf.querySelector(".cyes").addEventListener("click", function () { options.onNewJob(); });
           cf.querySelector(".cno").addEventListener("click", function () { renderInto(host, r, options); });
+        } else if (act === "clearinfo") {
+          // clear the COLLECTED info (specs, tools, warnings, diagrams, title) but
+          // keep the loaded vehicle — confirmed inline so a stray click is safe
+          inlineConfirm(btn, "Clear collected info?", function () {
+            SECTIONS.forEach(function (s) { r[s.key] = []; });
+            r.__images = [];
+            r.__title = "";
+            persist();
+            renderInto(host, r, options);
+          });
         } else if (act === "vehcollapse") {
           cancelVehAuto(); setVehExp(false); renderInto(host, r, options);
         } else if (act === "vehexpand") {

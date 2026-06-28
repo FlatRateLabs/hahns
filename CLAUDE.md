@@ -68,6 +68,7 @@
 - **Auto component numbering** from the "+ ADD" button pattern → labels like `2. Torx Bolt`.
 - Per-spec **editable part labels** (`+ part` chips); auto labels flow into torque/replace only (fluids = manual chip).
 - **Manual add** rows per section; **trash/delete** per item; **delete** per diagram.
+- **Clear info** (v0.3.7.1) — a button under **New job** that empties all collected data (specs, tools, warnings, diagrams, title) **but keeps the loaded vehicle** (unlike New job, which clears the vehicle too). Plus a **per-group Clear** button in each section header (incl. Diagram). Both use an inline "Clear all?" Yes/No confirm (`inlineConfirm` in `renderInto`); per-group via `data-clear="<key>"` / `data-clear="__images"`, Clear info via `data-act="clearinfo"`.
 - **Job title** bar (auto-filled from page header, editable).
 - **Multi-page accumulation**: navigating + scanning more pages adds them, **grouped by page** with editable page headers; deduped by source+part+text.
 - **Diagram capture** (numbered-overview pages only, dominant image only, by URL reference); click to open full size.

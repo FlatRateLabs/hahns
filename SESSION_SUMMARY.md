@@ -5,6 +5,41 @@ permanent project reference.
 
 ---
 
+## 2026-06-28 — v0.3.7.1-alpha: Clear info + per-group clear
+
+Branch **`0.3.7.1`** (off `main`). **Bookmarklet code change → re-drag needed.** Owner
+request: a way to clear collected data without losing the vehicle, plus per-section clears.
+
+### What shipped (all in `src/helper.js`)
+- **"Clear info" button** under New job (`data-act="clearinfo"`, red-tinted `.clrinfo`,
+  in a new `.jobbtns` column; shown only when `hasInfo`). Clears every SECTION array +
+  `__images` + `__title` but **keeps `__vehicle`** (and so the fluids link). New job
+  still wipes everything incl. the vehicle.
+- **Per-group Clear** in each section header + the Diagram header (`.clrsec`,
+  `data-clear="<key>"` / `data-clear="__images"`; rendered only when the group has
+  items). Empties just that group.
+- **Inline confirm** — new reusable `inlineConfirm(btn, msg, onYes)` in `renderInto`
+  (swaps the button for the existing `.confirm` Yes/No). Both Clear info ("Clear
+  collected info?") and per-group ("Clear all?") confirm first, so a stray tap is safe.
+- Also flipped the **v0.3.7 changelog heading** to `2026-06-28` (v0.3.7 deployed).
+
+### Layout notes
+- `.jobbar` now `align-items:flex-start`; the right side is a `.jobbtns` column
+  stacking New job over Clear info. `.clrsec` is a small grey text button after the
+  count (`.st .confirm{text-transform:none}` so the inline confirm reads normally).
+
+### Verified (browser, non-embed harness w/ seeded vehicle + specs + diagram)
+- Clear info present under New job; per-group Clear on torque/replace/tools/warnings/
+  diagram. Per-group clear (torque): confirm → Yes empties **only** torque, others +
+  vehicle intact, persisted. Clear info: confirm → Yes clears all items + diagrams +
+  title, **vehicle bar + fluids link kept**, button disappears (hasInfo false).
+  Screenshot captured; no console errors. `node --check` clean; built `v0.3.7.1-alpha`.
+
+### Next
+- **Deploy:** PR `0.3.7.1` → `main`; confirm live stamp `v0.3.7.1-alpha`. **Re-drag needed.**
+
+---
+
 ## 2026-06-28 — v0.3.7-alpha: collapsible vehicle bar (+ v0.3.6 deployed)
 
 Branch **`0.3.7`** (off `main`). **Bookmarklet code change → re-drag needed.** Two items:
