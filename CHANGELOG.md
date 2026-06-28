@@ -9,6 +9,20 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.5.11-alpha — 2026-06-27
+
+### Fixed
+- **Tightening-sequence tables now read correctly.** When a page has a "Step / Bolts /
+  Tightening Specification" table (e.g. cylinder-head bolts), Hahns now lists each
+  step in order with its bolts and spec — including the angle-only steps (90°) that
+  were being dropped. Before, the step numbers were mistaken for part callouts, which
+  scrambled the list and stuck the table header onto the previous part.
+
+> **Re-drag needed:** this changes the bookmarklet itself, so hard-refresh the setup
+> page and re-drag the bookmark.
+
+---
+
 ## v0.3.5.10-alpha — 2026-06-27
 
 ### Fixed
