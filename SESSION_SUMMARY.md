@@ -5,6 +5,65 @@ permanent project reference.
 
 ---
 
+## 2026-06-28 — v0.3.6-alpha: locate-on-page magnifier (NOT yet deployed)
+
+Branch **`0.3.6`** (off `main`). New owner-requested feature. **Bookmarklet code
+change → re-drag needed once deployed.** Built + browser-verified; **deploy pending
+owner OK** (PR not opened yet).
+
+### What it does
+Each populated item (torque, replace, special tools, warnings) now shows a small
+**magnifying-glass on its left**. Clicking it **scrolls ELSA to the exact element**
+Hahns read that item from and **pulses it yellow** (then fades, fully restoring the
+page). Asked the owner two choices: **pulse-then-fade** highlight, **grey-out** the
+magnifier for off-page items.
+
+### How it works (key design — keeps the privacy posture)
+- `gatherSegments` now records, per segment, the **DOM element** the line's text
+  starts in (`add(text,bold,el)` → `cur.el = node`).
+- An **in-memory registry** (`locMap`, module scope) maps a per-load id → element.
+  `registerLoc(el)` is called at each item-push in `extractSegments`; the id rides on
+  the item as `it.loc`. **Never serialized** — DOM nodes can't be saved and we keep
+  nothing on disk. `mergeInto` was updated to carry `loc` through (it rebuilds items
+  field-by-field, so it'd otherwise drop it).
+- A per-load **`LOC_NONCE`** prefixes every id. After navigation the script reloads
+  (new nonce, empty `locMap`), so a `loc` from a **previous page** can't resolve →
+  that item's magnifier renders **greyed** (`.find.off` + tooltip "Found on another
+  page…"); the click handler no-ops on `.off`. Items with no source element
+  (hand-added rows, the Fluids link) get **no** magnifier.
+- `highlightOnPage(el)`: `scrollIntoView` (plus the element's iframe, if nested) +
+  a JS pulse using **inline `!important`** styles (so ELSA's own CSS can't suppress
+  it), tracked by `hiState` so a new click cancels/restores the prior one. Fully
+  reversible (`removeAttribute("style")` / restore prior inline style). **No network.**
+
+### The one real limitation (told the owner up front)
+Only items on the **page currently on screen** can be jumped to — navigating away
+destroys that page in the browser, so earlier multi-page-job items grey out. Not
+fixable without saving ELSA pages (would break "keep nothing").
+
+### Verified
+- `node --check` clean. Logic harness: items carry resolvable `loc`; **paste/text
+  path → `loc:""`** (no magnifier in the setup demo); `mergeInto` preserves `loc`.
+- **Browser (non-embed harness, real-DOM scan over a fake ELSA page):** scan produced
+  4 items each with a magnifier, 0 greyed; clicking each scrolled to and yellow-pulsed
+  the **correct** element (torque→spec, replace→replace line, tool→tool line,
+  warning→warning line), highlight applied with `!important` then **self-restored**;
+  greyed state shown for a simulated previous-page item (correct tooltip, click no-op);
+  no-source item → no magnifier. No console errors. Screenshot captured.
+
+### Files
+- `src/helper.js` (registry + highlight engine, `gatherSegments`/`extractSegments`/
+  `mergeInto` loc threading, `GLASS` icon, `.find` CSS, `itemRow` button, `.find`
+  click handler), `tools/build.js` (VERSION → `0.3.6-alpha`), `CHANGELOG.md`, rebuilt
+  `dist/` + `docs/`.
+
+### Next
+- **Deploy pending owner OK:** PR `0.3.6` → `main` (`git pull --rebase` first); confirm
+  live stamp `v0.3.6-alpha`. **Bookmarklet code change → owner must hard-refresh the
+  setup page + re-drag.**
+
+---
+
 ## 2026-06-27 — v0.3.5.12-alpha: seq diagram first-scan + sequence grouping
 
 Branch **`0.3.5.12`** (off `main`). **Re-drag needed.** Two owner follow-ups after the

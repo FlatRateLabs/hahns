@@ -38,6 +38,85 @@
   var lastSegments = [];
 
   /* ------------------------------------------------------------------ *
+   * LOCATE-ON-PAGE (v0.3.6) — the little magnifier on each found item.
+   *   During a scan we remember which DOM element each extracted item came
+   *   from, in an IN-MEMORY registry (never saved to storage — DOM nodes
+   *   can't be serialized, and keeping nothing on disk is the product
+   *   promise). Clicking an item's magnifier scrolls ELSA to that element
+   *   and pulses it yellow. Because the panel + this registry are rebuilt
+   *   fresh every page load, only items found on the page CURRENTLY on
+   *   screen can be located; items collected on an earlier page of a
+   *   multi-page job carry a loc id from a previous load (a different
+   *   nonce) that won't resolve here, so their magnifier is greyed out.
+   * ------------------------------------------------------------------ */
+  // a per-load nonce so a saved loc id from an earlier page can't accidentally
+  // resolve to a different element on this page (ids restart each load)
+  var LOC_NONCE = "L" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  var locMap = {};         // loc id -> source DOM element (this page load only)
+  var locSeq = 0;
+
+  // remember an element and hand back a stable id (or "" when there's no element,
+  // e.g. the plain-text paste path or a hand-added row)
+  function registerLoc(el) {
+    if (!el || el.nodeType !== 1) return "";
+    var id = LOC_NONCE + ":" + (++locSeq);
+    locMap[id] = el;
+    return id;
+  }
+  // resolve a loc id to a still-attached element on THIS page, or null
+  function locEl(id) {
+    if (!id) return null;
+    var el = locMap[id];
+    if (!el) return null;
+    try {
+      var d = el.ownerDocument;
+      if (!d || !d.documentElement || !d.documentElement.contains(el)) return null;
+    } catch (e) { return null; }
+    return el;
+  }
+
+  // the currently-highlighted element + its pending timers, so a new click
+  // cancels the old pulse and fully restores the previous element's styling
+  var hiState = null;
+  function clearHi() {
+    if (!hiState) return;
+    var st = hiState; hiState = null;
+    st.timers.forEach(function (t) { clearTimeout(t); });
+    try {
+      if (st.prevStyle === null) st.el.removeAttribute("style");
+      else st.el.setAttribute("style", st.prevStyle);
+    } catch (e) {}
+  }
+  // scroll ELSA to the element (incl. its iframe, if nested) and pulse it yellow,
+  // then fade back. Uses inline !important styles only — no network, fully
+  // reversible, never touches ELSA's stylesheets.
+  function highlightOnPage(el) {
+    clearHi();
+    try { el.scrollIntoView({ behavior: "smooth", block: "center" }); }
+    catch (e) { try { el.scrollIntoView(); } catch (e2) {} }
+    try {
+      var fe = el.ownerDocument && el.ownerDocument.defaultView && el.ownerDocument.defaultView.frameElement;
+      if (fe && fe.scrollIntoView) fe.scrollIntoView({ behavior: "smooth", block: "center" });
+    } catch (e3) {}
+    var st = { el: el, prevStyle: el.getAttribute("style"), timers: [] };
+    hiState = st;
+    function paint(c) {
+      try {
+        el.style.setProperty("background-color", c, "important");
+        el.style.setProperty("outline", "3px solid #ffce00", "important");
+        el.style.setProperty("outline-offset", "1px", "important");
+        el.style.setProperty("transition", "background-color .3s ease", "important");
+      } catch (e) {}
+    }
+    var seq = ["#fff39a", "#ffe24d", "#fff39a", "#ffe24d", "#fff39a"];
+    seq.forEach(function (c, i) {
+      st.timers.push(setTimeout(function () { paint(c); }, i * 380));
+    });
+    // settle, then restore the element's original styling
+    st.timers.push(setTimeout(function () { if (hiState === st) clearHi(); }, seq.length * 380 + 1600));
+  }
+
+  /* ------------------------------------------------------------------ *
    * 1. CONFIG — the five buckets and how we recognise each one.
    *    Edit these to fit how ELSA actually phrases things.
    * ------------------------------------------------------------------ */
@@ -368,7 +447,7 @@
           var skey = ("seq||" + srow[1] + "||" + stext).toLowerCase();
           if (!seen.torque[skey]) {
             seen.torque[skey] = 1;
-            results.torque.push({ text: stext, part: "Step " + srow[1], fig: figIdx, seq: true, seqTitle: seqTitle || "Tightening Specifications and Sequence" });
+            results.torque.push({ text: stext, part: "Step " + srow[1], fig: figIdx, seq: true, seqTitle: seqTitle || "Tightening Specifications and Sequence", loc: registerLoc(seg.el) });
           }
           return;
         }
@@ -431,7 +510,7 @@
           var wk = ("warn||" + sev + "||" + warnText).toLowerCase();
           if (seen.warnings[wk]) return;
           seen.warnings[wk] = 1;
-          results.warnings.push({ text: warnText, part: "", sev: sev });
+          results.warnings.push({ text: warnText, part: "", sev: sev, loc: registerLoc(seg.el) });
           return;
         }
         if (s.key === "tools") {
@@ -448,11 +527,11 @@
                 return;
               }
               seen.tools[tk] = 1;
-              results.tools.push({ num: e.num, desc: e.desc, text: e.num + (e.desc ? " — " + e.desc : ""), part: "" });
+              results.tools.push({ num: e.num, desc: e.desc, text: e.num + (e.desc ? " — " + e.desc : ""), part: "", loc: registerLoc(seg.el) });
             });
           } else if (/\bspecial\s+tool\b/i.test(line)) {
             var sk = "txt::" + line.toLowerCase();
-            if (!seen.tools[sk]) { seen.tools[sk] = 1; results.tools.push({ num: "", desc: "", text: line, part: "" }); }
+            if (!seen.tools[sk]) { seen.tools[sk] = 1; results.tools.push({ num: "", desc: "", text: line, part: "", loc: registerLoc(seg.el) }); }
           }
           return;
         }
@@ -467,7 +546,7 @@
         var key = ((s.autoPart ? figIdx + "::" : "") + part + "||" + line).toLowerCase();
         if (seen[s.key][key]) return;
         seen[s.key][key] = 1;
-        var rec = { text: line, part: part };
+        var rec = { text: line, part: part, loc: registerLoc(seg.el) };
         if (s.autoPart) rec.fig = figIdx;
         results[s.key].push(rec);
       });
@@ -793,7 +872,7 @@
           var k = toolKey(it), have = tseen[k];
           if (!have) {
             tseen[k] = it;
-            dst.tools.push({ num: it.num || "", desc: it.desc || "", text: it.text, part: "", src: it.src || "" });
+            dst.tools.push({ num: it.num || "", desc: it.desc || "", text: it.text, part: "", src: it.src || "", loc: it.loc || "" });
           } else if (it.desc && !have.desc) {
             have.desc = it.desc; have.text = have.num + " — " + it.desc;
           }
@@ -805,7 +884,7 @@
       dst[s.key].forEach(function (it) { seen[itemKey(it)] = 1; });
       (src[s.key] || []).forEach(function (it) {
         var k = itemKey(it);
-        if (!seen[k]) { seen[k] = 1; dst[s.key].push({ text: it.text, part: it.part || "", src: it.src || "", sev: it.sev || "" }); }
+        if (!seen[k]) { seen[k] = 1; dst[s.key].push({ text: it.text, part: it.part || "", src: it.src || "", sev: it.sev || "", loc: it.loc || "" }); }
       });
       if (dst[s.key].length > 150) dst[s.key] = dst[s.key].slice(0, 150);
     });
@@ -909,13 +988,14 @@
       if (cur && cur.text.trim()) { cur.text = cur.text.replace(/\s+/g, " ").trim(); segs.push(cur); }
       cur = null;
     }
-    function add(text, bold) {
-      if (!cur) cur = { text: "", bold: false, started: false };
+    function add(text, bold, el) {
+      if (!cur) cur = { text: "", bold: false, started: false, el: null };
       if (!cur.started) {
         var lead = text.replace(/^\s+/, "");
         if (lead === "") { cur.text += " "; return; }
         cur.text += lead;
         cur.bold = bold;       // does the line's leading text come from bold?
+        cur.el = el || null;   // the element the line's text starts in (for locate-on-page)
         cur.started = true;
       } else {
         cur.text += text;
@@ -924,7 +1004,7 @@
     function walk(node, bold) {
       for (var c = node.firstChild; c; c = c.nextSibling) {
         if (c.nodeType === 3) {
-          if (c.nodeValue) add(c.nodeValue, bold);
+          if (c.nodeValue) add(c.nodeValue, bold, node);
         } else if (c.nodeType === 1) {
           var tag = c.nodeName;
           if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT" || tag === "SVG") continue;
@@ -1074,6 +1154,13 @@
     ".del{flex-shrink:0;appearance:none;-webkit-appearance:none;background:transparent;border:0;cursor:pointer;padding:1px;margin-top:1px;color:#c3c7cf;display:flex;align-items:center}" +
     ".del svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}" +
     ".del:hover{color:#c0392b}" +
+    // locate-on-page magnifier, pinned to the LEFT of each found item
+    ".find{flex-shrink:0;appearance:none;-webkit-appearance:none;background:transparent;border:0;cursor:pointer;padding:1px;margin-top:1px;color:#185fa5;opacity:.7;display:flex;align-items:center}" +
+    ".find svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}" +
+    ".find:hover{opacity:1}" +
+    // greyed: the item was found on a page you've since navigated away from
+    ".find.off{opacity:.3;cursor:default;color:#9aa3b2}" +
+    ".find.off:hover{opacity:.3}" +
     ".lbl{appearance:none;-webkit-appearance:none;flex-shrink:0;border:1px solid;cursor:text;font:600 11px/1.3 inherit;padding:3px 7px;border-radius:6px;white-space:nowrap;max-width:118px;overflow:hidden;text-overflow:ellipsis}" +
     ".lbl.set{background:#eef1f6;border-color:#cfd6e4;color:#001e50}" +
     ".lbl.add{background:transparent;border-style:dashed;border-color:#cfcfcf;color:#9a9a9a}" +
@@ -1124,6 +1211,7 @@
   var TRASH = "M4 7h16M10 11v6M14 11v6M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3";
   var IMG_ICON = "M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 10a1.3 1.3 0 1 1-2.6 0 1.3 1.3 0 0 1 2.6 0";
   var CHECK = "M20 6 9 17l-5-5";
+  var GLASS = "M10 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12M20 20l-5.2-5.2";   // locate-on-page magnifier
 
   function svg(path, cls) {
     return '<svg viewBox="0 0 24 24" class="' + (cls || "") + '"><path d="' + path + '"/></svg>';
@@ -1217,10 +1305,20 @@
     var multiSrc = srcCount(r) >= 2;
     function itemRow(s, it, idx) {
       var del = '<button class="del" data-del="' + s.key + '" data-i="' + idx + '" title="Remove this line" aria-label="Remove this line">' + svg(TRASH) + "</button>";
+      // the locate-on-page magnifier (left side). Only items with a source
+      // element get one; if that element is from an earlier page (not on screen
+      // now) the button is greyed with an explanatory tooltip.
+      var find = "";
+      if (it.loc) {
+        var live = !!locEl(it.loc);
+        find = '<button class="find' + (live ? "" : " off") + '" data-loc="' + esc(it.loc) + '" aria-label="Show on page" title="' +
+          (live ? "Show where Hahns found this on the page"
+                : "Found on another page — open that page to locate it") + '">' + svg(GLASS) + "</button>";
+      }
       // tools show the number in bold, then the description (when we found one)
       if (s.key === "tools") {
         var t = it.num ? "<b>" + esc(it.num) + "</b>" + (it.desc ? " — " + esc(it.desc) : "") : esc(it.text);
-        return '<div class="item tool"><span class="txt">' + t + "</span>" + del + "</div>";
+        return '<div class="item tool">' + find + '<span class="txt">' + t + "</span>" + del + "</div>";
       }
       var lbl = "";
       if (s.label) {
@@ -1234,7 +1332,7 @@
         sevCls = " sev-" + it.sev;
         sevTag = '<span class="sevtag">' + esc(it.sev.toUpperCase()) + "</span>";
       }
-      return '<div class="item' + sevCls + '">' + lbl + '<span class="txt">' + sevTag + esc(it.text) + "</span>" + del + "</div>";
+      return '<div class="item' + sevCls + '">' + find + lbl + '<span class="txt">' + sevTag + esc(it.text) + "</span>" + del + "</div>";
     }
 
     SECTIONS.forEach(function (s) {
@@ -1639,6 +1737,18 @@
         r.__images = (r.__images || []).filter(function (im) { return im.url !== url; });
         persist();
         renderInto(host, r, options);
+      });
+    });
+
+    // locate-on-page magnifier — scroll ELSA to where this item was found and
+    // pulse it yellow. Greyed (".off") buttons are from an earlier page and do
+    // nothing (their element no longer exists on this page).
+    root.querySelectorAll(".find").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        if (e && e.stopPropagation) e.stopPropagation();
+        if (btn.className.indexOf("off") !== -1) return;
+        var el = locEl(btn.getAttribute("data-loc"));
+        if (el) highlightOnPage(el);
       });
     });
 
