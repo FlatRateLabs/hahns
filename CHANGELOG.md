@@ -9,6 +9,23 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.6-alpha — in progress
+
+### Added
+- **Find-on-page magnifier.** Every spec, part, tool, and warning that Hahns collected
+  now has a small magnifying-glass icon on its left. Click it and Hahns scrolls the ELSA
+  page to exactly where it found that item and flashes it yellow so you can eyeball it in
+  context. The highlight fades on its own and changes nothing on the page.
+- Items collected from an **earlier page** of a multi-page job show the magnifier
+  **greyed out** (with a tooltip) — the browser throws that page away when you navigate,
+  so there's nothing left to jump to until you go back to it. Hand-added rows and the
+  Fluids link have no magnifier (they didn't come from a spot on the page).
+
+> **Re-drag needed:** this changes the bookmarklet itself, so hard-refresh the setup
+> page and re-drag the bookmark.
+
+---
+
 ## v0.3.5.12-alpha — 2026-06-27
 
 ### Fixed
