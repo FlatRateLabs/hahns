@@ -44,6 +44,11 @@
 
   var FASTENER = /\b(bolt|bolts|screw|screws|nut|nuts|seal\w*|gasket|gaskets|o-?ring|o-?rings|ring|rings|circlip|circlips|washer|washers|stretch|micro-?encapsulated)\b/i;
 
+  // a "refer to the tightening specifications/sequence figure" reference. The real
+  // values live in a sequence DIAGRAM (no number on the page), so we capture the
+  // reference under torque AND keep the supplementary sequence image.
+  var SEQ_REF_RE = /\btightening\s+(?:specification|spec|sequence|procedure|order)/i;
+
   // if a numbered line's name STARTS WITH one of these whole words it's an
   // instruction or a section label, not a part. Matched on the entire first
   // word (not a prefix) so real parts like "Guide pin bolt" or "Pulley" survive.
@@ -78,6 +83,9 @@
         if (/\d+(?:[.,]\d+)?\s*N\s*m\b/i.test(line)) return true;
         if (/\b(stage|step)\b/i.test(line) && /(\d+\s*°|\d+\s*degrees?|turn\s+(?:a\s+)?(?:further\s+)?\d+)/i.test(line)) return true;
         if (/\btighten\b/i.test(line) && /(\d+\s*°|\d+\s*degrees?)/i.test(line)) return true;
+        // a "refer to the tightening specs/sequence figure" line — the bolt's
+        // torque is given by a sequence diagram, so surface it as a torque entry
+        if (SEQ_REF_RE.test(line)) return true;
         return false;
       }
     },
@@ -289,7 +297,10 @@
   //   numbered procedure steps like "1. Remove ..."). Bold is a helpful hint on
   //   real ELSA pages but NOT required — detection must work even when the
   //   page's bold styling isn't something we can read.
-  function extractSegments(segments) {
+  //   keepImgUrls (optional): a set {url:1} of the DOMINANT diagram URLs (from
+  //   pickDiagrams). Only those images act as figure boundaries, so a small
+  //   non-dominant image on the page can't wrongly restart the bolt numbering.
+  function extractSegments(segments, keepImgUrls) {
     lastSegments = segments;   // kept for the one-click diagnostic dump
     var results = {};
     var seen = {};
@@ -312,6 +323,9 @@
       // part under the current figure, this image starts the NEXT one: bump the
       // figure and restart component numbering so each diagram reads 1, 2, 3…
       if (seg.img) {
+        // ignore non-dominant images entirely when we know the kept set — only a
+        // real assembly diagram should start a new figure / restart numbering
+        if (keepImgUrls && !keepImgUrls[seg.url]) return;
         if (sawPart) {
           figIdx++; partNum = 0; sawPart = false;
           currentPart = ""; ttl = 0; pending = ""; expectName = false; pendingSev = "";
@@ -1366,6 +1380,17 @@
     var hdr = "", cands = [], picked = [];
     try { hdr = detectTitle(document); } catch (e) {}
     try { cands = gatherImages(document); picked = pickDiagrams(cands); } catch (e) {}
+    // mirror the scan's display logic: a tightening-sequence page also keeps the
+    // smaller supplementary diagram, so report that count too
+    var seqRef = false, displayCount = picked.length;
+    try {
+      seqRef = lastSegments.some(function (sg) { return SEQ_REF_RE.test(String(sg.text || "")); });
+      if (seqRef) {
+        var have = {}; picked.forEach(function (u) { have[u] = 1; });
+        var byU = {}; cands.forEach(function (c) { if (!(c.url in byU) || c.area > byU[c.url]) byU[c.url] = c.area; });
+        Object.keys(byU).forEach(function (u) { if (!have[u] && byU[u] >= 45000) displayCount++; });
+      }
+    } catch (e) {}
     var remindSeen;
     try { remindSeen = localStorage.getItem(REMIND_KEY) || "(unset)"; } catch (e) { remindSeen = "(unreadable)"; }
     var veh = {}, isSum = false;
@@ -1378,7 +1403,8 @@
       "vehicle grab (from last scan): " + vehLine + "\n" +
       "flags: B=read as bold, H=recognised as a part heading\n" +
       "detected page header: \"" + hdr + "\"\n" +
-      "large images on page: " + cands.length + " · diagrams kept: " + picked.length +
+      "large images on page: " + cands.length + " · diagrams kept: " + displayCount +
+      (seqRef ? " (incl. tightening-sequence diagram)" : "") +
       (picked.length ? " (" + picked[0].slice(0, 80) + " …)" : "") + "\n" +
       "segments captured: " + lastSegments.length + "\n\n" + lines.join("\n");
   }
@@ -1736,18 +1762,32 @@
 
       var header = detectTitle(document) || ("Page " + (srcCount(job) + 1));
       if (!job.__title) job.__title = header;
-      var pageR = extractSegments(segs);
-      // only capture a diagram on overview pages (those with numbered components),
-      // and only the dominant image(s) — not logos, step photos or icons
-      var keptUrls = hasNumberedParts(pageR) ? pickDiagrams(gatherImages(document)) : [];
+      // work out the dominant diagram(s) FIRST, so the extractor only treats those
+      // as figure boundaries (a small non-dominant image can't restart numbering)
+      var cands = gatherImages(document);
+      var dominant = pickDiagrams(cands);
+      var keepSet = {}; dominant.forEach(function (u) { keepSet[u] = 1; });
+      var pageR = extractSegments(segs, keepSet);
+      // diagrams to DISPLAY. Normally just the dominant overview, but if the page
+      // refers to a tightening sequence the supplementary sequence diagram is
+      // smaller (dominance would drop it) — keep it too, for display only (NOT as a
+      // figure boundary, so it can't restart the bolt numbering).
+      var displayUrls = dominant.slice();
+      var hasSeqRef = (pageR.torque || []).some(function (it) { return SEQ_REF_RE.test(it.text || ""); });
+      if (hasSeqRef) {
+        var have = {}; displayUrls.forEach(function (u) { have[u] = 1; });
+        var byUrl = {}; cands.forEach(function (c) { if (!(c.url in byUrl) || c.area > byUrl[c.url]) byUrl[c.url] = c.area; });
+        Object.keys(byUrl).forEach(function (u) { if (!have[u] && byUrl[u] >= 45000) displayUrls.push(u); });
+      }
+      // only capture diagrams on overview pages (those with numbered components)
+      var keptUrls = hasNumberedParts(pageR) ? displayUrls : [];
       // map each kept diagram URL to the figure it introduced (from the walk)
       var figByUrl = {};
       (pageR.__figImages || []).forEach(function (m) { if (!(m.url in figByUrl)) figByUrl[m.url] = m.fig; });
-      // how many distinct figures actually carry numbered parts or a kept diagram?
-      var figSet = {};
-      SECTIONS.forEach(function (s) { if (s.autoPart) pageR[s.key].forEach(function (it) { figSet[it.fig || 0] = 1; }); });
-      keptUrls.forEach(function (u) { figSet[figByUrl[u] || 0] = 1; });
-      var multiFig = Object.keys(figSet).length >= 2;
+      // split into figures only when ≥2 dominant diagrams were actually kept
+      var keptFigs = {};
+      dominant.forEach(function (u) { keptFigs[figByUrl[u] || 0] = 1; });
+      var multiFig = Object.keys(keptFigs).length >= 2;
       // when a page has several diagrams, tag each item/diagram with "… · Fig N" so
       // the existing per-source grouping separates them and numbers restart per
       // diagram. A normal single-diagram page keeps just the page header (unchanged).
@@ -1758,7 +1798,7 @@
         });
       });
       pageR.__images = keptUrls.map(function (u) {
-        return { src: multiFig ? figLabel(figByUrl[u]) : header, url: u };
+        return { src: multiFig ? figLabel(figByUrl[u] || 0) : header, url: u };
       });
       mergeInto(job, pageR);
       show(job);

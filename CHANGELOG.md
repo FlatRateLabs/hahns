@@ -9,6 +9,23 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.5.10-alpha — 2026-06-27
+
+### Fixed
+- **Tightening sequences now show up.** On a page like *Overview – Cylinder Head*,
+  the cylinder-head bolt's "Tightening Specifications and Sequence — refer to figure"
+  note is now captured under Torque (so the bolt clearly needs the sequence), and the
+  **sequence diagram itself is now kept** alongside the main overview diagram instead
+  of being dropped.
+- **A dropped second image can no longer scramble bolt numbers.** Following up on the
+  multiple-diagram support: only the main assembly diagram(s) start a new "Fig",
+  so a smaller secondary image on the page won't restart or split the numbering.
+
+> **Re-drag needed:** this changes the bookmarklet itself, so hard-refresh the setup
+> page and re-drag the bookmark.
+
+---
+
 ## v0.3.5.9-alpha — 2026-06-27
 
 ### Fixed
