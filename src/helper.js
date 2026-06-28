@@ -318,6 +318,7 @@
     var sawPart = false;     // a numbered part has been collected for this figure
     var figImages = [];      // [{url, fig}] diagram markers in DOM order
     var inSeqTable = false;  // inside a "Step | Bolts | Tightening Spec" table
+    var seqTitle = "";       // heading above the sequence table/diagram
 
     segments.forEach(function (seg) {
       // a diagram image marker (from gatherSegments). If we've already numbered a
@@ -343,8 +344,17 @@
       // rows, header stuck onto the last component). Detect the header, then parse
       // each row into an ordered step and keep it OUT of the component/torque
       // heuristics. Steps land in torque as "Step N → Bolts X — spec", with seq:true.
+
+      // the heading above the sequence table/diagram (e.g. "Cylinder Head -
+      // Tightening Specifications and Sequence") — used as the group header for the
+      // sequence. NOT a "refer to Fig" reference (that stays as a bolt's torque spec).
+      if (/tightening/i.test(line) && /\bsequence\b/i.test(line) && !/refer\s+to/i.test(line) && !/^step\b/i.test(line)) {
+        seqTitle = line.replace(/[\s.;:]+$/, "").trim();
+        results.__seqSeen = true;
+        return;                            // it's a heading, not a spec — don't emit it
+      }
       if (/^step\b/i.test(line) && /\bbolts?\b/i.test(line) && /tightening/i.test(line)) {
-        inSeqTable = true;                 // header row — consume it, emit nothing
+        inSeqTable = true; results.__seqSeen = true;   // header row — consume it
         return;
       }
       if (inSeqTable) {
@@ -358,7 +368,7 @@
           var skey = ("seq||" + srow[1] + "||" + stext).toLowerCase();
           if (!seen.torque[skey]) {
             seen.torque[skey] = 1;
-            results.torque.push({ text: stext, part: "Step " + srow[1], fig: figIdx, seq: true });
+            results.torque.push({ text: stext, part: "Step " + srow[1], fig: figIdx, seq: true, seqTitle: seqTitle || "Tightening Specifications and Sequence" });
           }
           return;
         }
@@ -674,6 +684,44 @@
       });
     } catch (e) {}
     return out;
+  }
+
+  // <img> elements that haven't finished loading yet (across same-origin frames).
+  // On a first scan a not-yet-loaded image reports size 0 and is skipped.
+  function pendingImages(doc, out) {
+    out = out || [];
+    try {
+      Array.prototype.forEach.call(doc.querySelectorAll("img"), function (im) {
+        if (!im.complete) out.push(im);
+      });
+    } catch (e) {}
+    try {
+      Array.prototype.forEach.call(doc.querySelectorAll("iframe, frame"), function (f) {
+        try { var d = f.contentDocument || (f.contentWindow && f.contentWindow.document); if (d) pendingImages(d, out); } catch (e) {}
+      });
+    } catch (e) {}
+    return out;
+  }
+
+  var imgRescanDone = false;   // auto re-scan at most once per page (for late images)
+  // after a scan, if any images are still loading, re-run the scan once they settle
+  // so a late-loading diagram (e.g. a lower-down sequence diagram that read size 0
+  // the first time) gets captured without the tech having to press SCAN twice.
+  function scheduleImageRescan(rescan) {
+    if (imgRescanDone) return;
+    var pend = pendingImages(document);
+    if (!pend.length) return;
+    imgRescanDone = true;
+    var fired = false, remaining = pend.length;
+    var go = function () { if (fired) return; fired = true; try { rescan(); } catch (e) {} };
+    pend.forEach(function (im) {
+      var settle = function () {
+        try { im.removeEventListener("load", settle); im.removeEventListener("error", settle); } catch (e) {}
+        if (--remaining === 0) go();
+      };
+      try { im.addEventListener("load", settle); im.addEventListener("error", settle); } catch (e) { remaining--; }
+    });
+    setTimeout(go, 4000);   // safety cap so a stalled image can't block the re-scan
   }
 
   // from the candidates, keep only the dominant image(s) — the overview/assembly
@@ -1802,7 +1850,10 @@
       // smaller (dominance would drop it) — keep it too, for display only (NOT as a
       // figure boundary, so it can't restart the bolt numbering).
       var displayUrls = dominant.slice();
-      var hasSeqRef = (pageR.torque || []).some(function (it) { return it.seq || SEQ_REF_RE.test(it.text || ""); });
+      var hasSeqRef = pageR.__seqSeen || (pageR.torque || []).some(function (it) { return it.seq || SEQ_REF_RE.test(it.text || ""); });
+      // the sequence section's header (its own group label for steps + diagram)
+      var seqTitle = "Tightening Specifications and Sequence";
+      (pageR.torque || []).some(function (it) { if (it.seq && it.seqTitle) { seqTitle = it.seqTitle; return true; } return false; });
       if (hasSeqRef) {
         var have = {}; displayUrls.forEach(function (u) { have[u] = 1; });
         var byUrl = {}; cands.forEach(function (c) { if (!(c.url in byUrl) || c.area > byUrl[c.url]) byUrl[c.url] = c.area; });
@@ -1823,14 +1874,25 @@
       var figLabel = function (f) { return header + " · Fig " + ((f || 0) + 1); };
       SECTIONS.forEach(function (s) {
         pageR[s.key].forEach(function (it) {
-          it.src = (multiFig && s.autoPart) ? figLabel(it.fig) : header;
+          // sequence steps get their own group header (the table/diagram title), so
+          // they break out from the component torques like a separately-scanned page
+          if (it.seq) it.src = it.seqTitle || seqTitle;
+          else it.src = (multiFig && s.autoPart) ? figLabel(it.fig) : header;
         });
       });
+      var domSet = {}; dominant.forEach(function (u) { domSet[u] = 1; });
       pageR.__images = keptUrls.map(function (u) {
+        // the supplementary (non-dominant) diagram is the sequence one → group it
+        // under the sequence header alongside its steps
+        if (!domSet[u]) return { src: seqTitle, url: u };
         return { src: multiFig ? figLabel(figByUrl[u] || 0) : header, url: u };
       });
       mergeInto(job, pageR);
       show(job);
+      // some diagram images (esp. a 2nd, lower-down sequence diagram) may still be
+      // loading on the first scan → their size reads 0 and they're skipped. Wait for
+      // in-flight images to finish, then re-scan ONCE so they get captured.
+      scheduleImageRescan(scan);
     }
     // wipe everything — empty list, empty title, cleared storage. The next
     // "Scan page" starts collecting the new job from scratch.
