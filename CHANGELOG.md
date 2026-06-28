@@ -9,7 +9,23 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.7-alpha — in progress
+## v0.3.7.1-alpha — in progress
+
+### Added
+- **"Clear info" button.** A new button under **New job** wipes everything Hahns has
+  collected — torque, replace, special tools, warnings and diagrams — **but keeps the
+  loaded vehicle**, so you can start a fresh procedure on the same car without
+  re-scanning the Vehicle Summary. (New job still clears the vehicle too.)
+- **Per-group Clear.** Each section (Torque, Replace, Special Tools, Critical Warnings,
+  Diagram) now has its own small **Clear** button in its header to empty just that
+  group. Both kinds of clear ask "Clear all?" first so a stray tap can't wipe your work.
+
+> **Re-drag needed:** this changes the bookmarklet itself, so hard-refresh the setup
+> page and re-drag the bookmark.
+
+---
+
+## v0.3.7-alpha — 2026-06-28
 
 ### Changed
 - **The green "Vehicle loaded" box now collapses to save space.** A few seconds after
