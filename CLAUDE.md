@@ -13,7 +13,8 @@
   - `vwjb_job_v1` — the running job (collected specs, tools, diagram URLs, title, **and `__vehicle`** — the loaded vehicle `{vin, year, model, engine, trans}`, v0.3.2+). No separate vehicle key: it rides inside the job so it shares the job's lifecycle (cleared on Exit / New job, survives page-to-page navigation).
   - `vwjb_pos_v1` — remembered panel position.
   - `vwjb_min_v1` — minimized (collapsed) state.
-  - **Exit** (the panel ✕, with a confirm dialog) clears all three of the above.
+  - `vwjb_vehexp_v1` (v0.3.7+) — green vehicle-bar expand/collapse state (`"1"` expanded, `"0"` collapsed, **absent** = never set → render expanded then auto-collapse after 3 s once per load). Pure UI flag, never job/ELSA content.
+  - **Exit** (the panel ✕, with a confirm dialog) clears all four of the above.
   - **One** `localStorage` key, `vwjb_upd_reminder_v1` (v0.3.0+) — the Wednesday-marker (a `YYYY-MM-DD` date string) of the last Wednesday the **weekly update-check reminder** was shown. Written the moment the banner becomes due so it shows **only once per Wednesday**. Stores **only a date string**, never job/ELSA content, so it doesn't weaken the privacy posture; persists across tabs by design. Surfaced in the diagnostic dump.
   - **History:** the v0.2.x auto-update keys (`vwjb_last_update_check_v1`, `vwjb_last_update_result_v1`, `vwjb_upd_blk_dismiss_v1`) and the v0.1.1 changelog key (`vwjb_seen_ver_v1`) were **removed in v0.3.0** when the network update check and the in-app changelog pop-up were dropped.
 - **Hosting / deployment:** Static. Source repo **github.com/FlatRateLabs/hahns** (public). Hosted on **GitHub Pages** from the **`/docs`** folder of `main`. Live setup page (share this with techs): **https://flatratelabs.github.io/hahns/**. Pages auto-redeploys ~1 min after push.

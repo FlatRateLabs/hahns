@@ -932,6 +932,17 @@
   function isMin() { try { return sessionStorage.getItem("vwjb_min_v1") === "1"; } catch (e) { return false; } }
   function setMin(v) { try { sessionStorage.setItem("vwjb_min_v1", v ? "1" : "0"); } catch (e) {} }
 
+  // vehicle-bar expand/collapse (v0.3.7) — to reclaim vertical space, the green
+  // "Vehicle loaded" strip auto-collapses to one line a few seconds after it first
+  // appears. State: null = never set (render expanded + arm the auto-collapse),
+  // "1" = the tech expanded it, "0" = collapsed. The toggle button / editing a
+  // field cancels the pending auto-collapse so it can't fold up mid-edit.
+  function vehExpState() { try { return sessionStorage.getItem("vwjb_vehexp_v1"); } catch (e) { return null; } }
+  function setVehExp(v) { try { sessionStorage.setItem("vwjb_vehexp_v1", v ? "1" : "0"); } catch (e) {} }
+  var vehAutoArmed = false;   // arm the 3s auto-collapse only once per page load
+  var vehCollapseTimer = null;
+  function cancelVehAuto() { if (vehCollapseTimer) { clearTimeout(vehCollapseTimer); vehCollapseTimer = null; } }
+
   // the most recent Wednesday on or before `now`, as YYYY-MM-DD. Used as a
   // once-a-week marker: it only changes when a new Wednesday passes.
   function wedMarker(now) {
@@ -1095,7 +1106,14 @@
     ".vbar.ok{background:#edf7ee;border-bottom-color:#cce6cf}" +
     ".vmsg b{color:#001e50}" +
     ".vhead{display:flex;align-items:center;gap:6px;font-weight:700;color:#1e6b34;font-size:11px;letter-spacing:.03em;text-transform:uppercase;margin-bottom:6px}" +
+    ".vheadl{display:inline-flex;align-items:center;gap:6px}" +
     ".vhead svg{width:14px;height:14px;fill:none;stroke:#1e6b34;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}" +
+    // expand/collapse toggle for the vehicle bar
+    ".vtog{appearance:none;-webkit-appearance:none;background:transparent;border:0;cursor:pointer;padding:1px 2px;margin-left:auto;color:#1e6b34;display:flex;align-items:center;border-radius:5px}" +
+    ".vtog svg{width:17px;height:17px;stroke-width:2.2}" +
+    ".vtog:hover{background:#dcecdd}" +
+    ".vbar.collapsed .vhead{margin-bottom:0}" +
+    ".vmiss{margin-left:7px;font-weight:700;color:#9a5a00;background:#fff6e0;border:1px solid #f0dca6;border-radius:8px;padding:1px 7px;font-size:10px;letter-spacing:.01em;text-transform:none}" +
     ".vgrid{display:grid;grid-template-columns:auto 1fr;gap:3px 9px;align-items:baseline}" +
     ".vk{color:#5a6b8c;font-weight:600;white-space:nowrap}" +
     ".vval{color:#1c1c1c;font-weight:600;cursor:text;word-break:break-all}" +
@@ -1212,6 +1230,8 @@
   var IMG_ICON = "M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 10a1.3 1.3 0 1 1-2.6 0 1.3 1.3 0 0 1 2.6 0";
   var CHECK = "M20 6 9 17l-5-5";
   var GLASS = "M10 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12M20 20l-5.2-5.2";   // locate-on-page magnifier
+  var CHEV_DOWN = "M6 9l6 6 6-6";   // expand the vehicle bar
+  var CHEV_UP = "M6 15l6-6 6 6";    // collapse the vehicle bar
 
   function svg(path, cls) {
     return '<svg viewBox="0 0 24 24" class="' + (cls || "") + '"><path d="' + path + '"/></svg>';
@@ -1235,6 +1255,16 @@
         '<b>SCAN</b> to load the vehicle before collecting specs.</div>' + note + "</div>";
     }
     var v = r.__vehicle;
+    var miss = vehMissing(v);
+    // collapsed: a single "✓ Vehicle loaded" line (+ a blanks tag) and an expand
+    // arrow — frees up vertical space for the rest of the panel
+    if (vehExpState() === "0") {
+      var missTag = miss.length ? '<span class="vmiss">' + miss.length + " to add</span>" : "";
+      return '<div class="vbar ok collapsed"><div class="vhead">' +
+        '<span class="vheadl">' + svg(CHECK) + "Vehicle loaded" + missTag + "</span>" +
+        '<button class="vtog" data-act="vehexpand" title="Show vehicle details">' + svg(CHEV_DOWN) + "</button>" +
+        "</div>" + note + "</div>";
+    }
     var grid = VEH_FIELDS.map(function (f) {
       var val = v[f.k];
       var cell = val
@@ -1242,11 +1272,13 @@
         : '<span class="vval miss" data-vk="' + f.k + '" title="Click to add">+ add</span>';
       return '<span class="vk">' + esc(f.label) + "</span>" + cell;
     }).join("");
-    var miss = vehMissing(v);
     var warn = miss.length
       ? '<div class="vwarn">Missing: ' + esc(miss.join(", ")) + " — click a blank to add it by hand.</div>"
       : "";
-    return '<div class="vbar ok"><div class="vhead">' + svg(CHECK) + "Vehicle loaded</div>" +
+    return '<div class="vbar ok"><div class="vhead">' +
+      '<span class="vheadl">' + svg(CHECK) + "Vehicle loaded</span>" +
+      '<button class="vtog" data-act="vehcollapse" title="Hide vehicle details">' + svg(CHEV_UP) + "</button>" +
+      "</div>" +
       '<div class="vgrid">' + grid + "</div>" + warn + note + "</div>";
   }
 
@@ -1672,6 +1704,8 @@
     root.querySelectorAll(".vval").forEach(function (cell) {
       cell.addEventListener("click", function () {
         if (!r.__vehicle) return;
+        cancelVehAuto();          // don't let the bar auto-collapse while editing
+        setVehExp(true);          // keep it open across the edit's re-render
         var vk = cell.getAttribute("data-vk");
         var inp = document.createElement("input");
         inp.type = "text";
@@ -1825,6 +1859,7 @@
               clearJob();
               sessionStorage.removeItem("vwjb_pos_v1");
               sessionStorage.removeItem("vwjb_min_v1");
+              sessionStorage.removeItem("vwjb_vehexp_v1");
             } catch (e) {}
             host.remove();
           });
@@ -1847,6 +1882,10 @@
           btn.replaceWith(cf);
           cf.querySelector(".cyes").addEventListener("click", function () { options.onNewJob(); });
           cf.querySelector(".cno").addEventListener("click", function () { renderInto(host, r, options); });
+        } else if (act === "vehcollapse") {
+          cancelVehAuto(); setVehExp(false); renderInto(host, r, options);
+        } else if (act === "vehexpand") {
+          cancelVehAuto(); setVehExp(true); renderInto(host, r, options);
         } else if (act === "copy") {
           copyText(plainText(r), toast("Copied"));
         } else if (act === "print") {
@@ -1890,6 +1929,18 @@
         wrap.style.left = p.left + "px"; wrap.style.top = p.top + "px"; wrap.style.right = "auto";
       }
       if (wrap) makeDraggable(wrap, root.querySelector(".hd"));
+    }
+
+    // auto-collapse the vehicle bar a few seconds after it first shows, to free up
+    // vertical space. Only once per page load, only if the tech hasn't set their own
+    // preference yet (state still null) and the panel isn't minimized. Manual
+    // toggling or editing a field cancels this (see cancelVehAuto).
+    if (!options.embed && vehLoaded(r) && !isMin() && vehExpState() === null && !vehAutoArmed) {
+      vehAutoArmed = true;
+      vehCollapseTimer = setTimeout(function () {
+        vehCollapseTimer = null;
+        if (vehExpState() === null) { setVehExp(false); renderInto(host, r, options); }
+      }, 3000);
     }
 
     function toast(msg) {
