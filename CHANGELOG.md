@@ -9,7 +9,34 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.5.8-alpha — in progress
+## v0.3.5.9-alpha — 2026-06-27
+
+### Fixed
+- **Replace-after-removal now catches a plain "Replace" note.** When ELSA marks a
+  part for one-time use with just the word **Replace** (or **Renew**) next to it, it
+  was being skipped. Those parts now show up in the Replace-after-removal section,
+  labeled with their component number like everything else.
+- **More special tools are recognized.** Tool numbers like **10-222 A** (and its
+  sub-parts **10-222 A/1, /2, …**) are now picked up, and the **VAG 1331A / V.A.G
+  1332A torque wrenches** are listed under Special Tools instead of being mistaken
+  for a torque spec. Works whether or not the number is written with periods
+  (VAG or V.A.G).
+- **Print now waits for the diagrams.** Diagrams sometimes came out blank on the
+  print preview and only showed up on a second try. Print now holds until the
+  diagram images have finished loading before opening the preview, so they show up
+  the first time.
+- **Pages with more than one diagram now keep them separate.** When a page shows
+  two assembly diagrams, each with its own numbered bolts and torque specs, Hahns
+  now splits them into "Fig 1" / "Fig 2" groups — each diagram's bolt numbers start
+  at 1 again and match that diagram, and an identical spec that appears on both is
+  no longer dropped. Pages with a single diagram look exactly as before.
+
+> **Re-drag needed:** this changes the bookmarklet itself, so hard-refresh the setup
+> page and re-drag the bookmark.
+
+---
+
+## v0.3.5.8-alpha — 2026-06-27
 
 ### Fixed
 - **Fluids & Capacities now always opens the latest version.** GitHub caches the page
