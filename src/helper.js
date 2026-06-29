@@ -1137,8 +1137,13 @@
     ".scan{width:100%;appearance:none;-webkit-appearance:none;background:#2fb84d;color:#0a0a0a;font-family:inherit;font-size:17px;font-weight:800;letter-spacing:.1em;padding:13px;border:0;border-radius:9px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.18)}" +
     ".scan:hover{background:#28a344}" +
     ".scan:active{background:#22923b}" +
-    ".jobbar{padding:9px 13px;border-bottom:1px solid #eee;display:flex;gap:7px;align-items:flex-start}" +
-    ".jobbtns{flex-shrink:0;display:flex;flex-direction:column;gap:6px}" +
+    ".jobbar{padding:9px 13px;border-bottom:1px solid #eee;display:flex;gap:7px;align-items:center}" +
+    // "New Vehicle" — the start-over action, pinned at the top under the version bar
+    ".topbar{padding:9px 13px 5px;background:#fff}" +
+    ".newveh{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;appearance:none;-webkit-appearance:none;background:#fff;border:1px solid #cfd6e4;color:#001e50;font-family:inherit;font-weight:600;font-size:12.5px;padding:8px 10px;border-radius:8px;cursor:pointer}" +
+    ".newveh:hover{background:#f3f6fb;border-color:#001e50}" +
+    ".newveh svg{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
+    ".topbar .confirm{justify-content:center}" +
     ".job{flex:1;min-width:0;font-family:inherit;font-weight:600;font-size:14px;color:#001e50;border:1px solid #dfe4ee;border-radius:8px;padding:8px 10px;outline:none;background:#fff}" +
     ".job::placeholder{color:#b3b9c4;font-weight:400}" +
     ".job:focus{border-color:#001e50}" +
@@ -1231,7 +1236,11 @@
     ".ft button{flex:1;font-size:12px;font-weight:600;border:1px solid #cfd6e4;background:#fff;color:#001e50;border-radius:7px;padding:7px;cursor:pointer}" +
     ".ft button:hover{background:#f3f6fb}" +
     ".toast{position:absolute;bottom:54px;left:50%;transform:translateX(-50%);background:#1c1c1c;color:#fff;font-size:11px;padding:5px 10px;border-radius:6px;opacity:0;transition:opacity .2s;pointer-events:none}" +
-    ".toast.on{opacity:1}";
+    ".toast.on{opacity:1}" +
+    // fast custom tooltip (native `title` has a ~1s delay we can't shorten). Positioned
+    // by JS relative to the panel; shown after a short hover. See the [data-tip] wiring.
+    ".tip{position:absolute;z-index:6;display:none;max-width:210px;background:#1c2530;color:#fff;font-size:11px;font-weight:600;line-height:1.35;padding:6px 9px;border-radius:7px;box-shadow:0 4px 14px rgba(0,0,0,.28);pointer-events:none;opacity:0;transition:opacity .1s ease}" +
+    ".tip.on{opacity:1}";
 
   var WRENCH = "M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 2 2 6-6a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3z";
   var TRASH = "M4 7h16M10 11v6M14 11v6M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3";
@@ -1240,6 +1249,7 @@
   var GLASS = "M10 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12M20 20l-5.2-5.2";   // locate-on-page magnifier
   var CHEV_DOWN = "M6 9l6 6 6-6";   // expand the vehicle bar
   var CHEV_UP = "M6 15l6-6 6 6";    // collapse the vehicle bar
+  var RESTART = "M20 11.5a8 8 0 1 1-2.3-5.6M20 4v5h-5";   // "New Vehicle" / start over
 
   function svg(path, cls) {
     return '<svg viewBox="0 0 24 24" class="' + (cls || "") + '"><path d="' + path + '"/></svg>';
@@ -1318,6 +1328,9 @@
       '<div class="sub">' +
         '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span>" +
         '<a class="upd" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Opens the H.A.H.N.S page so you can compare versions">check for latest &#8599;</a></div>' +
+      // "New Vehicle" — the start-over action: wipes the loaded vehicle AND all
+      // collected info. Pinned at the very top, right under the version bar.
+      (embed ? "" : '<div class="topbar"><button class="newveh" data-act="newjob" data-tip="Start over with a NEW vehicle — clears the loaded vehicle and all collected info">' + svg(RESTART) + "New Vehicle</button></div>") +
       // vehicle identity strip (required before any procedure page is collected)
       (embed ? "" : vehicleBar(r)) +
       // fluids & capacities link — pinned directly under the vehicle bar
@@ -1330,13 +1343,10 @@
             '<a class="updget" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Open the H.A.H.N.S setup page to compare versions">Check for update?</a>' +
             '<button class="updx" data-act="reminddismiss" title="Hide this">Dismiss</button></div>'
         : "") +
-      '<div class="scanbar"><button class="scan" data-act="rescan" title="Read this page and add its specs to the job">SCAN</button></div>' +
+      '<div class="scanbar"><button class="scan" data-act="rescan" data-tip="Read this page and add its specs to the job">SCAN</button></div>' +
       '<div class="jobbar">' +
         '<input class="job" type="text" placeholder="Job title — e.g. Rear Brakes" value="' + esc(r.__title || "") + '">' +
-        '<div class="jobbtns">' +
-          '<button class="newjob" data-act="newjob" title="Clear everything and start a new job">New job</button>' +
-          (hasInfo ? '<button class="clrinfo" data-act="clearinfo" title="Clear all collected specs, tools, warnings and diagrams — keeps the loaded vehicle">Clear info</button>' : "") +
-        "</div>" +
+        (hasInfo ? '<button class="clrinfo" data-act="clearinfo" data-tip="Clears all collected specs, tools, warnings and diagrams — keeps the loaded vehicle">Clear All Info</button>' : "") +
       "</div>" +
       '<div class="body">';
 
@@ -1391,7 +1401,7 @@
 
       html += '<div class="sec ' + s.key + '"><div class="st c-' + s.key + '">' +
         svg(s.icon) + s.title + '<span class="ct">' + items.length + "</span>" +
-        (items.length ? '<button class="clrsec" data-clear="' + s.key + '" title="Clear all ' + esc(s.title) + '">Clear</button>' : "") +
+        (items.length ? '<button class="clrsec" data-clear="' + s.key + '" data-tip="Clear all ' + esc(s.title) + '">Clear</button>' : "") +
         "</div>";
 
       // blue tool-number chips for a quick glance — each one removable
@@ -1433,7 +1443,7 @@
       };
       html += '<div class="sec diagram"><div class="st c-diagram">' + svg(IMG_ICON) + "Diagram" +
         '<span class="ct">' + imgs.length + "</span>" +
-        '<button class="clrsec" data-clear="__images" title="Clear all diagrams">Clear</button>' +
+        '<button class="clrsec" data-clear="__images" data-tip="Clear all diagrams">Clear</button>' +
         "</div>";
       if (multiSrc) {
         groupImagesBySource(imgs).forEach(function (g) {
@@ -1919,18 +1929,12 @@
         } else if (act === "rescan" && typeof onRescan === "function") {
           onRescan();
         } else if (act === "newjob" && typeof options.onNewJob === "function") {
-          // guard against an accidental click — inline Yes/No confirmation
-          var cf = document.createElement("span");
-          cf.className = "confirm";
-          cf.innerHTML = '<span class="ctxt">Clear job?</span>' +
-            '<button class="cyes">Yes</button><button class="cno">No</button>';
-          btn.replaceWith(cf);
-          cf.querySelector(".cyes").addEventListener("click", function () { options.onNewJob(); });
-          cf.querySelector(".cno").addEventListener("click", function () { renderInto(host, r, options); });
+          // New Vehicle wipes EVERYTHING (vehicle + all collected info) — confirm first
+          inlineConfirm(btn, "New vehicle? Clears all.", function () { options.onNewJob(); });
         } else if (act === "clearinfo") {
           // clear the COLLECTED info (specs, tools, warnings, diagrams, title) but
           // keep the loaded vehicle — confirmed inline so a stray click is safe
-          inlineConfirm(btn, "Clear collected info?", function () {
+          inlineConfirm(btn, "Clear all info?", function () {
             SECTIONS.forEach(function (s) { r[s.key] = []; });
             r.__images = [];
             r.__title = "";
@@ -1997,6 +2001,39 @@
         if (vehExpState() === null) { setVehExp(false); renderInto(host, r, options); }
       }, 3000);
     }
+
+    // fast custom tooltips — the native `title` delay (~1 s) can't be shortened, so
+    // any [data-tip] element gets a quick (180 ms) JS tooltip instead. One shared
+    // bubble, appended to the panel (not the scrolling body) so it isn't clipped.
+    (function () {
+      var wrap = root.querySelector(".wrap");
+      if (!wrap) return;
+      var tip = document.createElement("div");
+      tip.className = "tip";
+      wrap.appendChild(tip);
+      var timer = null;
+      function hide() { tip.classList.remove("on"); tip.style.display = "none"; }
+      function show(el) {
+        if (!el.isConnected) return;
+        var msg = el.getAttribute("data-tip");
+        if (!msg) return;
+        tip.textContent = msg;
+        tip.style.display = "block";
+        var er = el.getBoundingClientRect(), wr = wrap.getBoundingClientRect(), tr = tip.getBoundingClientRect();
+        var left = (er.left - wr.left) + er.width / 2 - tr.width / 2;
+        left = Math.max(6, Math.min(left, wr.width - tr.width - 6));
+        var top = (er.top - wr.top) - tr.height - 7;          // prefer above
+        if (top < 4) top = (er.top - wr.top) + er.height + 7;  // not enough room → below
+        tip.style.left = Math.round(left) + "px";
+        tip.style.top = Math.round(top) + "px";
+        tip.classList.add("on");
+      }
+      root.querySelectorAll("[data-tip]").forEach(function (el) {
+        el.addEventListener("mouseenter", function () { clearTimeout(timer); timer = setTimeout(function () { show(el); }, 180); });
+        el.addEventListener("mouseleave", function () { clearTimeout(timer); hide(); });
+        el.addEventListener("click", function () { clearTimeout(timer); hide(); });
+      });
+    })();
 
     function toast(msg) {
       return function () {
