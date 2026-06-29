@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.9-alpha — in progress
+## v0.3.9-alpha — 2026-06-29
 
 ### Added
 - **Meet Hahns!** The plain wrench icon is replaced everywhere by the **Hahns mascot** —
