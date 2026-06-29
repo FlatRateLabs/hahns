@@ -9,7 +9,22 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.7.2-alpha — in progress
+## v0.3.8-alpha — in progress
+
+### Added
+- **Fluid & capacity data for 2011, 2012 and 2013.** The lookup now covers **2011
+  through 2026**. (Older years 2006–2010 list engines by size only — no engine code —
+  and 2000–2005 use a different table format; those need more work and will come later.)
+
+### Fixed
+- **More accurate A/C refrigerant amounts (2014–2017).** Those years' air-conditioning
+  charges were showing the *tolerance* (e.g. "25 g") instead of the actual amount; they
+  now read correctly (e.g. "525 ± 25 g"). New fluid years are served data, so you do
+  **not** need to re-drag the bookmark for any of this.
+
+---
+
+## v0.3.7.2-alpha — 2026-06-29
 
 ### Changed
 - **Clearer buttons, less confusion.** The **New job** button is renamed **New Vehicle**

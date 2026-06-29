@@ -228,6 +228,14 @@ var MODEL_HDR = /^\d+\.\d+\s+(.+?)\s*\(([^)]*)\)\s*$/;
 
 function parsePdf(text) {
   var lines = text.split(/\r?\n/);
+  // Some years (e.g. 2010) append a "Maintenance Schedules" section (section 2)
+  // after the fluid tables; its numbered sub-sections look like model headers and
+  // would spawn junk "models". Cut everything from the first NUMBERED Maintenance
+  // Schedule heading onward (the "⇒ …" table-of-contents lines have no leading
+  // number, so they're left alone and don't trigger the cut prematurely).
+  for (var c = 0; c < lines.length; c++) {
+    if (/^\s*\d[\d.]*\s+Maintenance\s+Schedules?\b/i.test(lines[c])) { lines = lines.slice(0, c); break; }
+  }
   // locate model section headers
   var sections = [];
   for (var i = 0; i < lines.length; i++) {
@@ -314,6 +322,12 @@ function main() {
   var text;
   try { text = cp.execFileSync("pdftotext", ["-layout", pdf, "-"], { encoding: "utf8", maxBuffer: 1 << 24 }); }
   catch (e) { console.error("pdftotext failed — is poppler installed? (brew install poppler)\n" + e.message); process.exit(1); }
+
+  // Older PDFs (≈2006–2013) write tolerances with the Unicode ± ("525 ± 25 g");
+  // newer ones already emit ASCII "+/-". VAL_RE expects "+/-", so without this the
+  // grams CHARGE ("525") is dropped and only the tolerance ("25 g") is captured.
+  // Normalize once at the source so every year parses the same way.
+  text = text.replace(/±/g, " +/- ");
 
   var models = parsePdf(text);
   if (!models.length) { console.error("no model sections found — PDF layout may have changed"); process.exit(1); }

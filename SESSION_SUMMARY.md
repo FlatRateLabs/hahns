@@ -5,6 +5,51 @@ permanent project reference.
 
 ---
 
+## 2026-06-29 — v0.3.8-alpha: fluid data 2011–2013 + parser fixes
+
+Branch **`0.3.8`** (off `main`). **Data + parser-tool only — NO bookmarklet change, no
+re-drag.** Extends fluid lookup coverage down to 2011.
+
+### Findings (the old "2006–2013 deferred" note was partly wrong)
+Probed the 2000–2013 PDFs with the current parser:
+- **2011–2013** — modern layout WITH 4-letter engine codes → engine-code matching works.
+  **Shipped.**
+- **2006–2010** — modern layout but **displacement-only** engines ("2.0L", `[?]` codes) →
+  can't engine-code-match; needs a displacement fallback in `fluids.html`. **Deferred.**
+  (2009 is mixed 3-coded/14-disp — also deferred.)
+- **2000–2005** — old 2-column `Component/System | Capacity` layout, displacement-only →
+  needs a second parser path + displacement matching. **Deferred.**
+
+### Parser fixes (`tools/parse-fluids.js`)
+1. **Unicode `±` tolerance.** Older PDFs (≤~2017) write "525 ± 25 g" with the Unicode ±;
+   `VAL_RE` only knew ASCII "+/-", so it captured the *tolerance* ("25 g") not the charge.
+   Normalized `±` → " +/- " at the source. **This also corrected 2014–2017** (which had
+   shipped with the wrong A/C grams — those 4 JSONs are re-emitted; 2018–2026 byte-identical).
+2. **Maintenance-Schedule cut.** The 2010 PDF appends a "Maintenance Schedules" section
+   (section 2) whose numbered sub-sections looked like model headers → 20 phantom "models".
+   `parsePdf` now truncates at the first NUMBERED `Maintenance Schedule` heading (TOC "⇒"
+   lines ignored). 2010 → 9 models (it's still deferred for being displacement-only, but
+   the fix is general/safe; other years unaffected).
+
+### Shipped data
+- **New:** `docs/fluids/{2011,2012,2013}.json`. **Corrected:** 2014–2017 (A/C charges).
+  2018–2026 unchanged. Removed the 2006–2010 probe JSONs so only matchable years ship.
+
+### Verified
+- 2006–2013 re-parsed: model counts sane (6–9), 2008 matches its TOC exactly, 2011–2013
+  fully coded. 2018–2026 byte-identical (no regression). **Browser:** 2013 Golf (CBFA /
+  02Q) lookup renders Oil 4.6 L · VW 502 00 (5W-40), Coolant 8.0 L, A/C 525 ± 25 g R134a +
+  compressor oils, Drivetrain 02Q 2.3 L + bevel box + rear final drive. Stamp v0.3.8-alpha,
+  no console errors. Known cosmetic (values correct): DSG range labels "6.9 -: 7.2 L".
+
+### Next
+- **Deploy:** PR `0.3.8` → `main`; confirm live `v0.3.8-alpha`; 2011–2013 appear in lookup.
+  **No re-drag** (served data).
+- Later: displacement-based matching in `fluids.html` (unlocks 2006–2010, needs to know what
+  ELSA shows for old vehicles), then the 2000–2005 second parser path.
+
+---
+
 ## 2026-06-29 — v0.3.7.2-alpha: button reword/rearrange + fast tooltips
 
 Branch **`0.3.7.2`** (off `main`). **Bookmarklet code change → re-drag needed.** Owner
