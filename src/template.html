@@ -4,20 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>H.A.H.N.S — setup</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
   :root{--vw:#001e50;--ink:#1c1c1c;--muted:#5a6b8c;--line:#e3e7ee;--bg:#f4f6fa}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
   .page{max-width:760px;margin:0 auto;padding:28px 20px 60px}
-  header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
-  header svg{width:34px;height:34px;stroke:var(--vw);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+  header img.hero{height:92px;width:auto;flex:none}
   h1{font-size:23px;margin:0}
   .tag{color:var(--muted);margin:2px 0 24px;font-size:14px}
   .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin:16px 0}
   .card h2{font-size:16px;margin:0 0 4px}
   .card .n{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--vw);color:#fff;font-size:12px;font-weight:700;align-items:center;justify-content:center;margin-right:8px;vertical-align:2px}
   .drag{display:inline-flex;align-items:center;gap:9px;background:var(--vw);color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:11px 18px;border-radius:10px;cursor:grab;margin:8px 0 4px;user-select:none}
-  .drag svg{width:19px;height:19px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .drag img{height:24px;width:auto;flex:none}
   ol{margin:10px 0 0;padding-left:20px}
   ol li{margin:6px 0}
   .hint{font-size:13px;color:var(--muted)}
@@ -45,18 +47,18 @@
 <div class="page">
 
   <header>
-    <svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 2 2 6-6a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3z"/></svg>
+    <img class="hero" src="hahns.png" alt="Hahns the wrench mascot">
     <h1>H.A.H.N.S</h1>
   </header>
   <p class="hint" style="margin-top:-8px;font-weight:500">Hardware, Advisories, Highlights, &amp; Navigation Specialist</p>
   <p class="tag">A no-install helper that reads the repair procedure you're already looking at and lists the torque specs, one-time-use parts, fluids, special tools, and warnings — and keeps nothing.</p>
 
   <div class="card">
-    <h2><span class="n">1</span>Add the wrench to your bookmarks bar</h2>
+    <h2><span class="n">1</span>Add Hahns to your bookmarks bar</h2>
     <p>Make sure your bookmarks bar is showing (<code>Ctrl</code>+<code>Shift</code>+<code>B</code> in Chrome/Edge), then drag this button up onto it:</p>
     <p class="warn" style="margin-top:0"><b>Already have H.A.H.N.S and updating?</b> Hard-refresh this page first — press <b>Cmd&nbsp;+&nbsp;Shift&nbsp;+&nbsp;R</b> (Mac) or <b>Ctrl&nbsp;+&nbsp;Shift&nbsp;+&nbsp;R</b> (Windows) — then delete your old bookmark and drag the new one below. Skip this and you may just re-save the old version.</p>
     <a class="drag" href="__BOOKMARKLET__" onclick="return false;">
-      <svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 2 2 6-6a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3z"/></svg>
+      <img src="favicon.png" alt="">
       H.A.H.N.S
     </a>
     <p class="hint">Dragging it = saving a bookmark. Nothing installs on your computer.</p>
@@ -91,7 +93,7 @@
     <ol>
       <li>Log into <b>vw-now.com</b> and open a repair procedure in <b>ELSA</b> as usual.</li>
       <li>Click the <b>H.A.H.N.S</b> bookmark.</li>
-      <li>The wrench panel appears with your specs sorted. Hit <b>Re-scan</b> after you navigate to a new page, or the <b>&#10005;</b> to close.</li>
+      <li>The Hahns panel appears with your specs sorted. Hit <b>Re-scan</b> after you navigate to a new page, or the <b>&#10005;</b> to close.</li>
     </ol>
     <div class="warn">
       If the panel comes up empty on a real procedure, the spec text is probably inside an embedded frame from a different web address, which a bookmark can't reach. Use the paste box below as a fallback — copy the procedure text and drop it in.

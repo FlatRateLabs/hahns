@@ -1,6 +1,6 @@
 # Project Overview
 
-- **Project name:** H.A.H.N.S — **H**ardware, **A**dvisories, **H**ighlights, & **N**avigation **S**pecialist (mascot "Hahns", art not yet created). Formerly code-named "VW Job Buddy".
+- **Project name:** H.A.H.N.S — **H**ardware, **A**dvisories, **H**ighlights, & **N**avigation **S**pecialist (mascot "Hahns" — a friendly wrench character; artwork added v0.3.9, masters in `src/assets/`). Formerly code-named "VW Job Buddy".
 - **Purpose:** A no-install browser helper that reads the VW repair procedure a technician already has open in ELSA (via vw-now.com → ELSA 2 Go / ELSA Pro) and pulls the job-relevant data into one tidy, printable panel: torque specs, replace-after-removal (one-time-use) parts, fluids & capacities, special tools, critical warnings, and the numbered overview diagram.
 - **Target users:** VW dealership technicians at the bay, using locked-down shop computers. Primary stakeholder/owner: a VW tech (GitHub `senditbro`), not a developer — explain changes in plain terms.
 - **Core value proposition:** One click collects everything a tech needs for a job (across multiple manual pages), labels each spec with the component callout number so it maps to the diagram, and prints a clean job sheet — **while keeping nothing** (no files saved, no manual content sent anywhere). Ships as a bookmark, so nothing installs on restricted machines.
@@ -29,7 +29,7 @@
 - **`tools/parse-fluids.js`** (v0.3.4) — **PROGRAMMER-ONLY** local command that turns a year's "VW Fluid Capacity Tables" PDF into data. Shells out to poppler's `pdftotext -layout` (dependency-free — `brew install poppler`), parses model sections → the 4 system tables (skips BRAKE), and writes the **obfuscated** `docs/fluids/<year>.json` PLUS a **plaintext review sheet** `tools/fluids-review/<year>.txt`. **Always eyeball the review sheet against the PDF before committing** — wrong capacities are a real-world problem. Run: `node tools/parse-fluids.js "<pdf>" [--year YYYY]`.
 - **`tools/fluids-codec.js`** (v0.3.4) — shared **light-obfuscation** codec (XOR with a key + base64). The key ships in `src/fluids.html` too, so this is obfuscation, NOT security (a determined person could recover the data — the owner's accepted trade-off to keep VW data out of plain sight / search indexes). Node side encodes; the page reimplements decode with `atob`+`TextDecoder` and the same `KEY`.
 - **`docs/fluids/<year>.json`** — the obfuscated, committed fluid data Pages serves. **`tools/fluids-review/<year>.txt`** and **`*.pdf`** are **gitignored** (plaintext data / licensed source must not hit the public repo).
-- **`tools/build.js`** — the build. Reads `src/`, stamps the version, generates: `dist/HAHNS.html`, `dist/bookmarklet.txt`, `dist/version.json`, `dist/fluids.html`, `docs/index.html`, `docs/bookmarklet.txt`, `docs/version.json`, `docs/fluids.html`, `docs/.nojekyll`, and mirrors `docs/fluids/*.json` → `dist/fluids/` for local preview. **Holds the `VERSION` constant.** Also **renders `CHANGELOG.md` to HTML** (`renderChangelog`, a tiny markdown subset) and injects it into the setup page only (`__CHANGELOG__`). As of v0.3.0 the changelog is **no longer baked into the bookmarklet** (the in-app "What's new" pop-up was removed), which shrank the payload. The only helper placeholder is now `__BUILD__`. **`version.json`** (`{version, build}`) is published as a static version record — nothing fetches it (no network calls).
+- **`tools/build.js`** — the build. Reads `src/`, stamps the version, generates: `dist/HAHNS.html`, `dist/bookmarklet.txt`, `dist/version.json`, `dist/fluids.html`, `docs/index.html`, `docs/bookmarklet.txt`, `docs/version.json`, `docs/fluids.html`, `docs/.nojekyll`, and mirrors `docs/fluids/*.json` → `dist/fluids/` for local preview. **Holds the `VERSION` constant.** Also **renders `CHANGELOG.md` to HTML** (`renderChangelog`, a tiny markdown subset) and injects it into the setup page only (`__CHANGELOG__`). As of v0.3.0 the changelog is **no longer baked into the bookmarklet** (the in-app "What's new" pop-up was removed), which shrank the payload. Helper placeholders are now `__BUILD__` and **`__HAHNS_ICON__`** (v0.3.9 — the build base64-encodes `src/assets/hahns-icon.png` into a `data:` URI so the panel mascot is embedded, not fetched). The build also **copies the served mascot PNGs** (`hahns.png`, `favicon.png`, `apple-touch-icon.png`) from `src/assets/` into both `docs/` and `dist/`. **`version.json`** (`{version, build}`) is published as a static version record — nothing fetches it (no network calls).
 - **`tools/serve.js`** — tiny no-cache static dev server (port 8755) for local preview. Default route serves `dist/HAHNS.html`.
 - **`dist/`** — build output for local use (`HAHNS.html`, `bookmarklet.txt`, `version.json`).
 - **`docs/`** — build output served by GitHub Pages (`index.html`, `bookmarklet.txt`, `version.json`, `.nojekyll`).
@@ -81,8 +81,22 @@
 - **Paste-box fallback** on the setup page for pages the bookmark can't read.
 
 ## Planned / discussed
-- Hahns **mascot artwork** (during polish phase; currently a wrench icon placeholder).
 - A short **"works in Chrome/Edge/Safari" note** for Firefox users (offered).
+
+### Built
+- **Hahns mascot artwork (v0.3.9):** replaced the wrench SVG everywhere. Masters live in
+  **`src/assets/`** (`hahns.png` full-body web hero, `favicon.png` 64px square bust,
+  `apple-touch-icon.png` 180px, `hahns-icon.png` 64px bust embedded in the bookmarklet).
+  Source art was a ChatGPT-generated transparent PNG; the bust crops are made with Pillow
+  (no knockout needed — the source already had a clean alpha). **build.js** copies the
+  three served PNGs into `docs/` + `dist/` and base64-embeds `hahns-icon.png` into the
+  helper via the **`__HAHNS_ICON__`** placeholder (so the panel icon stays self-contained,
+  **zero network** — `var HAHNS_ICON` in `helper.js`, rendered as `<img class="brand">` in
+  the `.hd` header). Setup/fluids pages reference the PNGs + favicon by relative URL (they
+  sit beside `index.html`/`fluids.html` in `docs/`). **NOTE:** the local preview server
+  maps `/` → `dist/HAHNS.html`, so relative image paths only resolve when you open
+  `/dist/HAHNS.html` (or `/dist/fluids.html`) directly; in production (`docs/`) they're
+  siblings and Just Work.
 
 ## Intentionally excluded
 - **No LLM/AI parsing** — local regex/DOM heuristics only, so manual content never leaves the browser.
