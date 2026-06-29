@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.8-alpha — in progress
+## v0.3.8-alpha — 2026-06-29
 
 ### Added
 - **Fluid & capacity data for 2011, 2012 and 2013.** The lookup now covers **2011
