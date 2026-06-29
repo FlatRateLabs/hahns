@@ -7,7 +7,7 @@ permanent project reference.
 
 ## 2026-06-29 — v0.3.9-alpha: Hahns mascot artwork + favicon
 
-Branch work on `main` (not yet committed/deployed at write time). **Bookmarklet code
+**MERGED + LIVE** (PR #46 → `main`; live `v0.3.9-alpha` confirmed). **Bookmarklet code
 change → re-drag needed.** Owner supplied ChatGPT-generated mascot art; replaced the
 wrench icon everywhere with **Hahns**.
 
@@ -51,10 +51,14 @@ wrench icon everywhere with **Hahns**.
   console errors. **Preview gotcha:** serve.js maps `/`→`dist/HAHNS.html`, so relative
   PNGs only resolve at `/dist/HAHNS.html` (prod `docs/` has them as siblings — fine).
 
-### Next
-- **Deploy (pending owner OK):** branch → PR → `main`; confirm live stamp `v0.3.9-alpha`
-  and that Hahns shows on the pages + favicon. **Owner: hard-refresh setup page + re-drag**
-  (code change). Then re-drag and check whether the bookmark icon picks up the favicon.
+### Outcome / bookmark-icon finding
+- Deployed and verified live (pages + tab favicon show Hahns; panel mascot embedded).
+- **Bookmark-bar icon stays the default globe** — confirmed on owner's Chrome. A
+  `javascript:` bookmarklet has no page for Chrome to pull a favicon from, so the site
+  favicon applies to the tab but NOT the dragged bookmark. **Settled — no page-side fix**
+  (recorded in CLAUDE.md Known Constraints). Bookmark is labeled "H.A.H.N.S".
+- Owner showing it to the crew tomorrow (2026-06-30) for feedback. Re-drag = the only
+  step techs need. Easy rollback via `git revert` of the merge if feedback is negative.
 
 ---
 
