@@ -5,6 +5,40 @@ permanent project reference.
 
 ---
 
+## 2026-06-29 — v0.3.7.2-alpha: button reword/rearrange + fast tooltips
+
+Branch **`0.3.7.2`** (off `main`). **Bookmarklet code change → re-drag needed.** Owner
+found the New job / Clear info naming + placement confusing. All in `src/helper.js`.
+
+### Changes
+- **"New job" → "New Vehicle", moved to the TOP.** It wipes everything *incl.* the
+  vehicle, so it now lives in a new `.topbar` directly under the version `.sub` bar
+  (full-width outline button + `RESTART` refresh icon). Internally still
+  `data-act="newjob"` → `options.onNewJob`; confirm reworded to "New vehicle? Clears all."
+- **"Clear info" → "Clear All Info".** Stays next to the job-title input (jobbar back to
+  a single centered row; the `.jobbtns` column from v0.3.7.1 removed). Confirm → "Clear
+  all info?".
+- **Fast tooltips.** Native `title` has a ~1 s delay we can't shorten, so `[data-tip]`
+  elements now get a quick (~180 ms) JS tooltip: one shared `.tip` bubble appended to
+  `.wrap` (not the scrolling body, so it's not clipped), positioned above the element
+  (flips below near the top edge), horizontally clamped to the panel. Applied to New
+  Vehicle, SCAN, Clear All Info, and per-group Clear (their `title` → `data-tip`). Other
+  elements keep native `title`.
+
+### Verified (browser, non-embed harness)
+- Child order `hd → sub → topbar(New Vehicle) → vbar → fluidbar → scanbar → jobbar →
+  body → ft → toast → tip`; New Vehicle in topbar with icon + correct label, no stray
+  `title`; Clear All Info in jobbar; old "New job" gone. Hovering New Vehicle shows the
+  `.tip` (on, opacity 1, correct text, positioned + width-clamped) after ~180 ms.
+  New Vehicle click → inline confirm "New vehicle? Clears all." → No restores button,
+  job preserved. Screenshot captured; no console errors. `node --check` clean; built
+  `v0.3.7.2-alpha`. (topbar/vehicle bar still hidden in embed/demo mode.)
+
+### Next
+- **Deploy:** PR `0.3.7.2` → `main`; confirm live stamp `v0.3.7.2-alpha`. **Re-drag needed.**
+
+---
+
 ## 2026-06-28 — v0.3.7.1-alpha: Clear info + per-group clear
 
 Branch **`0.3.7.1`** (off `main`). **Bookmarklet code change → re-drag needed.** Owner

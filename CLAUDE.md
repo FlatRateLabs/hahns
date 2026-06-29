@@ -68,12 +68,14 @@
 - **Auto component numbering** from the "+ ADD" button pattern → labels like `2. Torx Bolt`.
 - Per-spec **editable part labels** (`+ part` chips); auto labels flow into torque/replace only (fluids = manual chip).
 - **Manual add** rows per section; **trash/delete** per item; **delete** per diagram.
-- **Clear info** (v0.3.7.1) — a button under **New job** that empties all collected data (specs, tools, warnings, diagrams, title) **but keeps the loaded vehicle** (unlike New job, which clears the vehicle too). Plus a **per-group Clear** button in each section header (incl. Diagram). Both use an inline "Clear all?" Yes/No confirm (`inlineConfirm` in `renderInto`); per-group via `data-clear="<key>"` / `data-clear="__images"`, Clear info via `data-act="clearinfo"`.
+- **Clear All Info** (v0.3.7.1, renamed v0.3.7.2) — a button next to the job-title input (`data-act="clearinfo"`) that empties all collected data (specs, tools, warnings, diagrams, title) **but keeps the loaded vehicle**. Plus a **per-group Clear** button in each section header (incl. Diagram). Both use an inline "Clear all?" Yes/No confirm (`inlineConfirm` in `renderInto`); per-group via `data-clear="<key>"` / `data-clear="__images"`.
+- **New Vehicle** (v0.3.7.2, formerly "New job") — pinned in a `.topbar` at the very top (right under the version `.sub` bar), since it's the start-over action that wipes **everything incl. the vehicle**. Still `data-act="newjob"` → `options.onNewJob` internally; inline confirm "New vehicle? Clears all."
+- **Fast tooltips** (v0.3.7.2) — `[data-tip]` elements get a quick (~180 ms) JS-positioned tooltip (one shared `.tip` bubble appended to `.wrap`) instead of the slow native `title` delay. Applied to New Vehicle, SCAN, Clear All Info, and per-group Clear; other elements still use native `title`.
 - **Job title** bar (auto-filled from page header, editable).
 - **Multi-page accumulation**: navigating + scanning more pages adds them, **grouped by page** with editable page headers; deduped by source+part+text.
 - **Diagram capture** (numbered-overview pages only, dominant image only, by URL reference); click to open full size.
 - **Print** to a clean job sheet / PDF (hidden iframe, not the ELSA page); **Copy list**.
-- **Draggable** panel (pointer-capture, works over iframes), **Minimize**, **New job** (with Yes/No confirm).
+- **Draggable** panel (pointer-capture, works over iframes), **Minimize**, **New Vehicle** (top-of-panel, Yes/No confirm — wipes everything incl. the vehicle).
 - **Version stamp** + "check for latest" link; **Current version** box on setup page; **diagnostic dump** (click the version stamp).
 - **Weekly update-check reminder** (v0.3.0): network-free; yellow banner "App may be out of date — Check for update?" linking to the setup page, shown **only on Wednesdays, once that day**, with a Dismiss.
 - **Paste-box fallback** on the setup page for pages the bookmark can't read.

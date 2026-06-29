@@ -9,7 +9,23 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.7.1-alpha — in progress
+## v0.3.7.2-alpha — in progress
+
+### Changed
+- **Clearer buttons, less confusion.** The **New job** button is renamed **New Vehicle**
+  (it wipes the loaded vehicle *and* all collected info) and moved to the **top**, right
+  under the version line, so the "start over" action is easy to find. **Clear info** is
+  renamed **Clear All Info** (it clears collected info but keeps the vehicle) and stays
+  next to the job title.
+- **Faster hover hints.** The little explanations that pop up when you hover a button now
+  appear quickly instead of after the usual long browser delay.
+
+> **Re-drag needed:** this changes the bookmarklet itself, so hard-refresh the setup
+> page and re-drag the bookmark.
+
+---
+
+## v0.3.7.1-alpha — 2026-06-28
 
 ### Added
 - **"Clear info" button.** A new button under **New job** wipes everything Hahns has
