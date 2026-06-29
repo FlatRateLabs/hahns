@@ -1093,6 +1093,7 @@
     ".wrap.embed{position:static;width:100%;max-height:none;box-shadow:none}" +
     ".hd{display:flex;align-items:center;gap:9px;padding:11px 13px;background:#1b232b;color:#fff;border-bottom:3px solid #2fb84d;cursor:move;user-select:none;touch-action:none}" +
     ".hd svg{width:20px;height:20px;stroke:#2fb84d;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
+    ".hd img.brand{width:30px;height:30px;flex:none;object-fit:contain}" +
     ".hd b{font-size:14px;font-weight:600;flex:1}" +
     ".hd button{background:transparent;border:0;color:#cdd7ea;cursor:pointer;font-size:13px;padding:3px 6px;border-radius:6px}" +
     ".hd button:hover{background:rgba(255,255,255,.15);color:#fff}" +
@@ -1242,7 +1243,9 @@
     ".tip{position:absolute;z-index:6;display:none;max-width:210px;background:#1c2530;color:#fff;font-size:11px;font-weight:600;line-height:1.35;padding:6px 9px;border-radius:7px;box-shadow:0 4px 14px rgba(0,0,0,.28);pointer-events:none;opacity:0;transition:opacity .1s ease}" +
     ".tip.on{opacity:1}";
 
-  var WRENCH = "M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 2 2 6-6a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3z";
+  // the Hahns mascot (bust) — a base64 PNG injected at build time (__HAHNS_ICON__).
+  // Embedded, not fetched, so the bookmarklet stays 100% self-contained / no network.
+  var HAHNS_ICON = "__HAHNS_ICON__";
   var TRASH = "M4 7h16M10 11v6M14 11v6M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3";
   var IMG_ICON = "M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 10a1.3 1.3 0 1 1-2.6 0 1.3 1.3 0 0 1 2.6 0";
   var CHECK = "M20 6 9 17l-5-5";
@@ -1320,7 +1323,7 @@
     var hasInfo = (r.__images || []).length > 0;
     SECTIONS.forEach(function (s) { if ((r[s.key] || []).length) hasInfo = true; });
     var html = "" +
-      '<div class="wrap' + (embed ? " embed" : "") + (mini ? " min" : "") + '"><div class="hd">' + svg(WRENCH) +
+      '<div class="wrap' + (embed ? " embed" : "") + (mini ? " min" : "") + '"><div class="hd"><img class="brand" src="' + HAHNS_ICON + '" alt="Hahns">' +
         '<b title="Hardware, Advisories, Highlights, &amp; Navigation Specialist">H.A.H.N.S</b>' +
         (embed ? "" : '<button data-act="min" class="hbtn" title="' + (mini ? "Expand" : "Minimize") + '">' + svg(mini ? "M7 7h10v10H7z" : "M6 12h12") + "</button>") +
         '<button data-act="close" title="Close">&#10005;</button></div>' +

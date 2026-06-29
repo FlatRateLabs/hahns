@@ -9,6 +9,18 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.9-alpha — 2026-06-29
+
+### Added
+- **Meet Hahns!** The plain wrench icon is replaced everywhere by the **Hahns mascot** —
+  in the panel header inside ELSA, on the setup page (full-body), on the Fluids &
+  Capacities page, and as the **browser tab/bookmark icon** (favicon). The mascot in the
+  panel is built right into the bookmark, so it still makes **no network calls** and keeps
+  nothing — same privacy promise as before. **This is a code change, so hard-refresh the
+  setup page and re-drag your bookmark to get Hahns.**
+
+---
+
 ## v0.3.8-alpha — 2026-06-29
 
 ### Added

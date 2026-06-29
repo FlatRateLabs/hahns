@@ -15,7 +15,7 @@ const root = path.join(__dirname, "..");
 // ---- version ----
 // Bump this when you ship. While testing, keep the "-alpha" tag.
 //   tiny fix -> 0.1.1   new feature -> 0.2.0   stable release -> 1.0.0
-const VERSION = "0.3.8-alpha";
+const VERSION = "0.3.9-alpha";
 
 // shown in the panel + setup page: "v0.1.0-alpha · 2026-06-20 21:53 UTC"
 const date = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
@@ -68,8 +68,13 @@ function renderChangelog(md) {
 }
 const changelogHtml = renderChangelog(fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8"));
 
+// the Hahns mascot (bust) is embedded as a base64 data URI so the bookmarklet stays
+// self-contained — no network fetch (mandatory on ELSA; see CLAUDE.md privacy posture).
+const hahnsIcon = "data:image/png;base64," +
+  fs.readFileSync(path.join(root, "src/assets/hahns-icon.png")).toString("base64");
 const helper = fs.readFileSync(path.join(root, "src/helper.js"), "utf8")
-  .replace(/__BUILD__/g, build);
+  .replace(/__BUILD__/g, build)
+  .replace(/__HAHNS_ICON__/g, hahnsIcon);
 // the standalone Fluids & Capacities lookup page (opened in a new window from the
 // panel — off ELSA, so it CAN load the obfuscated per-year data files in docs/fluids/)
 const fluidsPage = fs.readFileSync(path.join(root, "src/fluids.html"), "utf8")
@@ -131,6 +136,16 @@ fs.writeFileSync(path.join(docsDir, "version.json"), versionJson);
 fs.writeFileSync(path.join(docsDir, "fluids.html"), fluidsPage);
 // stop Pages' Jekyll from touching our files
 fs.writeFileSync(path.join(docsDir, ".nojekyll"), "");
+
+// served mascot assets (Hahns full body for the page hero + the favicon/apple icon).
+// Copied verbatim into both docs/ (Pages) and dist/ (local preview).
+["hahns.png", "favicon.png", "apple-touch-icon.png"].forEach(function (f) {
+  const srcF = path.join(root, "src/assets", f);
+  if (fs.existsSync(srcF)) {
+    fs.copyFileSync(srcF, path.join(docsDir, f));
+    fs.copyFileSync(srcF, path.join(distDir, f));
+  }
+});
 
 console.log("Built " + build + ":");
 console.log("  dist/bookmarklet.txt      (" + bookmarklet.length + " chars)");

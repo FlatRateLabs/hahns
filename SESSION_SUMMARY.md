@@ -5,6 +5,59 @@ permanent project reference.
 
 ---
 
+## 2026-06-29 — v0.3.9-alpha: Hahns mascot artwork + favicon
+
+Branch work on `main` (not yet committed/deployed at write time). **Bookmarklet code
+change → re-drag needed.** Owner supplied ChatGPT-generated mascot art; replaced the
+wrench icon everywhere with **Hahns**.
+
+### Source art
+- Owner first sent a poster sheet (hero + 8 poses) on a dark background. My first attempt
+  to cut out the hero via **flood-fill knockout failed** — a dark silver figure on a dark
+  background, so it ate his thin arms/hands/foot. **Lesson: don't chroma-knock-out
+  dark-on-dark renders.** Owner then provided a clean **transparent-background PNG**
+  (`~/Downloads/Hahns No Background.png`, 500×800 RGBA) — used that, no knockout needed.
+
+### Assets (new — `src/assets/`, masters committed)
+- `hahns.png` — full-body, 325×520, web-page hero.
+- `favicon.png` — 64px square **bust** (head + wave); used as the served favicon AND the
+  drag-button + fluids-page header icon.
+- `apple-touch-icon.png` — 180px square bust.
+- `hahns-icon.png` — 64px square bust, **base64-embedded into the bookmarklet**.
+- Owner picked the **bust** framing for all small/square spots (full body is an
+  unreadable speck at 16–32px); full body only on the web hero.
+
+### Wiring
+- **`helper.js`:** `var WRENCH` (header path) → **`var HAHNS_ICON = "__HAHNS_ICON__"`**;
+  header renders `<img class="brand" src=HAHNS_ICON>` (CSS `.hd img.brand{width:30px;
+  height:30px}`). Reads great on the dark `#1b232b` header.
+- **`build.js`:** base64-encodes `src/assets/hahns-icon.png` → `data:` URI, replaces
+  `__HAHNS_ICON__` (keeps the bookmarklet **self-contained / zero network** — mandatory on
+  ELSA). Also copies the 3 served PNGs into `docs/` + `dist/`.
+- **`template.html`:** header wrench → full-body `hahns.png` (92px); drag button wrench →
+  `favicon.png` bust; favicon + apple-touch `<link>`s; "wrench" wording → "Hahns".
+- **`fluids.html`:** header wrench → `favicon.png` bust; favicon `<link>`s.
+- Embedded icon adds ~9.5 KB base64 → bookmarklet ~177 KB (fine for bookmark URLs).
+
+### Bookmark-icon caveat (told owner)
+- `javascript:` bookmarklets can't reliably carry a custom icon. The lever we control is
+  the **setup-page favicon**, which Chrome often inherits onto a dragged bookmark — best
+  shot, not guaranteed. Verify by re-dragging after deploy.
+
+### Verified (browser preview, `node --check` clean, built v0.3.9-alpha)
+- Setup page: full-body Hahns in header + bust on the navy drag button. Panel demo: bust
+  on the dark header (embedded data URI, **no network**). Fluids page: bust in header,
+  2019 ATLAS data correct (oil 5.5 L, coolant 20 L, A/C 650 g R1234yf, 09P 7.0 L). No
+  console errors. **Preview gotcha:** serve.js maps `/`→`dist/HAHNS.html`, so relative
+  PNGs only resolve at `/dist/HAHNS.html` (prod `docs/` has them as siblings — fine).
+
+### Next
+- **Deploy (pending owner OK):** branch → PR → `main`; confirm live stamp `v0.3.9-alpha`
+  and that Hahns shows on the pages + favicon. **Owner: hard-refresh setup page + re-drag**
+  (code change). Then re-drag and check whether the bookmark icon picks up the favicon.
+
+---
+
 ## 2026-06-29 — v0.3.8-alpha: fluid data 2011–2013 + parser fixes
 
 Branch **`0.3.8`** (off `main`). **Data + parser-tool only — NO bookmarklet change, no
