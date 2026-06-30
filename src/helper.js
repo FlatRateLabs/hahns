@@ -32,6 +32,16 @@
   // transient one-line note for the vehicle bar (e.g. a blocked procedure scan
   // before a vehicle is loaded). Cleared once shown — never persisted.
   var vehNotice = "";
+  // ---- shop special-tool list (v0.3.10) ----------------------------------
+  // A per-shop list (tool number -> drawer/location, plus any "missing / check
+  // part number" status note) the tech uploads as a CSV. Stored ONLY in
+  // localStorage on this machine (under ELSA's origin) — never uploaded, never on
+  // GitHub. Powers the drawer locations + "Find these tools" gather list in the
+  // Special Tools section. Reading a user-picked file via FileReader is a LOCAL
+  // read, not a network call, so the bookmarklet's zero-network posture on ELSA
+  // is fully intact.
+  var TOOLS_KEY = "vwjb_tools_v1";   // localStorage: { updated, count, map:{NORM:{n,d,s}} }
+  var shopTools = null;              // in-memory cache: null=unread, false=none, obj=loaded
 
   // the segments captured by the last scan, kept so the build stamp can dump a
   // diagnostic of exactly what the page-walk saw (helps tune against real pages)
@@ -369,6 +379,128 @@
     });
     return out;
   }
+
+  /* ------------------------------------------------------------------ *
+   *  Shop special-tool list — a local CSV the tech uploads (v0.3.10).
+   *  Stored as { updated, count, map:{ NORM: {n:original, d:drawer, s:status} } }
+   *  in localStorage (THIS machine only). Never leaves the page / no network.
+   * ------------------------------------------------------------------ */
+
+  // match key: strip everything but letters/digits, uppercase. So ELSA's
+  // "VAS 6909" lines up with a sheet's "VAS6909", and "10-222 A/10" with
+  // "10-222A/10". Sub-parts stay distinct (10222A10 != 10222A).
+  function normTool(s) { return String(s == null ? "" : s).toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+
+  function todayISO() {
+    var d = new Date(), m = d.getMonth() + 1, day = d.getDate();
+    return d.getFullYear() + "-" + (m < 10 ? "0" + m : m) + "-" + (day < 10 ? "0" + day : day);
+  }
+
+  function loadShopTools() {
+    if (shopTools !== null) return shopTools || null;
+    try { var raw = localStorage.getItem(TOOLS_KEY); shopTools = raw ? JSON.parse(raw) : false; }
+    catch (e) { shopTools = false; }
+    return shopTools || null;
+  }
+  function saveShopTools(obj) {
+    try { localStorage.setItem(TOOLS_KEY, JSON.stringify(obj)); shopTools = obj; return true; }
+    catch (e) { return false; }
+  }
+  function removeShopTools() {
+    try { localStorage.removeItem(TOOLS_KEY); } catch (e) {}
+    shopTools = false;
+  }
+
+  // look a tool number up in the loaded shop list (or null)
+  function matchShopTool(num) {
+    var st = loadShopTools();
+    if (!st || !st.map) return null;
+    return st.map[normTool(num)] || null;
+  }
+
+  // detect a "this isn't a normal tool description" note baked into the
+  // description column — the owner's sheets write these inline.
+  function toolStatus(desc) {
+    var d = String(desc || "");
+    if (/missing/i.test(d)) return "MISSING TOOL";
+    if (/\bbroken\b/i.test(d)) return "BROKEN";
+    if (/\bdamaged\b/i.test(d)) return "DAMAGED";
+    if (/check\s+part\s*(?:number|no\.?|#)?/i.test(d)) return "CHECK PART NUMBER";
+    if (/\bdo\s+not\s+use\b/i.test(d)) return "DO NOT USE";
+    if (/\b(?:on\s+order|ordered|out\s+of\s+service)\b/i.test(d)) return "ON ORDER";
+    if (/\blost\b/i.test(d)) return "LOST";
+    return "";
+  }
+
+  // tiny RFC-4180 CSV reader: handles quoted fields with embedded commas, doubled
+  // quotes ("") and newlines. Returns an array of row arrays.
+  function parseCSV(text) {
+    var rows = [], row = [], cur = "", inQ = false, i, c;
+    text = String(text == null ? "" : text).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    for (i = 0; i < text.length; i++) {
+      c = text.charAt(i);
+      if (inQ) {
+        if (c === '"') { if (text.charAt(i + 1) === '"') { cur += '"'; i++; } else inQ = false; }
+        else cur += c;
+      } else if (c === '"') { inQ = true; }
+      else if (c === ",") { row.push(cur); cur = ""; }
+      else if (c === "\n") { row.push(cur); rows.push(row); row = []; cur = ""; }
+      else cur += c;
+    }
+    if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
+    return rows;
+  }
+
+  // find the header row: one cell names a tool column AND one names a location
+  function findToolHeader(rows) {
+    for (var i = 0; i < Math.min(rows.length, 15); i++) {
+      var cells = rows[i] || [];
+      var hasTool = cells.some(function (c) { return /tool\s*#|tool\s*(?:number|no\b)|^\s*tool\s*$/i.test(String(c || "")); });
+      var hasLoc = cells.some(function (c) { return /drawer|location|\bbin\b/i.test(String(c || "")); });
+      if (hasTool && hasLoc) return i;
+    }
+    return -1;
+  }
+
+  // guess a column's role from its header text (the mapper lets the tech override)
+  function guessToolRole(headerText) {
+    var h = String(headerText || "");
+    if (/desc/i.test(h)) return "desc";
+    if (/drawer|location|\bbin\b/i.test(h)) return "drawer";
+    if (/tool\s*#|tool\s*(?:number|no\b)|^\s*tool\s*$/i.test(h)) return "num";
+    if (/order/i.test(h)) return "ignore";
+    return "";
+  }
+
+  // build the stored list from parsed rows + the chosen column roles
+  function buildToolMap(rows, dataStart, cols) {
+    var map = {}, count = 0, i, num, key, drawer, desc, st, row;
+    for (i = dataStart; i < rows.length; i++) {
+      row = rows[i] || [];
+      num = String(row[cols.num] == null ? "" : row[cols.num]).trim();
+      if (!num || !/\d/.test(num)) continue;                       // skip blanks / non-tool junk
+      if (/^table\b/i.test(num) || /^print\s+date/i.test(num)) continue;
+      key = normTool(num);
+      if (!key) continue;
+      drawer = cols.drawer >= 0 ? String(row[cols.drawer] == null ? "" : row[cols.drawer]).trim() : "";
+      desc = cols.desc >= 0 ? String(row[cols.desc] == null ? "" : row[cols.desc]) : "";
+      st = toolStatus(desc);
+      if (!map[key]) { map[key] = { n: num, d: drawer, s: st }; count++; }
+      else { if (!map[key].d && drawer) map[key].d = drawer; if (!map[key].s && st) map[key].s = st; }
+    }
+    return { updated: todayISO(), count: count, map: map };
+  }
+
+  // sort locations: numeric drawers ascending, then text (LARGE, Right O/H, …)
+  function locSort(a, b) {
+    var na = parseInt(a, 10), nb = parseInt(b, 10);
+    var ia = /^\d/.test(a) && !isNaN(na), ib = /^\d/.test(b) && !isNaN(nb);
+    if (ia && ib) return na - nb;
+    if (ia) return -1;
+    if (ib) return 1;
+    return String(a).localeCompare(String(b));
+  }
+
 
   // Core extractor. Works on ordered SEGMENTS: { text, bold }.
   //   A component callout is a line like "2. Torx Bolt". We detect it by the
@@ -1236,8 +1368,40 @@
     ".ft{padding:9px 13px;border-top:1px solid #eee;display:flex;gap:8px}" +
     ".ft button{flex:1;font-size:12px;font-weight:600;border:1px solid #cfd6e4;background:#fff;color:#001e50;border-radius:7px;padding:7px;cursor:pointer}" +
     ".ft button:hover{background:#f3f6fb}" +
-    ".toast{position:absolute;bottom:54px;left:50%;transform:translateX(-50%);background:#1c1c1c;color:#fff;font-size:11px;padding:5px 10px;border-radius:6px;opacity:0;transition:opacity .2s;pointer-events:none}" +
+    ".toast{position:absolute;bottom:54px;left:50%;transform:translateX(-50%);background:#1c1c1c;color:#fff;font-size:11px;padding:5px 10px;border-radius:6px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:7}" +
     ".toast.on{opacity:1}" +
+    // ⚙ settings + tool-list mapper overlays
+    ".setc{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(0,8,30,.28);padding:14px}" +
+    ".setbox{background:#fff;border:1px solid #d4d4d4;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.3);padding:16px;width:440px;max-width:92vw;max-height:88vh;overflow:auto;text-align:left}" +
+    ".settl{font-size:14px;font-weight:700;color:#001e50;margin:0 0 4px}" +
+    ".setsub{font-size:12px;color:#3a4a63;line-height:1.45;margin:0 0 12px}" +
+    ".setsub b{color:#001e50}" +
+    ".setstat{background:#edf7ee;border:1px solid #cce6cf;border-radius:8px;padding:9px 11px;font-size:12.5px;color:#1e6b34;line-height:1.4;margin-bottom:12px}" +
+    ".setstat b{color:#13502a}" +
+    ".setstat.none{background:#eef1f6;border-color:#dfe4ee;color:#3a4a63}" +
+    ".setbtns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:6px}" +
+    ".setbtns button{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:600;font-size:12.5px;padding:8px 14px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4;background:#fff;color:#001e50}" +
+    ".setbtns button:hover{background:#f3f6fb}" +
+    ".setbtns .primary{background:#2fb84d;border-color:#2fb84d;color:#0a0a0a}" +
+    ".setbtns .primary:hover{background:#28a344}" +
+    ".setbtns .danger{border-color:#e6b0b0;color:#a32d2d}" +
+    ".setbtns .danger:hover{background:#fff5f5}" +
+    ".setnote{font-size:11px;color:#7a7a7a;line-height:1.4;margin:10px 0 0;border-top:1px solid #eee;padding-top:8px}" +
+    ".maptbl{width:100%;border-collapse:collapse;margin:2px 0 4px;font-size:12px;table-layout:fixed}" +
+    ".maptbl td{border:1px solid #e7e7e7;padding:4px 6px;color:#444;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".maptbl th{padding:0 0 4px;vertical-align:top}" +
+    ".mapsel{width:100%;font-family:inherit;font-weight:600;font-size:11.5px;padding:5px 4px;border:1px solid #cfd6e4;border-radius:6px;background:#fff;color:#001e50}" +
+    ".maperr{color:#a32d2d;font-size:12px;font-weight:600;margin:6px 0 0}" +
+    // per-tool location / status badges
+    ".tbadge{display:inline-block;margin-left:6px;font-size:10px;font-weight:700;letter-spacing:.01em;padding:1px 7px;border-radius:8px;white-space:nowrap;text-transform:none}" +
+    ".tbadge.warn{background:#fff4e6;color:#8a4708;border:1px solid #f0d4a6}" +
+    ".tbadge.order{background:#fdecec;color:#a32d2d;border:1px solid #efbcbc}" +
+    // "Find these tools" button (opens the printable locations pop-up)
+    ".findtools{appearance:none;-webkit-appearance:none;display:inline-flex;align-items:center;gap:6px;background:#534ab7;color:#fff;border:0;font-family:inherit;font-weight:700;font-size:11.5px;letter-spacing:.02em;padding:7px 11px;border-radius:8px;cursor:pointer;margin:2px 0 8px}" +
+    ".findtools:hover{background:#4640a0}" +
+    ".findtools svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
+    ".findtools .arr{margin-left:1px;font-weight:700}" +
+    ".gnone{font-size:11.5px;color:#7a7a7a;margin:2px 0 8px;line-height:1.4}" +
     // fast custom tooltip (native `title` has a ~1s delay we can't shorten). Positioned
     // by JS relative to the panel; shown after a short hover. See the [data-tip] wiring.
     ".tip{position:absolute;z-index:6;display:none;max-width:210px;background:#1c2530;color:#fff;font-size:11px;font-weight:600;line-height:1.35;padding:6px 9px;border-radius:7px;box-shadow:0 4px 14px rgba(0,0,0,.28);pointer-events:none;opacity:0;transition:opacity .1s ease}" +
@@ -1253,6 +1417,7 @@
   var CHEV_DOWN = "M6 9l6 6 6-6";   // expand the vehicle bar
   var CHEV_UP = "M6 15l6-6 6 6";    // collapse the vehicle bar
   var RESTART = "M20 11.5a8 8 0 1 1-2.3-5.6M20 4v5h-5";   // "New Vehicle" / start over
+  var GEAR = "M19.14 12.94a7.5 7.5 0 0 0 0-1.88l2-1.56-2-3.46-2.39.96a7 7 0 0 0-1.62-.94L14.7 2.5h-4l-.43 2.56a7 7 0 0 0-1.62.94L6.26 5l-2 3.46 2 1.56a7.5 7.5 0 0 0 0 1.88l-2 1.56 2 3.46 2.39-.96c.5.38 1.04.7 1.62.94l.43 2.56h4l.43-2.56c.58-.24 1.12-.56 1.62-.94l2.39.96 2-3.46-2-1.56zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z";   // settings gear
 
   function svg(path, cls) {
     return '<svg viewBox="0 0 24 24" class="' + (cls || "") + '"><path d="' + path + '"/></svg>';
@@ -1316,6 +1481,92 @@
       svg(DROPLET) + "Fluids &amp; capacities for this vehicle<span class=\"arr\">&#8599;</span></a></div>";
   }
 
+  // a small ALERT badge shown after a tool in the Special Tools list (only a
+  // PROBLEM is shown inline — missing/check or not-on-the-list — so the tech is
+  // warned at a glance. The drawer LOCATIONS live in the "Find these tools"
+  // window, to keep the main panel uncluttered.)
+  function toolBadge(it) {
+    if (!it || !it.num || !loadShopTools()) return "";
+    var hit = matchShopTool(it.num);
+    if (!hit) return ' <span class="tbadge order" data-tip="Not in your shop list — order the tool, or update your list">not in list</span>';
+    if (hit.s) return ' <span class="tbadge warn">' + esc(hit.s) + "</span>";
+    return "";
+  }
+
+  // the self-contained "Find these tools" document, written into a new window
+  // (like the fluids pop-up). Built locally — NO network — and styled to read +
+  // print cleanly. The Print/Close buttons are hidden when printing.
+  function buildToolsWindowHTML(r) {
+    var when = new Date().toLocaleString();
+    var veh = "";
+    if (vehLoaded(r)) veh = [r.__vehicle.year, r.__vehicle.model].filter(function (x) { return x; }).join(" ");
+    // one row per tool: tool number (left) + location (right) + a tick box. Sorted
+    // by location so same-drawer tools sit together (still a one-trip grab list).
+    var items = [], missing = [];
+    toolNums(r).forEach(function (num) {
+      var hit = matchShopTool(num);
+      if (!hit) { missing.push(num); return; }
+      items.push({ num: num, loc: hit.d || "(no location)", flag: hit.s || "" });
+    });
+    items.sort(function (a, b) { var c = locSort(a.loc, b.loc); return c !== 0 ? c : String(a.num).localeCompare(String(b.num)); });
+    var rows = "";
+    items.forEach(function (it) {
+      rows += '<label class="row"><input type="checkbox" class="cb">' +
+        '<span class="tnum">' + esc(it.num) + (it.flag ? '<span class="flag">' + esc(it.flag) + "</span>" : "") + "</span>" +
+        '<span class="tloc">' + esc(it.loc) + "</span></label>";
+    });
+    var h = '<!doctype html><html><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+      "<title>Find these tools" + (r.__title ? " — " + esc(r.__title) : "") + "</title>" +
+      "<style>" + TOOLS_WIN_CSS + "</style></head><body>" +
+      '<div class="bar"><button id="hb_print" onclick="window.print()">Print</button>' +
+        '<button id="hb_close" class="sec" onclick="window.close()">Close</button></div>' +
+      "<h1>Find these tools</h1>" +
+      '<div class="meta">' + (r.__title ? esc(r.__title) + " · " : "") + (veh ? esc(veh) + " · " : "") + "printed " + esc(when) + "</div>";
+    if (!items.length && !missing.length) {
+      h += '<p class="empty">No special tools to locate yet.</p>';
+    } else {
+      if (items.length) h += '<div class="thead"><span class="cbh"></span><span class="nh">Tool</span><span class="lh">Location</span></div>' + rows;
+      if (missing.length) h += '<div class="callout order"><b>Not in your list — order, or update your list</b>' +
+        '<div class="ordnums">' + missing.map(function (n) { return esc(n); }).join(", ") + "</div></div>";
+    }
+    h += '<div class="foot">From your shop tool list · H.A.H.N.S ' + esc(BUILD) + "</div></body></html>";
+    return h;
+  }
+
+  // open (or reuse) the "Find these tools" window and write the document into it.
+  // Wires the buttons from here too (same-origin) so it works regardless of the
+  // child window's CSP. Returns false if a pop-up blocker stopped it.
+  function openToolWindow(r) {
+    var w = 640, h = 760;
+    try {
+      if (screen && screen.availWidth) w = Math.min(w, screen.availWidth - 40);
+      if (screen && screen.availHeight) h = Math.min(h, screen.availHeight - 80);
+    } catch (e) {}
+    var left = 0, top = 0;
+    try {
+      left = Math.max(0, Math.round(((screen.availWidth || w) - w) / 2));
+      top = Math.max(0, Math.round(((screen.availHeight || h) - h) / 2));
+    } catch (e2) {}
+    var feats = "width=" + w + ",height=" + h + ",left=" + left + ",top=" + top +
+      ",scrollbars=yes,resizable=yes,menubar=no,toolbar=no,location=no,status=no";
+    var win = null;
+    try { win = window.open("", "hahns_tools", feats); } catch (e3) {}
+    if (!win) { try { win = window.open("", "hahns_tools"); } catch (e4) {} }
+    if (!win) return false;
+    try {
+      win.document.open();
+      win.document.write(buildToolsWindowHTML(r));
+      win.document.close();
+      var pb = win.document.getElementById("hb_print");
+      if (pb) pb.onclick = function () { try { win.print(); } catch (e5) {} };
+      var cb = win.document.getElementById("hb_close");
+      if (cb) cb.onclick = function () { try { win.close(); } catch (e6) {} };
+      win.focus();
+    } catch (e7) {}
+    return true;
+  }
+
   function buildHTML(r, embed) {
     var mini = !embed && isMin();
     // any collected info (specs/tools/warnings/diagrams)? drives the "Clear info"
@@ -1325,6 +1576,7 @@
     var html = "" +
       '<div class="wrap' + (embed ? " embed" : "") + (mini ? " min" : "") + '"><div class="hd"><img class="brand" src="' + HAHNS_ICON + '" alt="Hahns">' +
         '<b title="Hardware, Advisories, Highlights, &amp; Navigation Specialist">H.A.H.N.S</b>' +
+        (embed ? "" : '<button data-act="settings" class="hbtn" title="Settings — shop tool list">' + svg(GEAR) + "</button>") +
         (embed ? "" : '<button data-act="min" class="hbtn" title="' + (mini ? "Expand" : "Minimize") + '">' + svg(mini ? "M7 7h10v10H7z" : "M6 12h12") + "</button>") +
         '<button data-act="close" title="Close">&#10005;</button></div>' +
       // version stamp — pinned to the very top, directly under the title bar
@@ -1378,7 +1630,7 @@
       // tools show the number in bold, then the description (when we found one)
       if (s.key === "tools") {
         var t = it.num ? "<b>" + esc(it.num) + "</b>" + (it.desc ? " — " + esc(it.desc) : "") : esc(it.text);
-        return '<div class="item tool">' + find + '<span class="txt">' + t + "</span>" + del + "</div>";
+        return '<div class="item tool">' + find + '<span class="txt">' + t + toolBadge(it) + "</span>" + del + "</div>";
       }
       var lbl = "";
       if (s.label) {
@@ -1417,6 +1669,16 @@
               '<button class="chipx" data-chipdel="' + esc(t) + '" title="Remove ' + esc(t) + '" aria-label="Remove tool">&#10005;</button></span>';
           });
           html += "</div>";
+        }
+        // shop tool-list extras: a "Find these tools" button (opens a printable
+        // pop-up with the drawer locations), or a nudge to load a list
+        if (items.length) {
+          if (loadShopTools()) {
+            html += '<button class="findtools" data-act="findtools" data-tip="Open a printable list of where to find each tool">' +
+              svg(s.icon) + "Find these tools" + '<span class="arr">&#8599;</span></button>';
+          } else {
+            html += '<div class="gnone">Tip: load your shop’s tool list (gear icon, top-right) to find tool drawer locations.</div>';
+          }
         }
       }
 
@@ -1517,6 +1779,38 @@
     ".chip{display:inline-block;border:1px solid #333;border-radius:4px;padding:1px 6px;margin:2px 4px 2px 0;font-size:11px;font-weight:bold}" +
     "img.dgm{max-width:100%;height:auto;margin:6px 0;border:1px solid #ccc}" +
     "@media print{h2,h3{page-break-after:avoid}li,img.dgm{page-break-inside:avoid}}";
+
+  // styles for the standalone "Find these tools" window (screen + print). The
+  // Print/Close button bar is hidden when printing so the sheet stays clean.
+  var TOOLS_WIN_CSS =
+    "*{box-sizing:border-box}" +
+    "body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111;margin:0;padding:20px 22px 30px;font-size:14px;background:#fff}" +
+    ".bar{display:flex;gap:8px;margin-bottom:14px}" +
+    ".bar button{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:13px;padding:9px 18px;border-radius:8px;cursor:pointer;border:0;background:#2fb84d;color:#0a0a0a}" +
+    ".bar button:hover{background:#28a344}" +
+    ".bar button.sec{background:#fff;border:1px solid #cfd6e4;color:#001e50;font-weight:600}" +
+    ".bar button.sec:hover{background:#f3f6fb}" +
+    "h1{font-size:21px;margin:0 0 3px;color:#1b232b}" +
+    ".meta{color:#555;font-size:12px;margin-bottom:14px;border-bottom:2px solid #2fb84d;padding-bottom:10px}" +
+    // tick-off list: [box] Tool#  ........  Location
+    ".thead{display:flex;align-items:center;gap:12px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#5a6b8c;border-bottom:1px solid #ccc;padding:0 4px 6px}" +
+    ".thead .cbh{width:20px;flex:none}" +
+    ".thead .nh{flex:1}" +
+    ".thead .lh{width:36%;flex:none}" +
+    ".row{display:flex;align-items:center;gap:12px;padding:9px 4px;border-bottom:1px solid #eee;cursor:pointer}" +
+    ".row .cb{width:18px;height:18px;flex:none;margin:0;cursor:pointer}" +
+    ".row .tnum{flex:1;font-weight:700;color:#1b232b;font-size:15px}" +
+    ".row .tloc{width:36%;flex:none;color:#333}" +
+    ".row .flag{display:inline-block;margin-left:8px;font-size:10px;font-weight:700;color:#8a4708;background:#fff4e6;border:1px solid #f0d4a6;border-radius:7px;padding:1px 6px;vertical-align:middle;text-transform:none;letter-spacing:0}" +
+    ".row input:checked~.tnum,.row input:checked~.tloc{text-decoration:line-through;color:#aaa}" +
+    ".row input:checked~.tnum .flag{opacity:.45}" +
+    ".callout{border-radius:8px;padding:10px 14px;margin:14px 0 12px;font-size:13px;line-height:1.5}" +
+    ".callout b{display:block;margin-bottom:4px}" +
+    ".callout .ordnums{font-weight:600}" +
+    ".callout.order{background:#fdecec;border:1px solid #efbcbc;color:#a32d2d}" +
+    ".empty{color:#888;font-style:italic}" +
+    ".foot{margin-top:20px;color:#999;font-size:11px;border-top:1px solid #eee;padding-top:8px}" +
+    "@media print{.bar{display:none}body{padding:0}.meta{border-bottom-color:#999}.row{cursor:default;page-break-inside:avoid}}";
 
   // a clean, print-only document of the collected job
   function buildPrintHTML(r) {
@@ -1632,12 +1926,16 @@
     } catch (e) {}
     var remindSeen;
     try { remindSeen = localStorage.getItem(REMIND_KEY) || "(unset)"; } catch (e) { remindSeen = "(unreadable)"; }
+    var toolsLine;
+    try { var stt = loadShopTools(); toolsLine = stt ? ("loaded " + (stt.count || 0) + " tools, uploaded " + (stt.updated || "?")) : "none loaded"; }
+    catch (e) { toolsLine = "(unreadable)"; }
     var veh = {}, isSum = false;
     try { veh = extractVehicle(lastSegments) || {}; } catch (e) {}
     try { isSum = isVehicleSummaryPage(lastSegments); } catch (e) {}
     var vehLine = VEH_FIELDS.map(function (f) { return f.label + "=" + (veh[f.k] || "(none)"); }).join(" · ");
     return "H.A.H.N.S diagnostic — version " + BUILD + "\n" +
       "update reminder — last acknowledged week: " + remindSeen + " · this week: " + wedMarker(Date.now()) + "\n" +
+      "shop tool list: " + toolsLine + "\n" +
       "looks like Vehicle Summary page: " + (isSum ? "yes" : "no") + "\n" +
       "vehicle grab (from last scan): " + vehLine + "\n" +
       "flags: B=read as bold, H=recognised as a part heading\n" +
@@ -1684,6 +1982,188 @@
     });
   }
 
+
+  // small transient toast in the panel (used by the settings flows). Re-renders
+  // replace root.innerHTML but keep the same shadow root, so this finds the live .toast.
+  function flash(root, msg) {
+    var t = root.querySelector(".toast");
+    if (t) { t.textContent = msg; t.classList.add("on"); setTimeout(function () { t.classList.remove("on"); }, 1600); }
+  }
+
+  // pick a CSV off this computer and open the column-mapper. Reading the file is a
+  // LOCAL FileReader read — NO network — so the ELSA zero-network rule is intact.
+  function pickToolFile(host, r, options, root) {
+    var inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = ".csv,text/csv,text/plain";
+    inp.style.display = "none";
+    inp.addEventListener("change", function () {
+      var f = inp.files && inp.files[0];
+      try { inp.remove(); } catch (e) {}
+      if (!f) return;
+      if (/\.(xlsx?|numbers)$/i.test(f.name)) { flash(root, "Save the spreadsheet as CSV first, then upload"); return; }
+      var fr = new FileReader();
+      fr.onload = function () {
+        var rows;
+        try { rows = parseCSV(String(fr.result || "")); }
+        catch (e) { flash(root, "Could not read that file"); return; }
+        openToolMapper(host, r, options, root, rows);
+      };
+      fr.onerror = function () { flash(root, "Could not read that file"); };
+      try { fr.readAsText(f); } catch (e) { flash(root, "Could not read that file"); }
+    });
+    (root.querySelector(".wrap") || root).appendChild(inp);
+    inp.click();
+  }
+
+  // the ⚙ settings panel — manage the shop tool list (upload / replace / remove)
+  function openSettings(host, r, options, root) {
+    var st = loadShopTools();
+    var ov = document.createElement("div");
+    ov.className = "setc";
+    var status = st
+      ? '<div class="setstat">Tool list loaded: <b>' + esc(String(st.count || 0)) + "</b> tools" +
+          (st.updated ? " · uploaded " + esc(st.updated) : "") + "</div>"
+      : '<div class="setstat none">No tool list loaded yet. Upload your shop’s list to see drawer locations next to each special tool.</div>';
+    ov.innerHTML = '<div class="setbox">' +
+      '<p class="settl">Shop special-tool list</p>' +
+      '<p class="setsub">Upload your shop’s tool list (a CSV file). Hahns shows each special tool’s drawer location and flags tools that aren’t on the list.</p>' +
+      status +
+      '<div class="setbtns">' +
+        '<button class="cancel">Close</button>' +
+        (st ? '<button class="danger remove">Remove list</button>' : "") +
+        '<button class="primary upload">' + (st ? "Replace list" : "Upload list") + "</button>" +
+      "</div>" +
+      '<p class="setnote">Saved only on this computer (under ELSA). The file is never uploaded anywhere or sent to GitHub. To update, export your spreadsheet as CSV and upload it again.</p>' +
+      "</div>";
+    root.appendChild(ov);
+    var close = function () { try { ov.remove(); } catch (e) {} };
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    ov.querySelector(".cancel").addEventListener("click", close);
+    var up = ov.querySelector(".upload");
+    if (up) up.addEventListener("click", function () { close(); pickToolFile(host, r, options, root); });
+    var rm = ov.querySelector(".remove");
+    if (rm) rm.addEventListener("click", function () {
+      removeShopTools(); close();
+      renderInto(host, r, options);
+      flash(root, "Tool list removed");
+    });
+  }
+
+  // the column-mapper overlay — the tech tags which CSV column is which. Honors
+  // any layout (3-col shop sheet, 4-col VW minimum index, …). Picking one role
+  // removes it from the other dropdowns; the last column auto-fills.
+  function openToolMapper(host, r, options, root, rows) {
+    rows = (rows || []).filter(function (row) {
+      return row && row.some(function (c) { return String(c == null ? "" : c).trim() !== ""; });
+    });
+    if (!rows.length) { flash(root, "That file looks empty"); return; }
+
+    var headerIdx = findToolHeader(rows);
+    var dataStart = headerIdx >= 0 ? headerIdx + 1 : 0;
+    var headerRow = headerIdx >= 0 ? rows[headerIdx] : null;
+
+    function effLen(row) { var n = row.length; while (n > 0 && String(row[n - 1] == null ? "" : row[n - 1]).trim() === "") n--; return n; }
+    var ncol = headerRow ? effLen(headerRow) : 0, i, c;
+    for (i = dataStart; i < Math.min(rows.length, dataStart + 8); i++) ncol = Math.max(ncol, effLen(rows[i]));
+    if (ncol < 2) { for (i = 0; i < Math.min(rows.length, 8); i++) ncol = Math.max(ncol, (rows[i] || []).length); }
+    if (ncol < 1) ncol = 1;
+
+    // up to 3 sample data rows, per column, for the preview
+    var samples = []; for (c = 0; c < ncol; c++) samples[c] = [];
+    var taken = 0;
+    for (i = dataStart; i < rows.length && taken < 3; i++) {
+      if (effLen(rows[i]) < 2) continue;
+      for (c = 0; c < ncol; c++) samples[c].push(String(rows[i][c] == null ? "" : rows[i][c]));
+      taken++;
+    }
+
+    // guess each column's role from its header; content-guess the tool-number
+    // column if no header named one, then assign a remaining column to drawer
+    var roleOf = [];
+    for (c = 0; c < ncol; c++) roleOf[c] = guessToolRole(headerRow ? headerRow[c] : "");
+    function hasRole(rr) { for (var k = 0; k < ncol; k++) if (roleOf[k] === rr) return true; return false; }
+    if (!hasRole("num")) {
+      var best = -1, bestScore = -1;
+      for (c = 0; c < ncol; c++) {
+        if (roleOf[c]) continue;
+        var sc = 0;
+        samples[c].forEach(function (v) { if (/\d/.test(v) && /^[A-Za-z0-9][A-Za-z0-9\/\.\- ]*$/.test(v) && v.length <= 18) sc++; });
+        if (sc > bestScore) { bestScore = sc; best = c; }
+      }
+      if (best >= 0) roleOf[best] = "num";
+    }
+    if (!hasRole("drawer")) { for (c = 0; c < ncol; c++) if (!roleOf[c]) { roleOf[c] = "drawer"; break; } }
+
+    var ROLES = [["", "— choose —"], ["num", "Tool number"], ["desc", "Description"], ["drawer", "Drawer location"], ["ignore", "Not used"]];
+    function selHTML(col) {
+      var o = "";
+      ROLES.forEach(function (rr) { o += '<option value="' + rr[0] + '"' + (roleOf[col] === rr[0] ? " selected" : "") + ">" + rr[1] + "</option>"; });
+      return '<select class="mapsel" data-col="' + col + '">' + o + "</select>";
+    }
+    var head = "", body = "", k;
+    for (c = 0; c < ncol; c++) head += "<th>" + selHTML(c) + "</th>";
+    for (k = 0; k < (samples[0] ? samples[0].length : 0); k++) {
+      body += "<tr>";
+      for (c = 0; c < ncol; c++) body += "<td>" + esc(samples[c][k] || "") + "</td>";
+      body += "</tr>";
+    }
+
+    var ov = document.createElement("div");
+    ov.className = "setc";
+    ov.innerHTML = '<div class="setbox">' +
+      '<p class="settl">Set up your tool list</p>' +
+      '<p class="setsub">Pick which column is which. <b>Description</b> is only read to flag tools marked “missing” or “check part number” — it’s never shown on its own.</p>' +
+      '<table class="maptbl"><tr>' + head + "</tr>" + body + "</table>" +
+      '<div class="maperr" style="display:none"></div>' +
+      '<div class="setbtns"><button class="cancel">Cancel</button><button class="primary save">Save list</button></div>' +
+      '<p class="setnote">Saved only on this computer (under ELSA) — never uploaded anywhere.</p>' +
+      "</div>";
+    root.appendChild(ov);
+
+    var selects = Array.prototype.slice.call(ov.querySelectorAll(".mapsel"));
+    var err = ov.querySelector(".maperr");
+    function refresh() {
+      var chosen = {};
+      selects.forEach(function (sel) { var v = sel.value; if (v && v !== "ignore") chosen[v] = sel; });
+      selects.forEach(function (sel) {
+        Array.prototype.forEach.call(sel.options, function (opt) {
+          if (!opt.value || opt.value === "ignore") { opt.disabled = false; return; }
+          opt.disabled = !!(chosen[opt.value] && chosen[opt.value] !== sel);
+        });
+      });
+      var roles = ["num", "desc", "drawer"];
+      var unfilled = roles.filter(function (rr) { return !chosen[rr]; });
+      var blanks = selects.filter(function (sel) { return sel.value === ""; });
+      if (blanks.length === 1 && unfilled.length === 1) { blanks[0].value = unfilled[0]; refresh(); }
+    }
+    selects.forEach(function (sel) { sel.addEventListener("change", refresh); });
+    refresh();
+
+    var close = function () { try { ov.remove(); } catch (e) {} };
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    ov.querySelector(".cancel").addEventListener("click", close);
+    ov.querySelector(".save").addEventListener("click", function () {
+      var cols = { num: -1, desc: -1, drawer: -1 };
+      selects.forEach(function (sel) { if (sel.value && sel.value !== "ignore") cols[sel.value] = +sel.getAttribute("data-col"); });
+      if (cols.num < 0 || cols.drawer < 0) {
+        err.textContent = "Please choose which column is the Tool number and which is the Drawer location.";
+        err.style.display = "block"; return;
+      }
+      var built = buildToolMap(rows, dataStart, cols);
+      if (!built.count) {
+        err.textContent = "No tools found in that column — double-check the Tool number selection.";
+        err.style.display = "block"; return;
+      }
+      if (!saveShopTools(built)) {
+        err.textContent = "Couldn’t save (storage blocked on this machine).";
+        err.style.display = "block"; return;
+      }
+      close();
+      renderInto(host, r, options);
+      flash(root, built.count + " tools loaded");
+    });
+  }
 
   function renderInto(host, r, options) {
     options = options || {};
@@ -1948,6 +2428,11 @@
           cancelVehAuto(); setVehExp(false); renderInto(host, r, options);
         } else if (act === "vehexpand") {
           cancelVehAuto(); setVehExp(true); renderInto(host, r, options);
+        } else if (act === "settings") {
+          openSettings(host, r, options, root);
+        } else if (act === "findtools") {
+          if (e && e.preventDefault) e.preventDefault();
+          if (!openToolWindow(r)) flash(root, "Allow pop-ups to open the tool list");
         } else if (act === "copy") {
           copyText(plainText(r), toast("Copied"));
         } else if (act === "print") {

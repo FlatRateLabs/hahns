@@ -9,6 +9,34 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.10-alpha — 2026-06-30
+
+### Added
+- **Your shop's tool list — "Find these tools."** You can now load your shop's
+  special-tool list (a CSV file), and a **"Find these tools"** button (under Special Tools)
+  opens a **separate, printable window** — a tidy **tick-off list** with the **tool number
+  on the left, its drawer/location on the right, and a check box** so you can cross each
+  one off as you grab it (ticking it strikes the line through). It's sorted by drawer so
+  same-drawer tools sit together (one-trip grab), and has its own **Print** button (clean,
+  easy-to-read, just like the main Hahns print).
+  - **Load it from the new ⚙ gear (top-right).** Pick your spreadsheet (saved as **CSV** —
+    File → Save As → CSV), then tell Hahns which column is the **tool number**, the
+    **drawer**, and (optionally) the **description**. It handles different layouts — your
+    3-column list or VW's 4-column minimum-index sheet — and guesses the columns for you.
+  - **Flags problem tools.** If your list notes a tool as **MISSING**, **CHECK PART
+    NUMBER**, broken, etc., Hahns shows that warning right in the tool list AND in the
+    Find-these-tools window. If a tool **isn't on your list at all**, it's flagged
+    **"not in list"** — a sign to order it or update your list.
+  - **Keeps the main panel uncluttered.** The drawer locations live in the pop-up window,
+    not the main list — the main list just shows the tools (with a warning on any that need
+    attention).
+  - **Stays on your computer.** The list is saved **only on that shop computer** (never
+    uploaded, never on GitHub) and the window is built locally too — the bookmark still
+    makes **zero network calls** on ELSA. Each computer loads its list once; re-upload to
+    update. **This is a code change, so hard-refresh the setup page and re-drag.**
+
+---
+
 ## v0.3.9-alpha — 2026-06-29
 
 ### Added

@@ -5,6 +5,83 @@ permanent project reference.
 
 ---
 
+## 2026-06-30 — v0.3.10-alpha: shop special-tool list ("Find these tools")
+
+Work on `main` (uncommitted as of writing). **Bookmarklet code change → re-drag needed
+once deployed.** Big new owner-requested feature: techs upload their shop's special-tool
+list (CSV) and Hahns shows **where each tool lives** + flags problems. All in
+`src/helper.js`.
+
+### What it does
+- **⚙ Settings gear** (new, in the panel header, non-embed only) → upload / replace /
+  remove the shop tool list. Shows "Tool list loaded: N tools · uploaded DATE".
+- **Column-mapper overlay** on upload: a preview table with a dropdown per column
+  (Tool number / Description / Drawer location / Not used), **auto-guessed** from the
+  header, with mutual-exclusion + last-column auto-fill (the owner's requested flow).
+  Handles **any layout** — the owner's 3-col `TOOL# / DESCRIPTION / DRAWER#` AND VW's
+  4-col minimum-index (`Order Number` auto-dropped as "Not used").
+- **"Find these tools" opens a separate, printable WINDOW** (owner's follow-up — keep the
+  main panel uncluttered, mirror the fluids pop-up). `openToolWindow` opens/reuses a named
+  window and **writes a self-contained doc locally** (`buildToolsWindowHTML` +
+  `TOOLS_WIN_CSS`). **Tick-off list** (2nd owner follow-up): one row per tool =
+  `<label>`(checkbox + **tool number on the LEFT** + **location on the right**), sorted by
+  drawer (`locSort`) then tool#, with a **pure-CSS strike-through on `input:checked`** (no
+  JS; prints as an empty box for paper crossing-off). Flagged tools get an inline amber tag;
+  a "Not in your list" callout lists unmatched tools. Its own **Print** button (clean, like
+  the main Hahns print; buttons hidden in `@media print`). **No network** (same idea as the
+  print iframe); Print/Close also wired from the opener so they work regardless of the
+  child window's CSP.
+- **Main panel = alerts only.** Each tool shows a small badge **only when there's a
+  problem**: amber `toolStatus()` flag (MISSING / CHECK PART NUMBER / broken) or red "not
+  in list". **No location badges inline**, and locations are **not** in the main
+  `Copy list` / `Print` — the window owns locations.
+
+### How it stays on-architecture (privacy)
+- Stored in **`localStorage` `vwjb_tools_v1`** (shop config, persists across sessions on
+  that machine; **NOT** cleared by Exit / New Vehicle / Clear info — only by "Remove
+  list"). The shop's own data, never VW/ELSA manual content, **never uploaded / never on
+  GitHub**. Reading the picked file is a **local FileReader read, not a network call**, so
+  the **zero-network-on-ELSA rule is intact**.
+- **Matching:** `normTool()` strips to alphanumerics + uppercases BOTH sides → ELSA's
+  `VAS 6909` ↔ sheet `VAS6909`, `10-222 A/10` ↔ `10-222A/10`; sub-parts stay distinct.
+- **CSV:** `parseCSV` is a real RFC-4180 reader (quoted fields w/ embedded commas + `""` —
+  both real files need it). `findToolHeader` locates the header row (skips `Table 1` /
+  `Print Date` junk); `buildToolMap` dedupes by `normTool`.
+
+### New code (all `src/helper.js`)
+- State: `TOOLS_KEY`, `shopTools` cache. Data/match: `normTool`, `todayISO`,
+  `load/save/removeShopTools`, `matchShopTool`, `toolStatus`, `parseCSV`, `findToolHeader`,
+  `guessToolRole`, `buildToolMap`, `locSort`. Render: `toolBadge` (alert-only inline),
+  `buildToolsWindowHTML` + `TOOLS_WIN_CSS` (the printable tick-off window doc),
+  `openToolWindow`. UI: `flash`, `pickToolFile`, `openSettings`, `openToolMapper`. Wiring:
+  `GEAR` icon + header button, `data-act="settings"`/`"findtools"`, tools-section render +
+  button, `debugDump` line, panel CSS. `.xlsx` upload is politely refused ("save as CSV
+  first") — native xlsx is a later option.
+
+### Verified
+- `node --check` clean. **Node logic harness against BOTH real files:** owner's
+  `MASTER LIST 2026` → header row 1, roles auto `[num,desc,drawer]`, **1018 tools**, MISSING
+  flags captured; VW `vwMinimumIndexes` → header row 4, `Order Number` auto-`ignore`, roles
+  `[ignore,num,desc,drawer]`, **554 tools**. ELSA-style space/spelling variants match;
+  unmatched → "not in list"; CSV quoting correct.
+- **Browser (non-embed harness):** gear → settings overlay (loaded count + Remove/Replace);
+  inline alerts render (MISSING / not-in-list only, no location badges); **"Find these
+  tools" pop-up** renders a clean Location→Tools table (numeric drawers first, then text),
+  "Check before you go" + "Not in your list" callouts, Print/Close buttons, vehicle + job
+  header; column-mapper for the 4-col sheet auto-maps `[ignore,num,desc,drawer]`,
+  mutual-exclusion + Save validation (missing num/drawer → error) + successful Save all
+  work. **No console errors.** Built `v0.3.10-alpha`.
+
+### Next
+- **Deploy:** PR → `main` (`git pull --rebase` first); confirm live stamp `v0.3.10-alpha`.
+  **Re-drag needed** (code change). Tell owner: load the list via the gear once per shop
+  computer (save the spreadsheet as CSV first).
+- **Open questions for the owner:** confirm matching against a few REAL ELSA tool numbers
+  (spelling alignment); more status keywords to flag if his sheets use others; possible
+  later add: native `.xlsx` upload so no Save-As-CSV step.
+
+---
+
 ## 2026-06-29 — v0.3.9-alpha: Hahns mascot artwork + favicon
 
 **MERGED + LIVE** (PR #46 → `main`; live `v0.3.9-alpha` confirmed). **Bookmarklet code
