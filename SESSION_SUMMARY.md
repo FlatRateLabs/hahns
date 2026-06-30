@@ -5,6 +5,19 @@ permanent project reference.
 
 ---
 
+## 2026-06-30 — v0.3.10.1-alpha: minimized panel shows SCAN (not New Vehicle)
+
+Tiny owner-requested UI tweak (same night as v0.3.10). **Bookmarklet code change →
+re-drag.** The minimized panel was showing the **New Vehicle** button; the owner wanted
+**SCAN** there instead (collapse the panel and still scan in one click). One CSS line in
+`src/helper.js`: the `.wrap.min` hide-list now hides `.topbar` (New Vehicle) and no longer
+hides `.scanbar`; added `.wrap.min .scanbar{padding:11px 13px}` so it sits cleanly as the
+lone element under the header. **Verified** in the browser (non-embed harness, minimized
+state): minimized = header + green SCAN, New Vehicle hidden, no console errors. Built
+`v0.3.10.1-alpha`.
+
+---
+
 ## 2026-06-30 — v0.3.10-alpha: shop special-tool list ("Find these tools")
 
 Work on `main` (uncommitted as of writing). **Bookmarklet code change → re-drag needed

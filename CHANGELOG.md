@@ -9,6 +9,15 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.10.1-alpha — 2026-06-30
+
+### Changed
+- **When you minimize Hahns, it now shows the SCAN button** instead of the New Vehicle
+  button — so you can collapse the panel and still scan a page in one click. (New Vehicle
+  is tucked away until you expand again.) **Re-drag to get this.**
+
+---
+
 ## v0.3.10-alpha — 2026-06-30
 
 ### Added
