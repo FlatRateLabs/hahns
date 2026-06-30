@@ -1232,7 +1232,10 @@
     ".hd .hbtn{display:inline-flex;align-items:center;justify-content:center;padding:3px 5px}" +
     ".hd .hbtn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".wrap.min{max-height:none}" +
-    ".wrap.min .sub,.wrap.min .scanbar,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar,.wrap.min .vbar,.wrap.min .fluidbar{display:none}" +
+    // minimized = header + SCAN only (so a tech can collapse the panel and still
+    // scan a page). New Vehicle / everything else is hidden.
+    ".wrap.min .sub,.wrap.min .topbar,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar,.wrap.min .vbar,.wrap.min .fluidbar{display:none}" +
+    ".wrap.min .scanbar{padding:11px 13px}" +
     // vehicle bar — the up-front "what car is this" identity strip
     ".vbar{padding:9px 13px;border-bottom:1px solid #eee;font-size:12px;line-height:1.4}" +
     ".vbar.empty{background:#eef1f6;color:#3a4a63}" +
