@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.11.1-alpha — in progress
+## v0.3.11.1-alpha — 2026-07-01
 
 ### Changed
 - **Tidied the no-vehicle view.** Removed the extra "Scanning a repair page works right
