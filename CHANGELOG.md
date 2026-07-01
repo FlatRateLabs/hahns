@@ -9,6 +9,15 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.11.1-alpha — in progress
+
+### Changed
+- **Tidied the no-vehicle view.** Removed the extra "Scanning a repair page works right
+  away…" note — it repeated what the greyed-out **Fluids & capacities** row already says
+  ("scan Vehicle Summary to enable"). One less thing on screen. **Re-drag to get this.**
+
+---
+
 ## v0.3.11-alpha — 2026-07-01
 
 ### Changed

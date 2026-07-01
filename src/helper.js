@@ -1435,17 +1435,15 @@
   }
 
   // the identity strip pinned under the header. When a vehicle is loaded it
-  // shows the five fields (blanks flagged + editable); otherwise it prompts the
-  // tech to scan ELSA's Vehicle Summary page first.
+  // shows the five fields (blanks flagged + editable); otherwise it stays empty
+  // (the greyed Fluids & Capacities row already prompts to scan the Summary),
+  // only surfacing a transient scan note if there is one.
   function vehicleBar(r) {
     var note = vehNotice
       ? '<div class="vwarn">' + esc(vehNotice) + "</div>"
       : "";
     if (!vehLoaded(r)) {
-      return '<div class="vbar empty"><div class="vmsg">' +
-        'Scanning a <b>repair page</b> works right away. To also use ' +
-        '<b>Fluids &amp; Capacities</b>, open ELSA’s <b>Vehicle Summary</b> page and ' +
-        'click <b>SCAN</b> to load the vehicle.</div>' + note + "</div>";
+      return note ? '<div class="vbar empty">' + note + "</div>" : "";
     }
     var v = r.__vehicle;
     var miss = vehMissing(v);
