@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.11-alpha — in progress
+## v0.3.11-alpha — 2026-07-01
 
 ### Changed
 - **SCAN now works without loading a vehicle first.** If you're already in a repair
