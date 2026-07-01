@@ -5,6 +5,49 @@ permanent project reference.
 
 ---
 
+## 2026-07-01 — v0.3.11-alpha: SCAN works without a vehicle; fluids gated + discoverable
+
+**MERGED + LIVE** (PR #55 → `main`; live `v0.3.11-alpha` confirmed via `version.json`).
+**Bookmarklet code change → re-drag needed.** Owner ask: it was frustrating to be inside
+a repair manual, want to use Hahns, and be forced back to the Vehicle Summary page before
+you could scan. Removed that gate. All in `src/helper.js`.
+
+### What changed
+- **SCAN no longer requires a loaded vehicle.** `scan()` previously blocked any non-Vehicle-
+  Summary page with a `vehNotice` ("This isn't the Vehicle Summary page…") and collected
+  nothing until a vehicle was loaded. Now: scanning the **Vehicle Summary** still loads the
+  vehicle (VIN gate unchanged — a stray header VIN on a repair page still won't seed one)
+  and returns (no specs there); scanning **any other page** collects its specs immediately,
+  vehicle or not.
+- **Loading the vehicle is now needed ONLY for Fluids & Capacities.** `fluidsBar()` used to
+  return `""` (nothing) with no vehicle; now it renders a **greyed, non-clickable
+  placeholder** — `.fluidbtn.off` — "Fluids & capacities — scan Vehicle Summary to enable",
+  so the feature stays discoverable. The real clickable link (with `data-act="fluids"`, no
+  VIN in URL) still only appears once a vehicle is loaded.
+- **Reworded prompts** (vehicle now optional): the empty vehicle bar ("Scanning a repair
+  page works right away. To also use Fluids & Capacities, open ELSA's Vehicle Summary…")
+  and the empty-panel hint ("Open a repair procedure and click SCAN… Want Fluids &
+  Capacities too? Scan… Vehicle Summary first."). On a successful summary scan `vehNotice`
+  now confirms "Vehicle loaded — Fluids & Capacities is now available."
+- New CSS: `.fluidbtn.off` (grey bg/text, `cursor:default`, grey droplet).
+
+### On-architecture
+- No new storage, **zero network**, no privacy change. Pure gate-removal + render tweaks.
+
+### Verified
+- `node --check` clean; rebuilt `v0.3.11-alpha`. **Browser (non-embed render harness):**
+  (a) specs render with **no vehicle** (no blocking hint); (b) fluids placeholder is `.off`,
+  has no href, `cursor:default`, grey; (c) loaded vehicle → clickable `<a data-act="fluids">`
+  with params + **no VIN**; reworded bar/hint text confirmed. No console errors; screenshot
+  captured. Live `version.json` = `v0.3.11-alpha`.
+
+### Next
+- **Re-drag** needed (code change) — tell the owner to hard-refresh the setup page + re-drag.
+- Follow-ups still open from v0.3.10: confirm shop-tool matching against real ELSA tool
+  numbers; optional native `.xlsx` upload.
+
+---
+
 ## 2026-06-30 — v0.3.10.1-alpha: minimized panel shows SCAN (not New Vehicle)
 
 Tiny owner-requested UI tweak (same night as v0.3.10). **Bookmarklet code change →
