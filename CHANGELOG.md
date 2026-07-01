@@ -9,6 +9,19 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.11-alpha — in progress
+
+### Changed
+- **SCAN now works without loading a vehicle first.** If you're already in a repair
+  procedure, just click **SCAN** — Hahns collects the specs right away. You no longer have
+  to go back to the Vehicle Summary page first. **Re-drag to get this.**
+- **Loading the vehicle is now only needed for Fluids & Capacities.** Scan ELSA's
+  **Vehicle Summary** page once to turn that feature on. Until you do, the Fluids &
+  Capacities row shows as greyed-out with a note telling you how to enable it — so you
+  know the feature is there.
+
+---
+
 ## v0.3.10.1-alpha — 2026-06-30
 
 ### Changed

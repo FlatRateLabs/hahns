@@ -1353,6 +1353,9 @@
     ".fluidbtn:hover{background:#e2eefc;border-color:#185fa5}" +
     ".fluidbtn svg{width:17px;height:17px;flex-shrink:0;fill:none;stroke:#185fa5;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".fluidbtn .arr{margin-left:auto;font-size:14px;color:#185fa5}" +
+    ".fluidbtn.off{background:#f4f4f6;border-color:#e5e5ea;color:#8a8a8a;cursor:default;font-weight:600}" +
+    ".fluidbtn.off:hover{background:#f4f4f6;border-color:#e5e5ea}" +
+    ".fluidbtn.off svg{stroke:#a8a8ae}" +
     ".fluidnote{font-size:12px;color:#7a7a7a;line-height:1.4}" +
     ".dgmhdr{font-family:inherit;font-weight:600;font-size:11px;color:#5f6b80;margin:9px 0 4px}" +
     ".dgmwrap{position:relative;margin:6px 0}" +
@@ -1440,8 +1443,9 @@
       : "";
     if (!vehLoaded(r)) {
       return '<div class="vbar empty"><div class="vmsg">' +
-        '<b>No vehicle loaded.</b> Open ELSA’s <b>Vehicle Summary</b> page and click ' +
-        '<b>SCAN</b> to load the vehicle before collecting specs.</div>' + note + "</div>";
+        'Scanning a <b>repair page</b> works right away. To also use ' +
+        '<b>Fluids &amp; Capacities</b>, open ELSA’s <b>Vehicle Summary</b> page and ' +
+        'click <b>SCAN</b> to load the vehicle.</div>' + note + "</div>";
     }
     var v = r.__vehicle;
     var miss = vehMissing(v);
@@ -1475,7 +1479,12 @@
   // once a vehicle is loaded (you can't look fluids up without one).
   var DROPLET = "M12 2.7s6 6.6 6 10.3a6 6 0 0 1-12 0c0-3.7 6-10.3 6-10.3z";
   function fluidsBar(r) {
-    if (!vehLoaded(r)) return "";
+    // no vehicle yet: keep the feature discoverable with a greyed, non-clickable
+    // placeholder that tells the tech how to enable it (scan the Vehicle Summary).
+    if (!vehLoaded(r)) {
+      return '<div class="fluidbar"><div class="fluidbtn off" title="Scan ELSA’s Vehicle Summary page to enable">' +
+        svg(DROPLET) + "Fluids &amp; capacities — scan Vehicle Summary to enable</div></div>";
+    }
     var url = vehFluidsUrl(r);
     if (!url) return '<div class="fluidbar"><div class="fluidnote">Add the <b>Model Year</b> above to look up fluids &amp; capacities.</div></div>';
     // opens in a small, centered pop-up window (see the "fluids" click handler) so
@@ -1613,7 +1622,7 @@
     if (total === 0) {
       html += vehLoaded(r)
         ? '<div class="hint">Vehicle loaded. Open a repair procedure and click <b>SCAN</b> to collect its specs.</div>'
-        : '<div class="hint">Start on ELSA’s <b>Vehicle Summary</b> page and click <b>SCAN</b> to load the vehicle. Procedure specs can be collected after that.</div>';
+        : '<div class="hint">Open a repair procedure and click <b>SCAN</b> to collect its specs. Want <b>Fluids &amp; Capacities</b> too? Scan ELSA’s <b>Vehicle Summary</b> page first.</div>';
     }
 
     // group items under a per-page header once 2+ pages have been scanned
@@ -2553,29 +2562,26 @@
       renderInto(host, job, { onRescan: scan, onNewJob: newJob, persist: true });
     };
     // one Scan button, auto-detected:
-    //  - until a vehicle is loaded, a scan MUST be the Vehicle Summary page.
-    //    Finding a VIN loads the vehicle (other fields fill in / get flagged);
-    //    finding none is blocked with a prompt — no procedure specs collected.
-    //  - once a vehicle is loaded, a scan ADDS the page's specs to the job.
+    //  - scanning ELSA's Vehicle Summary page loads the vehicle (needed ONLY for
+    //    the Fluids & Capacities lookup). It has no procedure specs, so we load +
+    //    return.
+    //  - scanning any other page ADDS its specs to the job — a vehicle is NOT
+    //    required, so a repair page can be scanned straight away.
     function scan() {
       var job = loadJob() || emptyResults();
       var segs = gatherSegments(document);
-      lastSegments = segs;   // keep the diagnostic dump in sync even when blocked
+      lastSegments = segs;   // keep the diagnostic dump in sync
 
-      if (!vehLoaded(job)) {
-        // a VIN in ELSA's header is NOT enough — only load from the real Vehicle
-        // Summary page, so a repair page can't seed a wrong/partial vehicle
-        if (isVehicleSummaryPage(segs)) {
-          var veh = extractVehicle(segs);
-          if (veh && veh.vin) {
-            job.__vehicle = veh;   // accept + flag any blank fields in the bar
-            vehNotice = "";
-          } else {
-            vehNotice = "Read the Vehicle Summary but couldn’t find a VIN — click SCAN again.";
-          }
+      // opportunistically load the vehicle from the Vehicle Summary page. A VIN in
+      // ELSA's header is NOT enough — only the real summary page, so a repair page
+      // can't seed a wrong/partial vehicle. Only do this until one is loaded.
+      if (!vehLoaded(job) && isVehicleSummaryPage(segs)) {
+        var veh = extractVehicle(segs);
+        if (veh && veh.vin) {
+          job.__vehicle = veh;   // accept + flag any blank fields in the bar
+          vehNotice = "Vehicle loaded — Fluids & Capacities is now available.";
         } else {
-          // gating: don't collect anything until a vehicle is loaded
-          vehNotice = "This isn’t the Vehicle Summary page. Open ELSA’s Vehicle Summary, then click SCAN.";
+          vehNotice = "Read the Vehicle Summary but couldn’t find a VIN — click SCAN again.";
         }
         show(job);
         return;
