@@ -9,6 +9,28 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.13-alpha — 2026-07-02
+
+### Changed
+- **Fluids & Capacities now runs entirely from your own computer.** Load the yearly
+  **"VW Fluid Capacity Tables" PDFs** once through the ⚙ Settings gear (you can pick all
+  the years at once) — Hahns converts each PDF **right in the browser** into a small
+  lookup table it keeps on that computer, shows you a preview of the years and models it
+  found before saving, and the PDFs themselves aren't kept. The Fluids & capacities
+  button then opens the same vehicle-matched lookup as before (now with its own **Print**
+  button), built locally with **zero network calls** — the fluid data is no longer
+  fetched from the Hahns website at all. Like the shop tool list, the loaded tables stay
+  on that computer and are **not** cleared by Exit / New Vehicle / Clear All Info — only
+  by Settings → Remove tables. **Re-drag to get this**, then load your PDFs once per shop
+  computer.
+
+### Removed
+- The hosted fluid-lookup page (`fluids.html`) and the published per-year fluid data
+  files were removed from the website — the lookup lives inside the app now. If you're
+  on an older version, the fluids link will stop working until you re-drag.
+
+---
+
 ## v0.3.12.1-alpha — 2026-07-01
 
 ### Changed

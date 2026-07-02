@@ -214,9 +214,9 @@
       key: "fluids",
       title: "Fluids & capacities",
       icon: "M12 2.7s6 6.6 6 10.3a6 6 0 0 1-12 0c0-3.7 6-10.3 6-10.3z",
-      // NOT scanned from the repair manual (fluids live in a separate per-year PDF).
-      // Instead this section is a link that opens the vehicle-matched fluid lookup
-      // page in a new window (off ELSA, so it can load the data). See vehFluidsUrl().
+      // NOT scanned from the repair manual (fluids live in a separate per-year PDF
+      // the tech loads through ⚙ Settings). This section is a button that opens the
+      // vehicle-matched lookup in a locally-built window. See fluidsBar()/openFluidsWindow().
       linkOnly: true,
       test: function () { return false; }
     },
@@ -613,6 +613,941 @@
     return String(a).localeCompare(String(b));
   }
 
+  /* ------------------------------------------------------------------ *
+   * FLUID CAPACITY TABLES (v0.3.13) — read the yearly VW PDFs LOCALLY.
+   *   The tech loads the "VW Fluid Capacity Tables" PDFs (one per model
+   *   year) through the ⚙ Settings gear. Each PDF is read ONE TIME, right
+   *   here in the browser (FileReader + the built-in DecompressionStream —
+   *   NO library, NO network), converted to a small data table, and saved
+   *   in localStorage on this machine. The PDF itself is not kept. The
+   *   Fluids & Capacities button then shows the values matched to the
+   *   loaded vehicle in a printable pop-up window (built locally, like
+   *   "Find these tools"). Nothing fluid-related is hosted online.
+   *   Like the shop tool list, this is shop config — NOT cleared by
+   *   Exit / New Vehicle / Clear info, only by Settings "Remove".
+   * ------------------------------------------------------------------ */
+  var FLUIDS_KEY = "vwjb_fluids_v1";  // localStorage: { updated, count, years:{ "2022": { models:[...], file } } }
+  var fluidsData = null;              // in-memory cache: null=unread, false=none, obj=loaded
+
+  function loadFluids() {
+    if (fluidsData !== null) return fluidsData || null;
+    try { var raw = localStorage.getItem(FLUIDS_KEY); fluidsData = raw ? JSON.parse(raw) : false; }
+    catch (e) { fluidsData = false; }
+    return fluidsData || null;
+  }
+  function saveFluids(obj) {
+    try { localStorage.setItem(FLUIDS_KEY, JSON.stringify(obj)); fluidsData = obj; return true; }
+    catch (e) { return false; }
+  }
+  function removeFluids() {
+    try { localStorage.removeItem(FLUIDS_KEY); } catch (e) {}
+    fluidsData = false;
+  }
+
+  /* ---- 1. mini PDF text extractor -----------------------------------
+   * Purpose-built for the VW Fluid Capacity Tables family (Antenna House,
+   * PDF 1.4): classic xref, FlateDecode streams, Type0 fonts with a
+   * ToUnicode CMap, text positioned with cm/Tm/Td and shown with hex
+   * Tj/TJ. Produces layout-preserving text lines (columns aligned by
+   * character position) like `pdftotext -layout`, which the table parser
+   * below relies on. NOT a general PDF reader — anything else fails
+   * gracefully with "no fluid tables found".
+   * ------------------------------------------------------------------ */
+
+  // bytes → 1:1 byte string (indexes match the byte offsets; NOT TextDecoder
+  // "latin1", which is windows-1252 and remaps 0x80–0x9F)
+  function bstr(bytes) {
+    var out = "", i, CH = 32768;
+    for (i = 0; i < bytes.length; i += CH) {
+      out += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + CH, bytes.length)));
+    }
+    return out;
+  }
+  // zlib-wrapped DEFLATE (PDF FlateDecode) → Promise<Uint8Array>
+  function inflateZlib(bytes) {
+    var ds = new DecompressionStream("deflate");
+    var stream = new Blob([bytes]).stream().pipeThrough(ds);
+    return new Response(stream).arrayBuffer().then(function (ab) { return new Uint8Array(ab); });
+  }
+
+  // scan "N 0 obj … endobj" objects; slice stream bytes by /Length (direct or
+  // resolved from a bare-number object). Sequential walk so a byte pattern
+  // INSIDE a stream can't spawn a phantom object.
+  function pdfObjects(bytes) {
+    var s = bstr(bytes), objs = {}, heads = [], re = /(\d+)\s+\d+\s+obj\b/g, m;
+    while ((m = re.exec(s))) heads.push({ num: +m[1], at: m.index, end: re.lastIndex });
+    var cursor = 0, list = [], i;
+    for (i = 0; i < heads.length; i++) {
+      if (heads[i].at < cursor) continue;
+      var h = heads[i], endobjAt = s.indexOf("endobj", h.end);
+      var streamAt = s.indexOf("stream", h.end);
+      var o = { num: h.num, dict: "", data: null, lenRef: -1, dataStart: -1, dataEnd: -1 };
+      if (streamAt >= 0 && (endobjAt < 0 || streamAt < endobjAt)) {
+        o.dict = s.slice(h.end, streamAt);
+        var ds2 = streamAt + 6;
+        if (s.charAt(ds2) === "\r") ds2++;
+        if (s.charAt(ds2) === "\n") ds2++;
+        o.dataStart = ds2;
+        var lm = /\/Length\s+(\d+)(\s+0\s+R)?/.exec(o.dict);
+        if (lm && !lm[2]) o.dataEnd = ds2 + (+lm[1]);
+        else if (lm) o.lenRef = +lm[1];
+        var esAt = s.indexOf("endstream", o.dataEnd > 0 ? o.dataEnd : ds2);
+        if (o.dataEnd < 0) o.dataEnd = esAt;
+        endobjAt = s.indexOf("endobj", esAt >= 0 ? esAt : ds2);
+      } else {
+        o.dict = endobjAt >= 0 ? s.slice(h.end, endobjAt) : s.slice(h.end);
+      }
+      objs[h.num] = o;
+      list.push(o);
+      cursor = endobjAt >= 0 ? endobjAt + 6 : h.end;
+    }
+    list.forEach(function (o) {
+      if (o.dataStart < 0) return;
+      if (o.lenRef >= 0 && objs[o.lenRef]) {
+        var n = parseInt(String(objs[o.lenRef].dict).replace(/[^\d]/g, " "), 10);
+        if (!isNaN(n)) o.dataEnd = o.dataStart + n;
+      }
+      if (o.dataEnd > o.dataStart) o.data = bytes.subarray(o.dataStart, o.dataEnd);
+    });
+    return objs;
+  }
+
+  function pdfRef(dict, key) {
+    var m = new RegExp("\\/" + key + "\\s+(\\d+)\\s+0\\s+R").exec(dict || "");
+    return m ? +m[1] : -1;
+  }
+
+  // page objects in document order (walk /Pages → /Kids from the root)
+  function pdfPageOrder(objs) {
+    var root = -1, n, pages = [];
+    for (n in objs) {
+      var d = objs[n].dict || "";
+      if (/\/Type\s*\/Pages\b/.test(d) && !/\/Parent\b/.test(d)) { root = +n; break; }
+    }
+    function walk(num, depth) {
+      if (depth > 16 || !objs[num]) return;
+      var d = objs[num].dict || "";
+      if (/\/Type\s*\/Page\b/.test(d) && !/\/Type\s*\/Pages\b/.test(d)) { pages.push(num); return; }
+      var km = /\/Kids\s*\[([^\]]*)\]/.exec(d);
+      if (!km) return;
+      var re = /(\d+)\s+0\s+R/g, m;
+      while ((m = re.exec(km[1]))) walk(+m[1], depth + 1);
+    }
+    if (root >= 0) walk(root, 0);
+    if (!pages.length) {
+      for (n in objs) {
+        var d2 = objs[n].dict || "";
+        if (/\/Type\s*\/Page\b/.test(d2) && !/\/Type\s*\/Pages\b/.test(d2)) pages.push(+n);
+      }
+      pages.sort(function (a, b) { return a - b; });
+    }
+    return pages;
+  }
+
+  // "0048" hex (UTF-16BE code units) → string
+  function hexUtf16(hex) {
+    var out = "", i;
+    if (hex.length % 4 === 0) { for (i = 0; i < hex.length; i += 4) out += String.fromCharCode(parseInt(hex.substr(i, 4), 16)); }
+    else if (hex.length) out = String.fromCharCode(parseInt(hex, 16));
+    return out;
+  }
+  // ToUnicode CMap: glyph code → text (bfchar pairs + bfrange runs)
+  function parseCMap(text) {
+    var map = {}, m, p;
+    var bf = /beginbfchar([\s\S]*?)endbfchar/g;
+    while ((m = bf.exec(text))) {
+      var pre = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]*)>/g;
+      while ((p = pre.exec(m[1]))) map[parseInt(p[1], 16)] = hexUtf16(p[2]);
+    }
+    var rg = /beginbfrange([\s\S]*?)endbfrange/g;
+    while ((m = rg.exec(text))) {
+      var tri = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*(?:<([0-9A-Fa-f]+)>|\[([^\]]*)\])/g, t, i;
+      while ((t = tri.exec(m[1]))) {
+        var lo = parseInt(t[1], 16), hi = parseInt(t[2], 16);
+        if (hi - lo > 65535) continue;
+        if (t[3] != null) {
+          var start = parseInt(t[3], 16), digits = t[3].length;
+          for (i = lo; i <= hi; i++) {
+            var hx = (start + (i - lo)).toString(16);
+            while (hx.length < digits) hx = "0" + hx;
+            map[i] = hexUtf16(hx);
+          }
+        } else if (t[4]) {
+          var arr = t[4].match(/<([0-9A-Fa-f]*)>/g) || [];
+          for (i = 0; i < arr.length && lo + i <= hi; i++) map[lo + i] = hexUtf16(arr[i].replace(/[<>]/g, ""));
+        }
+      }
+    }
+    return map;
+  }
+  // CID font /W widths array (balanced-bracket scan; entries are either
+  // "cFirst [w w …]" or "cFirst cLast w"). Returns { code: width/1000 units }.
+  function parseWidths(dict) {
+    var w = {}, at = (dict || "").search(/\/W\s*\[/);
+    if (at < 0) return w;
+    var i = dict.indexOf("[", at), depth = 0, end = i;
+    for (; end < dict.length; end++) {
+      var c = dict.charAt(end);
+      if (c === "[") depth++;
+      else if (c === "]") { depth--; if (!depth) break; }
+    }
+    var body = dict.slice(i + 1, end);
+    // tokenize: numbers and [ ] only
+    var toks = body.match(/-?[\d.]+|\[|\]/g) || [], k = 0;
+    while (k < toks.length) {
+      var first = parseFloat(toks[k]); k++;
+      if (isNaN(first)) continue;
+      if (toks[k] === "[") {
+        k++;
+        var code = first;
+        while (k < toks.length && toks[k] !== "]") { w[code++] = parseFloat(toks[k]); k++; }
+        k++; // closing ]
+      } else {
+        var last = parseFloat(toks[k]), width = parseFloat(toks[k + 1]); k += 2;
+        if (!isNaN(last) && !isNaN(width)) { for (var cc = first; cc <= last && cc - first < 65536; cc++) w[cc] = width; }
+      }
+    }
+    return w;
+  }
+
+  function mmul(a, b) {   // 6-term matrix product a×b ([a b c d e f])
+    return [
+      a[0] * b[0] + a[1] * b[2], a[0] * b[1] + a[1] * b[3],
+      a[2] * b[0] + a[3] * b[2], a[2] * b[1] + a[3] * b[3],
+      a[4] * b[0] + a[5] * b[2] + b[4], a[4] * b[1] + a[5] * b[3] + b[5]
+    ];
+  }
+
+  // decode a shown string's raw glyph bytes through the font: returns the text
+  // plus the exact advance width (font units/1000 × size applied by caller)
+  function decodeGlyphs(raw, font) {
+    var text = "", adv = 0, i, code;
+    if (font && font.two) {
+      for (i = 0; i + 1 < raw.length; i += 2) {
+        code = (raw.charCodeAt(i) << 8) | raw.charCodeAt(i + 1);
+        var t = font.map ? font.map[code] : null;
+        text += (t == null ? "" : t);
+        adv += (font.widths && font.widths[code] != null) ? font.widths[code] : (font.dw || 500);
+      }
+    } else {
+      for (i = 0; i < raw.length; i++) {
+        code = raw.charCodeAt(i);
+        text += (font && font.map && font.map[code] != null) ? font.map[code] : String.fromCharCode(code);
+        adv += 500;
+      }
+    }
+    return { text: text.replace(/\u0000/g, ""), adv: adv };
+  }
+
+  // interpret one content stream: track ctm (q/Q/cm) + text matrix (BT/Tm/Td/
+  // TD/T*/TL), decode Tj/TJ/'/" through the current font, emit positioned runs
+  function pdfPageRuns(content, fontsByName, out) {
+    var i = 0, n = content.length;
+    var stack = [], ctm = [1, 0, 0, 1, 0, 0];
+    var tm = null, tlm = null, tl = 0, fsize = 10, font = null;
+    var ops = [];
+    function isWS(c) { return c === " " || c === "\n" || c === "\r" || c === "\t" || c === "\f" || c === "\u0000"; }
+    function isDelim(c) { return c === "/" || c === "[" || c === "]" || c === "<" || c === ">" || c === "(" || c === ")" || c === "{" || c === "}" || c === "%"; }
+    function nums(count) {
+      var vals = [];
+      for (var k = 0; k < ops.length; k++) if (ops[k].t === "num") vals.push(ops[k].v);
+      return vals.slice(vals.length - count);
+    }
+    function lineTd(tx, ty) { if (tlm) { tlm = mmul([1, 0, 0, 1, tx, ty], tlm); tm = tlm; } }
+    function show(raw) {
+      if (tm == null || raw == null) return;
+      var d = decodeGlyphs(raw, font);
+      if (d.text) {
+        var trm = mmul(tm, ctm);
+        // sheared/rotated text (the slanted "Note" label) mustn't define the
+        // page's left margin — flag it so runsToText skips it for minX
+        var sk = (Math.abs(trm[1]) > 0.001 || Math.abs(trm[2]) > 0.001) ? 1 : 0;
+        out.push({ x: trm[4], y: trm[5], s: d.text, end: 0, sk: sk });
+        out[out.length - 1].end = mmul(mmul([1, 0, 0, 1, d.adv / 1000 * fsize, 0], tm), ctm)[4];
+      }
+      tm = mmul([1, 0, 0, 1, d.adv / 1000 * fsize, 0], tm);
+    }
+    while (i < n) {
+      var c = content.charAt(i);
+      if (isWS(c)) { i++; continue; }
+      if (c === "%") { while (i < n && content.charAt(i) !== "\n") i++; continue; }
+      if (c === "(") {                                   // literal string
+        var depth = 1, j = i + 1, sbuf = "";
+        while (j < n && depth > 0) {
+          var ch = content.charAt(j);
+          if (ch === "\\") {
+            var nx = content.charAt(j + 1);
+            if (nx === "n") sbuf += "\n"; else if (nx === "r") sbuf += "\r"; else if (nx === "t") sbuf += "\t";
+            else if (nx >= "0" && nx <= "7") {
+              var oct = (/^[0-7]{1,3}/.exec(content.slice(j + 1, j + 4)) || ["0"])[0];
+              sbuf += String.fromCharCode(parseInt(oct, 8)); j += oct.length - 1;
+            } else sbuf += nx;
+            j += 2; continue;
+          }
+          if (ch === "(") depth++;
+          else if (ch === ")") { depth--; if (!depth) { j++; break; } }
+          sbuf += ch; j++;
+        }
+        ops.push({ t: "str", v: sbuf }); i = j; continue;
+      }
+      if (c === "<") {
+        if (content.charAt(i + 1) === "<") {             // inline dict — skip balanced
+          var d2 = 1, j2 = i + 2;
+          while (j2 < n && d2 > 0) {
+            if (content.charAt(j2) === "<" && content.charAt(j2 + 1) === "<") { d2++; j2 += 2; }
+            else if (content.charAt(j2) === ">" && content.charAt(j2 + 1) === ">") { d2--; j2 += 2; }
+            else j2++;
+          }
+          ops.push({ t: "dict" }); i = j2; continue;
+        }
+        var e2 = content.indexOf(">", i);                // hex string
+        if (e2 < 0) break;
+        var hex = content.slice(i + 1, e2).replace(/[^0-9A-Fa-f]/g, "");
+        if (hex.length % 2) hex += "0";
+        var hbuf = "";
+        for (var hh = 0; hh < hex.length; hh += 2) hbuf += String.fromCharCode(parseInt(hex.substr(hh, 2), 16));
+        ops.push({ t: "str", v: hbuf }); i = e2 + 1; continue;
+      }
+      if (c === "[") { ops.push({ t: "[" }); i++; continue; }
+      if (c === "]") {
+        var arr = [];
+        while (ops.length && ops[ops.length - 1].t !== "[") arr.unshift(ops.pop());
+        ops.pop();
+        ops.push({ t: "arr", v: arr }); i++; continue;
+      }
+      if (c === "/") {
+        var j3 = i + 1;
+        while (j3 < n && !isWS(content.charAt(j3)) && !isDelim(content.charAt(j3))) j3++;
+        ops.push({ t: "name", v: content.slice(i + 1, j3) }); i = j3; continue;
+      }
+      if (c === "+" || c === "-" || c === "." || (c >= "0" && c <= "9")) {
+        var j4 = i + 1;
+        while (j4 < n && /[0-9.eE+\-]/.test(content.charAt(j4))) j4++;
+        ops.push({ t: "num", v: parseFloat(content.slice(i, j4)) }); i = j4; continue;
+      }
+      var j5 = i;                                        // operator word
+      while (j5 < n && !isWS(content.charAt(j5)) && !isDelim(content.charAt(j5))) j5++;
+      if (j5 === i) { i++; continue; }                   // stray delimiter — skip
+      var op = content.slice(i, j5); i = j5;
+      try {
+        if (op === "q") stack.push(ctm);
+        else if (op === "Q") { if (stack.length) ctm = stack.pop(); }
+        else if (op === "cm") { var m6 = nums(6); if (m6.length === 6) ctm = mmul(m6, ctm); }
+        else if (op === "BT") { tm = [1, 0, 0, 1, 0, 0]; tlm = tm; }
+        else if (op === "ET") { tm = null; tlm = null; }
+        else if (op === "Tf") {
+          for (var kf = ops.length - 1; kf >= 0; kf--) if (ops[kf].t === "name") { font = fontsByName[ops[kf].v] || null; break; }
+          var sz = nums(1); if (sz.length) fsize = sz[0];
+        }
+        else if (op === "Tm") { var t6 = nums(6); if (t6.length === 6) { tm = t6; tlm = t6; } }
+        else if (op === "Td") { var td = nums(2); if (td.length === 2) lineTd(td[0], td[1]); }
+        else if (op === "TD") { var td2 = nums(2); if (td2.length === 2) { tl = -td2[1]; lineTd(td2[0], td2[1]); } }
+        else if (op === "TL") { var tn = nums(1); if (tn.length) tl = tn[0]; }
+        else if (op === "T*") lineTd(0, -tl);
+        else if (op === "Tj") { if (ops.length && ops[ops.length - 1].t === "str") show(ops[ops.length - 1].v); }
+        else if (op === "'") { lineTd(0, -tl); if (ops.length && ops[ops.length - 1].t === "str") show(ops[ops.length - 1].v); }
+        else if (op === '"') { lineTd(0, -tl); if (ops.length && ops[ops.length - 1].t === "str") show(ops[ops.length - 1].v); }
+        else if (op === "TJ") {
+          if (ops.length && ops[ops.length - 1].t === "arr") {
+            ops[ops.length - 1].v.forEach(function (el) {
+              if (el.t === "str") show(el.v);
+              else if (el.t === "num" && tm) tm = mmul([1, 0, 0, 1, -el.v / 1000 * fsize, 0], tm);
+            });
+          }
+        }
+      } catch (e) {}
+      ops = [];
+    }
+  }
+
+  // positioned runs → layout-preserving text lines. Columns land at x/COLW so
+  // cells align by character position across rows (what the table parser
+  // slices by); a run starting within a point of the previous run's true end
+  // is GLUED (footnote markers like "VW 504 001)" must stay glued).
+  function runsToText(runs) {
+    var COLW = 4.2, lines = [], cur = null, i;
+    if (!runs.length) return [];
+    // PDF device y points UP (visual top = largest y) → sort descending for
+    // top-to-bottom reading order. Columns are anchored at the page's left
+    // margin (minX) like pdftotext, so headings start at column 0.
+    // the margin = the leftmost x SHARED by several runs. A one-off element
+    // (the big page number sits ~3pt left of the margin; the slanted "Note"
+    // label is skewed) must not drag the margin left, or every line gains a
+    // stray leading space and the model headers stop matching.
+    var counts = {}, minAll = null, minX = null;
+    runs.forEach(function (rn) {
+      if (rn.sk) return;
+      var k = Math.round(rn.x * 4) / 4;
+      counts[k] = (counts[k] || 0) + 1;
+      if (minAll === null || rn.x < minAll) minAll = rn.x;
+    });
+    Object.keys(counts).forEach(function (k) { if (counts[k] >= 3 && (minX === null || +k < minX)) minX = +k; });
+    if (minX === null) minX = (minAll === null ? runs[0].x : minAll);
+    runs.sort(function (a, b) { return (b.y - a.y) || (a.x - b.x); });
+    for (i = 0; i < runs.length; i++) {
+      if (!cur || cur.y - runs[i].y > 4) { cur = { y: runs[i].y, parts: [] }; lines.push(cur); }
+      cur.parts.push(runs[i]);
+    }
+    var out = [];
+    lines.forEach(function (ln) {
+      ln.parts.sort(function (a, b) { return a.x - b.x; });
+      var s = "", endX = -1e9;
+      ln.parts.forEach(function (p) {
+        var col = Math.round((p.x - minX) / COLW);
+        if (!s) { while (s.length < col) s += " "; }
+        else if (p.x - endX < 1.0) { /* glue */ }
+        else {
+          var target = Math.max(col, s.length + 1);
+          while (s.length < target) s += " ";
+        }
+        s += p.s;
+        endX = Math.max(endX, p.end || p.x);
+      });
+      out.push(s.replace(/\s+$/, ""));
+    });
+    return out;
+  }
+
+  // whole PDF → Promise<layout text> (pages in order, lines top to bottom)
+  function pdfTextLines(buf) {
+    var bytes = new Uint8Array(buf);
+    if (bstr(bytes.subarray(0, 5)) !== "%PDF-") return Promise.reject(new Error("that file isn't a PDF"));
+    var objs = pdfObjects(bytes);
+    var pages = pdfPageOrder(objs);
+    if (!pages.length) return Promise.reject(new Error("couldn't read that PDF"));
+    var jobs = [], fontByObj = {}, contentText = {}, pageInfo = [];
+    pages.forEach(function (pn) {
+      var d = (objs[pn] || {}).dict || "";
+      var resSrc = d, rr = /\/Resources\s+(\d+)\s+0\s+R/.exec(d);
+      if (rr && objs[+rr[1]]) resSrc = objs[+rr[1]].dict || "";
+      var fonts = {}, fm = /\/Font\s*<<([\s\S]*?)>>/.exec(resSrc);
+      if (fm) { var pr = /\/([^\s\/<>\[\]]+)\s+(\d+)\s+0\s+R/g, pm; while ((pm = pr.exec(fm[1]))) fonts[pm[1]] = +pm[2]; }
+      var contents = [], cs = /\/Contents\s+(\d+)\s+0\s+R/.exec(d);
+      if (cs) contents.push(+cs[1]);
+      else {
+        var ca = /\/Contents\s*\[([^\]]*)\]/.exec(d);
+        if (ca) { var cr = /(\d+)\s+0\s+R/g, cm2; while ((cm2 = cr.exec(ca[1]))) contents.push(+cm2[1]); }
+      }
+      pageInfo.push({ fonts: fonts, contents: contents });
+      Object.keys(fonts).forEach(function (nm) {
+        var fn = fonts[nm];
+        if (fn in fontByObj) return;
+        var fd = (objs[fn] || {}).dict || "";
+        var info = { two: /\/Subtype\s*\/Type0/.test(fd), map: null, widths: null, dw: 500 };
+        fontByObj[fn] = info;
+        var desc = -1, dm = /\/DescendantFonts\s*\[\s*(\d+)\s+0\s+R/.exec(fd);
+        if (dm) desc = +dm[1];
+        if (desc >= 0 && objs[desc]) {
+          var dd = objs[desc].dict || "";
+          info.widths = parseWidths(dd);
+          var dwm = /\/DW\s+([\d.]+)/.exec(dd);
+          if (dwm) info.dw = parseFloat(dwm[1]);
+        }
+        var tu = pdfRef(fd, "ToUnicode");
+        if (tu >= 0 && objs[tu] && objs[tu].data) {
+          jobs.push(inflateZlib(objs[tu].data).then(function (u) { info.map = parseCMap(bstr(u)); }).catch(function () {}));
+        }
+      });
+      contents.forEach(function (cn) {
+        if (cn in contentText || !objs[cn] || !objs[cn].data) return;
+        contentText[cn] = "";
+        jobs.push(inflateZlib(objs[cn].data).then(function (u) { contentText[cn] = bstr(u); }).catch(function () {}));
+      });
+    });
+    return Promise.all(jobs).then(function () {
+      var all = [];
+      pageInfo.forEach(function (pi) {
+        var runs = [], byName = {};
+        Object.keys(pi.fonts).forEach(function (nm) { byName[nm] = fontByObj[pi.fonts[nm]]; });
+        pi.contents.forEach(function (cn) { try { pdfPageRuns(contentText[cn] || "", byName, runs); } catch (e) {} });
+        all = all.concat(runsToText(runs));
+      });
+      return all.join("\n");
+    });
+  }
+
+  /* ---- 2. fluid table parser (ported from tools/parse-fluids.js) ----
+   * Same battle-tested logic that produced the reviewed 2011–2026 data:
+   * model sections ("1.9  Atlas (CA1)") each holding the 4 system tables,
+   * columns sliced by the header row's character positions.
+   * ------------------------------------------------------------------ */
+
+  // strip a glued footnote marker like the "1)" in "VW 504 001) (0W-30)"
+  function dropFootnote(s) { return String(s || "").replace(/(\d{2})\d\)/g, "$1"); }
+  // normalise Unicode hyphens + rejoin words split across a line wrap
+  function normHyphens(s) {
+    return String(s || "").replace(/[‐‑­]/g, "-").replace(/([a-z])-\s+([a-z])/g, "$1$2");
+  }
+  var CAP_RE = /\d[\d.]*\s*L\s*\([^)]*qt[^)]*\)/;
+  var SPEC_RE = /VW\s*\d{3}\s*\d{2}(?:\s*\(\s*\d[0-9W\s-]*\))?/g;
+  // engine/trans codes out of "(DDSA / DDSB)" or "(0CR / 0CQ)"
+  function codesIn(text) {
+    var m = /\(([^)]*)\)/.exec(text || "");
+    if (!m) return [];
+    return m[1].split(/[\/,]/).map(function (s) { return s.trim().toUpperCase(); })
+      .filter(function (s) { return /^[A-Z0-9]{2,6}$/.test(s); });
+  }
+  var VAL_RE = /(?:Approximately\s+)?\d[\d.]*(?:\s*\+\/-\s*[\d.]+)?\s*(?:L|g|cc|ml)(?:\s*\+\/-\s*[\d.]+\s*(?:L|g|cc|ml))?(?:\s*\([^)]*\))?/g;
+  // a number can never have two decimal points — VW's 2023 PDF has a
+  // "(0.6.3 qt)" typo for "(0.63 qt)". Collapse a stray middle dot.
+  function fixDecimals(s) { return s.replace(/(\d+\.\d+)\.(\d+)/g, "$1$2"); }
+  function valuesIn(text) {
+    var out = [], m;
+    VAL_RE.lastIndex = 0;
+    while ((m = VAL_RE.exec(text || ""))) out.push(fixDecimals(m[0].replace(/\s+/g, " ").trim()));
+    return out;
+  }
+  // noise lines inside tables (page chrome, footnotes, the Note block)
+  function isNoise(line) {
+    var t = line.trim();
+    if (!t) return true;
+    if (/^\d{1,3}$/.test(t)) return true;
+    if (/^\d{2}\.\d{4}$/.test(t)) return true;
+    if (/^\d{1,3}\s+\d{2}\.\d{4}$/.test(t)) return true;
+    if (/^Note$/i.test(t)) return true;
+    if (/^All quantities are approximate/i.test(t)) return true;
+    if (/^filling instructions\.?$/i.test(t)) return true;
+    if (/^\d\)\s/.test(t)) return true;
+    if (/^(engine oil that meets|Using oil with|Only use different)/i.test(t)) return true;
+    return false;
+  }
+  // column boundaries from a header row + slicing a row into cells by them
+  function boundaries(headerLine, titles) {
+    var idx = [], from = 0;
+    for (var i = 0; i < titles.length; i++) {
+      var at = headerLine.indexOf(titles[i], from);
+      if (at < 0) return null;
+      idx.push(at); from = at + titles[i].length;
+    }
+    return idx;
+  }
+  function sliceCells(line, idx) {
+    var cells = [];
+    for (var i = 0; i < idx.length; i++) {
+      var end = (i + 1 < idx.length) ? idx[i + 1] : line.length + 999;
+      cells.push((line.substring(Math.max(0, idx[i] - 1), end) || "").trim());
+    }
+    return cells;
+  }
+  // ENGINE OIL CAPACITY: Engine | Engine Oil Type | Capacity
+  function parseOil(lines, hdrIdx) {
+    var idxType = lines[hdrIdx].indexOf("Engine Oil Type");
+    if (idxType < 0) return [];
+    var rows = [], cur = null;
+    for (var i = hdrIdx + 1; i < lines.length; i++) {
+      if (/^\s*\d\)\s/.test(lines[i])) break;   // footnote paragraph ends the table
+      if (isNoise(lines[i])) continue;
+      var ln = normHyphens(lines[i]);
+      if (/^\s*Engine\s+Engine Oil Type/.test(ln)) { idxType = ln.indexOf("Engine Oil Type"); continue; }
+      var col1 = ln.substring(0, idxType).trim();
+      var rest = dropFootnote(ln.substring(idxType));
+      if (CAP_RE.test(rest)) { cur = { eng: col1, rest: rest }; rows.push(cur); }
+      else if (cur) { if (col1) cur.eng += " " + col1; cur.rest += " " + rest; }
+    }
+    return rows.map(function (r) {
+      var engines = codesIn(r.eng);
+      var bare = !engines.length;
+      if (bare) engines = (r.eng.replace(/\([^)]*\)/g, " ").match(/\b[A-Z]{4}\b/g) || []);
+      var desc = r.eng.replace(/\([^)]*\)/g, "");
+      if (bare) engines.forEach(function (c) { desc = desc.replace(new RegExp("\\b" + c + "\\b", "g"), " "); });
+      return {
+        engines: engines.map(function (s) { return s.toUpperCase(); }),
+        desc: desc.replace(/\s+/g, " ").replace(/^\s*[—-]\s*/, "").replace(/[—-]\s*$/, "").trim(),
+        specs: (r.rest.match(SPEC_RE) || []).map(function (s) { return s.replace(/\s+/g, " ").trim(); }),
+        capacity: ((r.rest.match(CAP_RE) || [""])[0]).replace(/\s+/g, " ").trim()
+      };
+    });
+  }
+  // COMPONENT/APPLICATION/CAPACITY tables (coolant, A/C, drivetrain)
+  function parseCAC(lines, hdrIdx) {
+    var idx = null, rows = [], cur = null, lastComp = "";
+    for (var i = hdrIdx; i < lines.length; i++) {
+      var ln = normHyphens(lines[i]);
+      if (/^\s*Component\s+Application\s+Capacity/.test(ln)) {
+        idx = boundaries(ln, ["Component", "Application", "Capacity"]); cur = null; continue;
+      }
+      if (!idx || isNoise(ln)) continue;
+      var c = sliceCells(ln, idx), comp = c[0], app = c[1], capCell = c[2];
+      if (comp) lastComp = comp;
+      var vals = valuesIn(capCell);
+      var label = capCell.replace(VAL_RE, "").replace(/\s+/g, " ").trim();
+      var codeOnly = /^\([A-Z0-9/\s]+\)$/.test(app);
+      var madeRow = false;
+      if (codeOnly && cur) { cur.application += " " + app; }
+      else if (app && (comp || /[A-Za-z]/.test(app)) && !/^(Fill|Refill|Initial|Approximately)/i.test(app)) {
+        cur = { component: comp || lastComp, application: app, fills: [] };
+        rows.push(cur); madeRow = true;
+      }
+      if (!cur) { cur = { component: comp || lastComp, application: app || "", fills: [] }; rows.push(cur); madeRow = true; }
+      if (comp && !madeRow && !codeOnly) cur.component += " " + comp;
+      for (var v = 0; v < vals.length; v++) cur.fills.push({ label: label, value: vals[v] });
+      if (!vals.length && label && cur.fills.length) {
+        var f = cur.fills[cur.fills.length - 1];
+        f.label = (f.label ? f.label + " " : "") + label;
+      }
+    }
+    rows.forEach(function (r) {
+      r.fills.forEach(function (f) { f.label = (f.label || "").replace(/\s+/g, " ").replace(/\s*\/\s*/g, " / ").trim(); });
+      r.application = (r.application || "").replace(/\s+/g, " ").trim();
+      r.component = (r.component || "").replace(/\s+/g, " ").trim();
+      var rt = /R\s?1234yf|R\s?134a|R\s?744/i.exec(r.component);
+      if (rt) {
+        r.refrigerant = rt[0].replace(/\s+/g, "").replace(/^r/, "R");
+        if (/^\(?R\s?(1234yf|134a|744)\)?$/i.test(r.component)) r.component = "A/C System Refrigerant " + r.component;
+      }
+    });
+    return rows.filter(function (r) { return r.fills.length; });
+  }
+  // rebuild the EV single-speed "0MP" row whose 2nd (text-only) fill gets
+  // mangled by the cramped source cell — fixed VW wording, same every year
+  function fixEvSingleSpeed(rows) {
+    return rows.map(function (r) {
+      if (!/\b0MP\b/.test(r.application || "")) return r;
+      var blob = (r.fills || []).map(function (f) { return (f.label || "") + " " + (f.value || ""); }).join(" ");
+      if (!/residue/i.test(blob)) return r;
+      var num = "";
+      (r.fills || []).forEach(function (f) { if (!num && /\d/.test(f.value || "")) num = f.value; });
+      num = num.replace(/(\d)\s*L\b/g, "$1 L");
+      return {
+        component: r.component, application: r.application,
+        fills: [
+          { label: "Refilling transmission that had residue removed", value: num || "—" },
+          { label: "Transmission fluid drained, residue not removed",
+            value: "Up to the lower edge of the transmission fluid fill and check hole" }
+        ]
+      };
+    });
+  }
+  var SYS_HEADERS = {
+    "ENGINE OIL CAPACITY": "engineOil",
+    "ENGINE COOLANT": "engineCoolant",
+    "E-MOTOR COOLANT": "engineCoolant",
+    "AIR CONDITIONING": "airConditioning",
+    "DRIVETRAIN": "drivetrain"
+    // BRAKE HYDRAULIC SYSTEM intentionally skipped
+  };
+  var MODEL_HDR = /^\d+\.\d+\s+(.+?)\s*\(([^)]*)\)\s*$/;
+  // layout text → [{ model, modelCode, engineOil, engineCoolant, airConditioning, drivetrain }]
+  function parseFluidModels(text) {
+    // older PDFs write tolerances with the Unicode ± — normalise to "+/-" so
+    // every year parses the same way (VAL_RE expects the ASCII form)
+    var lines = String(text || "").replace(/±/g, " +/- ").split(/\r?\n/);
+    for (var cLn = 0; cLn < lines.length; cLn++) {
+      if (/^\s*\d[\d.]*\s+Maintenance\s+Schedules?\b/i.test(lines[cLn])) { lines = lines.slice(0, cLn); break; }
+    }
+    var sections = [];
+    for (var i = 0; i < lines.length; i++) {
+      var m = MODEL_HDR.exec(lines[i]);
+      var looksLikeData = /VW\s*\d{3}|\bqt\b|\d\s*L\s*\(|\+\/-/.test(lines[i]);
+      if (m && !looksLikeData && !/^(ENGINE|AIR|DRIVE|BRAKE|Component|Engine)/.test(lines[i].trim())) {
+        sections.push({ name: m[1].replace(/\s+/g, " ").trim(), code: m[2].replace(/\s+/g, " ").trim(), at: i });
+      }
+    }
+    var models = [];
+    for (var s = 0; s < sections.length; s++) {
+      var start = sections[s].at, end = (s + 1 < sections.length) ? sections[s + 1].at : lines.length;
+      var model = { model: sections[s].name, modelCode: sections[s].code,
+        engineOil: [], engineCoolant: [], airConditioning: [], drivetrain: [] };
+      var sys = [];
+      for (var j = start; j < end; j++) {
+        var key = SYS_HEADERS[lines[j].trim()];
+        if (key) sys.push({ key: key, at: j });
+      }
+      for (var k = 0; k < sys.length; k++) {
+        var sStart = sys[k].at, sEnd = (k + 1 < sys.length) ? sys[k + 1].at : end;
+        for (var b = sStart + 1; b < sEnd; b++) { if (/^BRAKE HYDRAULIC SYSTEM$/.test(lines[b].trim())) { sEnd = b; break; } }
+        var sub = lines.slice(sStart, sEnd);
+        var hdr = -1;
+        for (var h = 0; h < sub.length; h++) {
+          if (/^\s*(Engine\s+Engine Oil Type|Component\s+Application)/.test(sub[h])) { hdr = h; break; }
+        }
+        if (hdr < 0) continue;
+        model[sys[k].key] = (sys[k].key === "engineOil") ? parseOil(sub, hdr) : parseCAC(sub, hdr);
+        if (sys[k].key === "drivetrain") model[sys[k].key] = fixEvSingleSpeed(model[sys[k].key]);
+      }
+      models.push(model);
+    }
+    return models;
+  }
+
+  // model year: the file name carries it ("2022 VW Fluid Capacity Tables.pdf");
+  // fall back to the first plausible year near the top of the text
+  function fluidYearOf(name, text) {
+    var m = /\b(20\d\d)\b/.exec(String(name || ""));
+    if (m) return m[1];
+    m = /\b(20\d\d)\b/.exec(String(text || "").split("\n").slice(0, 40).join(" "));
+    return m ? m[1] : "";
+  }
+  // PDF bytes → { year, models } (rejects with a plain-language message)
+  function fluidsFromPdf(buf, name) {
+    return pdfTextLines(buf).then(function (text) {
+      var models = parseFluidModels(text);
+      if (!models.length) throw new Error("no fluid tables found — is this a VW Fluid Capacity Tables PDF?");
+      var year = fluidYearOf(name, text);
+      if (!year) throw new Error("couldn’t tell the model year — put it in the file name (e.g. “2022 ….pdf”)");
+      return { year: year, models: models };
+    });
+  }
+
+  /* ---- 3. vehicle matching (ported from the old lookup page) -------- */
+  function fluidVeh(r) {
+    var v = (r && r.__vehicle) || {};
+    var veh = {
+      year: String(v.year || ""), model: String(v.model || ""),
+      engine: String(v.engine || "").toUpperCase(), trans: String(v.trans || "").toUpperCase()
+    };
+    // a vehicle can carry more than one trans code — EVs list front + rear
+    // drive units ("0MH / 0MK"); ICE is one ("09PA - AQ450-8A"). Keep them all.
+    veh.transCodes = veh.trans.split(/[^A-Z0-9]/).filter(function (s) { return /^[A-Z0-9]{3,6}$/.test(s); });
+    veh.transCode = veh.transCodes[0] || "";
+    veh.awd = /\bAWD\b|4 ?MOTION|4MOT/i.test(veh.model);
+    return veh;
+  }
+  function bareCodes(text) {
+    return String(text || "").toUpperCase().split(/[\/,]/).map(function (s) { return s.trim(); })
+      .filter(function (s) { return /^[A-Z0-9]{2,6}$/.test(s); });
+  }
+  // normalise a model name for comparison: "ID.4" ↔ "ID.4 AWD PRO S",
+  // "Atlas Family" ↔ "ATLAS SEL AWD"
+  function modelNorm(s) { return String(s || "").toUpperCase().replace(/\bFAMILY\b/g, " ").replace(/[^A-Z0-9]/g, ""); }
+  function pickFluidModel(models, veh) {
+    var vm = modelNorm(veh.model);
+    if (/GTI|GOLFR/.test(vm)) vm += "GOLF";   // GTI / Golf R live under "Golf Family"
+    var best = null, score = -1;
+    (models || []).forEach(function (m) {
+      String(m.model || "").toUpperCase().split("/").forEach(function (tok) {
+        var t = modelNorm(tok);
+        if (t && vm.indexOf(t) >= 0 && t.length > score) { score = t.length; best = m; }
+      });
+    });
+    return best;
+  }
+  // trans codes from an Application cell — parenthesised "(09P)" and bare
+  // "Single Speed 0MH" (EV reduction gears are often written without parens)
+  function appTransCodes(app) {
+    var cs = codesIn(app);
+    (String(app || "").toUpperCase().match(/\b0[A-Z0-9]{2,3}\b/g) || []).forEach(function (c) { if (cs.indexOf(c) < 0) cs.push(c); });
+    return cs;
+  }
+  function transHit(app, veh) {
+    var cs = appTransCodes(app);
+    if (!cs.length || !veh.transCodes.length) return false;
+    return cs.some(function (c) {
+      return veh.transCodes.some(function (t) { return t && (t.indexOf(c) === 0 || c.indexOf(t) === 0); });
+    });
+  }
+  var TRANS_RE = /\d+\s*-?\s*speed|single\s*(?:gear|speed)|direct shift|gearbox|automatic|manual|dsg|tiptronic/i;
+
+  /* ---- 4. the Fluids & Capacities window (ported from the old lookup
+   *         page, now built LOCALLY from the stored data — no network) ---- */
+  var FL_ICON = {
+    oil:   "M3 12h9l3-2 6 1v1l-6 1M3 12v6a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-6M7 12V9h3v3M19.5 7l1-2M20.5 5c.5.7.8 1.2.8 1.6a.8.8 0 0 1-1.6 0c0-.4.3-.9.8-1.6z",
+    cool:  "M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z",
+    ac:    "M12 2v20M4.2 7l15.6 10M19.8 7L4.2 17M12 2l-2.4 2.4M12 2l2.4 2.4M12 22l-2.4-2.4M12 22l2.4-2.4M4.2 7l3.3-.4M4.2 7l.4 3.3M19.8 17l-3.3.4M19.8 17l-.4-3.3M19.8 7l-.4 3.3M19.8 7l-3.3-.4M4.2 17l.4-3.3M4.2 17l3.3.4",
+    drive: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+  };
+  function fCapHtml(fills) {
+    return (fills || []).map(function (f) {
+      return '<span class="fill">' + (f.label ? '<span class="lab">' + esc(f.label) + "</span> " : "") + "<b>" + esc(f.value) + "</b></span>";
+    }).join("");
+  }
+  function fCard(cls, icon, title, inner) {
+    return '<div class="card ' + cls + '"><div class="chd"><svg viewBox="0 0 24 24"><path d="' + icon + '"/></svg><b>' +
+      esc(title) + '</b></div><div class="cbody">' + (inner || '<div class="none">Not listed for this vehicle.</div>') + "</div></div>";
+  }
+  function fluidOilHTML(m, veh) {
+    var rows = (m.engineOil || []).filter(function (r) { return (r.engines || []).indexOf(veh.engine) >= 0; });
+    var fallback = !rows.length && (m.engineOil || []).length;
+    if (fallback) rows = m.engineOil;
+    var inner = rows.map(function (r) {
+      return '<div class="row"><div class="cap">' + esc(r.capacity || "—") + "</div>" +
+        (r.specs && r.specs.length ? '<div class="spec">' + esc(r.specs.join("  ·  ")) + "</div>" : "") +
+        (fallback ? '<div class="lab">' + esc(r.desc || (r.engines || []).join("/")) + "</div>" : "") + "</div>";
+    }).join("");
+    if (fallback && inner) inner += '<div class="lab note">No exact engine-code match for ' + esc(veh.engine) + " — all engines shown.</div>";
+    return fCard("oil", FL_ICON.oil, "Engine Oil", inner);
+  }
+  function fluidCoolHTML(m, veh) {
+    var rows = (m.engineCoolant || []).filter(function (r) { return bareCodes(r.application).indexOf(veh.engine) >= 0; });
+    if (!rows.length) rows = m.engineCoolant || [];
+    var inner = rows.map(function (r) {
+      return '<div class="row"><div class="cap">' + esc((r.fills[0] && r.fills[0].value) || "—") + "</div></div>";
+    }).join("");
+    return fCard("cool", FL_ICON.cool, "Engine Coolant", inner);
+  }
+  function fluidAcHTML(m) {
+    var inner = (m.airConditioning || []).map(function (r) {
+      var name = String(r.component || "").replace(/\s*\(R\s?1234yf\)|\s*\(R\s?134a\)/ig, "").trim();
+      return '<div class="row"><div class="lab">' + esc(name) +
+        (r.refrigerant ? '<span class="tag">' + esc(r.refrigerant) + "</span>" : "") +
+        (r.application && !/^all/i.test(r.application) ? ' <span class="lab">· ' + esc(r.application) + "</span>" : "") +
+        '</div><div class="cap">' + fCapHtml(r.fills) + "</div></div>";
+    }).join("");
+    return fCard("ac", FL_ICON.ac, "Air Conditioning", inner);
+  }
+  function fluidDriveHTML(m, veh) {
+    var all = m.drivetrain || [];
+    var trans = all.filter(function (r) { return TRANS_RE.test(r.application); });
+    var subs = all.filter(function (r) { return !TRANS_RE.test(r.application); });
+    var matched = trans.filter(function (r) { return transHit(r.application, veh); });
+    var noMatch = !matched.length && trans.length;
+    if (noMatch) matched = trans;                       // fallback: show all transmissions
+    // hide "only AWD" sub-components on a FWD vehicle
+    subs = subs.filter(function (r) { return veh.awd || !/AWD/i.test(r.application); });
+    var rowHtml = function (r) {
+      var qualOnly = /^(only\b|all\b|awd$|fwd$)/i.test(r.application || "");
+      var name = qualOnly ? (r.component || r.application) : (r.application || r.component);
+      var qual = (qualOnly && r.application) ? ' <span class="lab">· ' + esc(r.application) + "</span>" : "";
+      return '<div class="row"><div class="lab">' + esc(name) + qual + "</div>" +
+        '<div class="cap">' + fCapHtml(r.fills) + "</div></div>";
+    };
+    var inner = matched.map(rowHtml).join("") + subs.map(rowHtml).join("");
+    if (noMatch && inner) inner += '<div class="lab note">No match for transmission ' + esc(veh.transCode || veh.trans) + " — all transmissions shown.</div>";
+    return fCard("drive", FL_ICON.drive, "Drivetrain", inner);
+  }
+
+  function buildFluidsWindowHTML(r) {
+    var veh = fluidVeh(r);
+    var st = loadFluids();
+    var yd = st && st.years && st.years[veh.year];
+    var body;
+    if (!yd) {
+      body = '<div class="err">No fluid tables are loaded for <b>' + esc(veh.year || "this year") +
+        "</b> on this computer. Open Settings (the ⚙ gear in Hahns) and load that year’s VW Fluid Capacity Tables PDF.</div>";
+    } else {
+      var m = pickFluidModel(yd.models || [], veh);
+      if (!m) body = '<div class="err">No fluid entry found for <b>' + esc(veh.model || "this model") + "</b> in the " + esc(veh.year) + " tables.</div>";
+      else body = fluidOilHTML(m, veh) + fluidCoolHTML(m, veh) + fluidAcHTML(m) + fluidDriveHTML(m, veh);
+    }
+    var vehGrid = [["Model Year", veh.year], ["Model", veh.model], ["Engine Code", veh.engine], ["Trans Type", veh.trans + (veh.awd ? " · AWD" : "")]]
+      .map(function (p) { return '<span class="k">' + esc(p[0]) + '</span><span class="v">' + esc(p[1] || "—") + "</span>"; }).join("");
+    return '<!doctype html><html><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+      "<title>Fluids &amp; Capacities" + (veh.model ? " — " + esc(veh.model) : "") + "</title>" +
+      "<style>" + FLUIDS_WIN_CSS + "</style></head><body>" +
+      '<div class="bar"><button id="hb_print" onclick="window.print()">Print</button>' +
+        '<button id="hb_close" class="sec" onclick="window.close()">Close</button></div>' +
+      "<h1>Fluids &amp; Capacities</h1>" +
+      '<div class="meta">from the ' + esc(veh.year || "?") + " tables on this computer" + (yd && yd.file ? " (" + esc(yd.file) + ")" : "") + "</div>" +
+      '<div class="veh"><div class="t">Vehicle</div><div class="grid">' + vehGrid + "</div></div>" +
+      body +
+      '<div class="foot">Approximate quantities — always confirm against the Repair Manual / Maintenance Procedures.<br>H.A.H.N.S ' + esc(BUILD) + " · matched to your vehicle, nothing saved online.</div>" +
+      "</body></html>";
+  }
+
+  // open (or reuse) a named pop-up and write a self-contained document into it.
+  // Buttons are wired from the opener too (same-origin), so Print/Close work
+  // regardless of the child window's CSP. Returns false if pop-ups are blocked.
+  function openDocWindow(name, w, h, html) {
+    try {
+      if (screen && screen.availWidth) w = Math.min(w, screen.availWidth - 40);
+      if (screen && screen.availHeight) h = Math.min(h, screen.availHeight - 80);
+    } catch (e) {}
+    var left = 0, top = 0;
+    try {
+      left = Math.max(0, Math.round(((screen.availWidth || w) - w) / 2));
+      top = Math.max(0, Math.round(((screen.availHeight || h) - h) / 2));
+    } catch (e2) {}
+    var feats = "width=" + w + ",height=" + h + ",left=" + left + ",top=" + top +
+      ",scrollbars=yes,resizable=yes,menubar=no,toolbar=no,location=no,status=no";
+    var win = null;
+    try { win = window.open("", name, feats); } catch (e3) {}
+    if (!win) { try { win = window.open("", name); } catch (e4) {} }
+    if (!win) return false;
+    try {
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      var pb = win.document.getElementById("hb_print");
+      if (pb) pb.onclick = function () { try { win.print(); } catch (e5) {} };
+      var cb = win.document.getElementById("hb_close");
+      if (cb) cb.onclick = function () { try { win.close(); } catch (e6) {} };
+      win.focus();
+    } catch (e7) {}
+    return true;
+  }
+  function openFluidsWindow(r) { return openDocWindow("hahns_fluids", 620, 820, buildFluidsWindowHTML(r)); }
+
+  /* ---- 5. loading the PDFs through Settings -------------------------- */
+  // pick the year PDFs (several at once is fine) and convert each LOCALLY.
+  // Reading a picked file via FileReader is a LOCAL read — NO network.
+  function pickFluidFiles(host, r, options, root) {
+    var inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = ".pdf,application/pdf";
+    inp.multiple = true;
+    inp.style.display = "none";
+    inp.addEventListener("change", function () {
+      var files = Array.prototype.slice.call(inp.files || []);
+      try { inp.remove(); } catch (e) {}
+      if (!files.length) return;
+      if (typeof DecompressionStream === "undefined") { flash(root, "This browser can’t read PDFs — use Chrome, Edge or Safari"); return; }
+      flash(root, "Reading " + files.length + " PDF" + (files.length > 1 ? "s" : "") + "…");
+      var results = [], chain = Promise.resolve();
+      files.forEach(function (f) {
+        chain = chain.then(function () {
+          return new Promise(function (res) {
+            var fr = new FileReader();
+            fr.onload = function () {
+              fluidsFromPdf(fr.result, f.name).then(function (out) {
+                results.push({ name: f.name, year: out.year, models: out.models }); res();
+              }).catch(function (err) {
+                results.push({ name: f.name, err: (err && err.message) || "could not read that PDF" }); res();
+              });
+            };
+            fr.onerror = function () { results.push({ name: f.name, err: "could not read that file" }); res(); };
+            try { fr.readAsArrayBuffer(f); } catch (e) { results.push({ name: f.name, err: "could not read that file" }); res(); }
+          });
+        });
+      });
+      chain.then(function () { openFluidsConfirm(host, r, options, root, results); });
+    });
+    (root.querySelector(".wrap") || root).appendChild(inp);
+    inp.click();
+  }
+
+  // the eyeball step before saving: per file, the model year + the models the
+  // converter found (or a plain-language error). Save merges into the store.
+  function openFluidsConfirm(host, r, options, root, results) {
+    var ok = results.filter(function (o) { return !o.err; });
+    var rows = results.map(function (o) {
+      if (o.err) return '<div class="flrow bad"><b>' + esc(o.name) + "</b><span>" + esc(o.err) + "</span></div>";
+      var names = (o.models || []).map(function (m) { return m.model; }).join(", ");
+      if (names.length > 120) names = names.slice(0, 120) + "…";
+      return '<div class="flrow"><b>' + esc(o.year) + " — " + o.models.length + " models</b><span>" + esc(names) + "</span></div>";
+    }).join("");
+    var ov = document.createElement("div");
+    ov.className = "setc";
+    ov.innerHTML = '<div class="setbox">' +
+      '<p class="settl">Load fluid capacity tables</p>' +
+      '<p class="setsub">Check each year’s models below against your PDFs, then save. Converted on this computer — the PDFs themselves aren’t kept, and nothing is uploaded.</p>' +
+      rows +
+      '<div class="maperr" style="display:none"></div>' +
+      '<div class="setbtns"><button class="cancel">Cancel</button>' +
+      (ok.length ? '<button class="primary save">Save ' + ok.length + " year" + (ok.length > 1 ? "s" : "") + "</button>" : "") +
+      "</div></div>";
+    root.appendChild(ov);
+    var close = function () { try { ov.remove(); } catch (e) {} };
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    ov.querySelector(".cancel").addEventListener("click", close);
+    var sv = ov.querySelector(".save");
+    if (sv) sv.addEventListener("click", function () {
+      var st = loadFluids() || { years: {} };
+      if (!st.years) st.years = {};
+      ok.forEach(function (o) { st.years[o.year] = { models: o.models, file: o.name }; });
+      st.updated = todayISO();
+      st.count = Object.keys(st.years).length;
+      if (!saveFluids(st)) {
+        var err = ov.querySelector(".maperr");
+        err.textContent = "Couldn’t save (storage blocked or full on this machine).";
+        err.style.display = "block"; return;
+      }
+      close();
+      renderInto(host, r, options);
+      flash(root, "Fluid tables saved: " + ok.map(function (o) { return o.year; }).sort().join(", "));
+    });
+  }
+
 
   // Core extractor. Works on ordered SEGMENTS: { text, bold }.
   //   A component callout is a line like "2. Torx Bolt". We detect it by the
@@ -954,21 +1889,9 @@
   function vehMissing(v) {
     return VEH_FIELDS.filter(function (f) { return !(v && v[f.k]); }).map(function (f) { return f.label; });
   }
-  // the fluid-lookup URL for the loaded vehicle. Opens on OUR origin (off ELSA, so
-  // its CSP doesn't apply), carrying the specs needed to match — year/model/engine/
-  // trans. Deliberately NO VIN (not needed, and shouldn't ride in a URL). Needs a
-  // year to pick the data file; "" if the year is blank.
-  function vehFluidsUrl(r) {
-    var v = (r && r.__vehicle) || {};
-    if (!v.year) return "";
-    var q = "y=" + encodeURIComponent(v.year) + "&m=" + encodeURIComponent(v.model || "") +
-      "&e=" + encodeURIComponent(v.engine || "") + "&t=" + encodeURIComponent(v.trans || "");
-    // cache-buster: GitHub Pages serves fluids.html with max-age=600, so without this
-    // a tech can see a stale (old-color / old-data) copy for ~10 min after an update.
-    // Keyed to BUILD so it changes every release → a re-drag always loads the fresh page.
-    q += "&_=" + encodeURIComponent(BUILD);
-    return SITE_URL + "fluids.html?" + q;
-  }
+  // (the fluid lookup used to open a page on our website; since v0.3.13 the
+  // data lives on this computer and the window is built locally — see the
+  // FLUID CAPACITY TABLES block above)
 
   /* ------------------------------------------------------------------ *
    * 2b. JOB — accumulate specs across pages. The running list lives in
@@ -1468,6 +2391,10 @@
     ".fluidbtn.off{background:#f4f4f6;border-color:#e5e5ea;color:#8a8a8a;cursor:default;font-weight:600}" +
     ".fluidbtn.off:hover{background:#f4f4f6;border-color:#e5e5ea}" +
     ".fluidbtn.off svg{stroke:#a8a8ae}" +
+    // "load the PDFs" state: grey like .off but CLICKABLE (opens Settings)
+    ".fluidbtn.load{background:#f4f4f6;border-color:#e5e5ea;color:#5f6b80;cursor:pointer;font-weight:600}" +
+    ".fluidbtn.load:hover{background:#ececf0;border-color:#c9c9d2}" +
+    ".fluidbtn.load svg{stroke:#8a94a6}" +
     ".fluidnote{font-size:12px;color:#7a7a7a;line-height:1.4}" +
     ".dgmhdr{font-family:inherit;font-weight:600;font-size:11px;color:#5f6b80;margin:9px 0 4px}" +
     ".dgmwrap{position:relative;margin:6px 0}" +
@@ -1499,6 +2426,13 @@
     ".setfile{margin-top:4px;font-weight:700;color:#13502a;word-break:break-all}" +
     ".setmeta{margin-top:2px;font-size:11.5px;color:#3f7a52}" +
     ".setstat.none{background:#eef1f6;border-color:#dfe4ee;color:#3a4a63}" +
+    ".setdiv{border-top:1px solid #e3e6ee;margin:16px 0 12px}" +
+    // fluid-PDF confirm rows (year + models found per picked file)
+    ".flrow{background:#eef1f6;border:1px solid #dfe4ee;border-radius:8px;padding:8px 11px;font-size:12px;color:#3a4a63;line-height:1.4;margin-bottom:8px}" +
+    ".flrow b{display:block;color:#001e50;font-size:12.5px}" +
+    ".flrow span{display:block;margin-top:2px}" +
+    ".flrow.bad{background:#fff5f5;border-color:#e6b0b0;color:#7a1f1f}" +
+    ".flrow.bad b{color:#7a1f1f}" +
     ".setbtns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:6px}" +
     ".setbtns button{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:600;font-size:12.5px;padding:8px 14px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4;background:#fff;color:#001e50}" +
     ".setbtns button:hover{background:#f3f6fb}" +
@@ -1597,12 +2531,19 @@
       return '<div class="fluidbar"><div class="fluidbtn off" title="Scan ELSA’s Vehicle Summary page to enable">' +
         svg(DROPLET) + "Fluids &amp; capacities — scan Vehicle Summary to enable</div></div>";
     }
-    var url = vehFluidsUrl(r);
-    if (!url) return '<div class="fluidbar"><div class="fluidnote">Add the <b>Model Year</b> above to look up fluids &amp; capacities.</div></div>';
-    // opens in a small, centered pop-up window (see the "fluids" click handler) so
-    // it reads as a quick reference, not a full tab the tech has to find and close.
-    return '<div class="fluidbar"><a class="fluidbtn" href="' + esc(url) + '" data-act="fluids" target="_blank" rel="noopener">' +
-      svg(DROPLET) + "Fluids &amp; capacities for this vehicle<span class=\"arr\">&#8599;</span></a></div>";
+    var v = r.__vehicle || {};
+    if (!v.year) return '<div class="fluidbar"><div class="fluidnote">Add the <b>Model Year</b> above to look up fluids &amp; capacities.</div></div>';
+    // the data now lives on THIS computer (loaded once via ⚙ Settings from the
+    // yearly VW Fluid Capacity Tables PDFs). No data for this year yet → point
+    // the tech at Settings; otherwise open the locally-built lookup window.
+    var st = loadFluids();
+    if (!(st && st.years && st.years[v.year])) {
+      return '<div class="fluidbar"><button class="fluidbtn load" data-act="settings" data-tip="Open Settings (⚙) and load the yearly VW Fluid Capacity Tables PDFs — kept only on this computer">' +
+        svg(DROPLET) + (st ? "No " + esc(String(v.year)) + " fluid tables on this computer — add the PDF in Settings"
+                           : "Fluids &amp; capacities — load the fluid PDFs in Settings") + "</button></div>";
+    }
+    return '<div class="fluidbar"><button class="fluidbtn" data-act="fluids">' +
+      svg(DROPLET) + "Fluids &amp; capacities for this vehicle<span class=\"arr\">&#8599;</span></button></div>";
   }
 
   // a small ALERT badge shown after a tool in the Special Tools list (only a
@@ -1658,38 +2599,9 @@
     return h;
   }
 
-  // open (or reuse) the "Find these tools" window and write the document into it.
-  // Wires the buttons from here too (same-origin) so it works regardless of the
-  // child window's CSP. Returns false if a pop-up blocker stopped it.
-  function openToolWindow(r) {
-    var w = 640, h = 760;
-    try {
-      if (screen && screen.availWidth) w = Math.min(w, screen.availWidth - 40);
-      if (screen && screen.availHeight) h = Math.min(h, screen.availHeight - 80);
-    } catch (e) {}
-    var left = 0, top = 0;
-    try {
-      left = Math.max(0, Math.round(((screen.availWidth || w) - w) / 2));
-      top = Math.max(0, Math.round(((screen.availHeight || h) - h) / 2));
-    } catch (e2) {}
-    var feats = "width=" + w + ",height=" + h + ",left=" + left + ",top=" + top +
-      ",scrollbars=yes,resizable=yes,menubar=no,toolbar=no,location=no,status=no";
-    var win = null;
-    try { win = window.open("", "hahns_tools", feats); } catch (e3) {}
-    if (!win) { try { win = window.open("", "hahns_tools"); } catch (e4) {} }
-    if (!win) return false;
-    try {
-      win.document.open();
-      win.document.write(buildToolsWindowHTML(r));
-      win.document.close();
-      var pb = win.document.getElementById("hb_print");
-      if (pb) pb.onclick = function () { try { win.print(); } catch (e5) {} };
-      var cb = win.document.getElementById("hb_close");
-      if (cb) cb.onclick = function () { try { win.close(); } catch (e6) {} };
-      win.focus();
-    } catch (e7) {}
-    return true;
-  }
+  // open (or reuse) the "Find these tools" window (shared openDocWindow —
+  // written locally, buttons wired from the opener, false if pop-ups blocked)
+  function openToolWindow(r) { return openDocWindow("hahns_tools", 640, 760, buildToolsWindowHTML(r)); }
 
   function buildHTML(r, embed) {
     var mini = !embed && isMin();
@@ -1700,7 +2612,7 @@
     var html = "" +
       '<div class="wrap' + (embed ? " embed" : "") + (mini ? " min" : "") + '"><div class="hd"><img class="brand" src="' + HAHNS_ICON + '" alt="Hahns">' +
         '<b title="Hardware, Advisories, Highlights, &amp; Navigation Specialist">H.A.H.N.S</b>' +
-        (embed ? "" : '<button data-act="settings" class="hbtn" title="Settings — shop tool list">' + svg(GEAR) + "</button>") +
+        (embed ? "" : '<button data-act="settings" class="hbtn" title="Settings — shop tool list &amp; fluid tables">' + svg(GEAR) + "</button>") +
         (embed ? "" : '<button data-act="min" class="hbtn" title="' + (mini ? "Expand" : "Minimize") + '">' + svg(mini ? "M7 7h10v10H7z" : "M6 12h12") + "</button>") +
         '<button data-act="close" title="Close">&#10005;</button></div>' +
       // version stamp — pinned to the very top, directly under the title bar
@@ -1936,6 +2848,46 @@
     ".foot{margin-top:20px;color:#999;font-size:11px;border-top:1px solid #eee;padding-top:8px}" +
     "@media print{.bar{display:none}body{padding:0}.meta{border-bottom-color:#999}.row{cursor:default;page-break-inside:avoid}}";
 
+  // styles for the standalone Fluids & Capacities window (same bones as the
+  // tools window; the four system cards keep the old lookup page's colours)
+  var FLUIDS_WIN_CSS =
+    "*{box-sizing:border-box}" +
+    "body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1c1c1c;margin:0;padding:20px 22px 30px;font-size:14px;background:#eef1f6;max-width:640px}" +
+    ".bar{display:flex;gap:8px;margin-bottom:14px}" +
+    ".bar button{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:13px;padding:9px 18px;border-radius:8px;cursor:pointer;border:0;background:#2fb84d;color:#0a0a0a}" +
+    ".bar button:hover{background:#28a344}" +
+    ".bar button.sec{background:#fff;border:1px solid #cfd6e4;color:#001e50;font-weight:600}" +
+    ".bar button.sec:hover{background:#f3f6fb}" +
+    "h1{font-size:21px;margin:0 0 3px;color:#1b232b}" +
+    ".meta{color:#555;font-size:12px;margin-bottom:14px;border-bottom:2px solid #2fb84d;padding-bottom:10px}" +
+    ".veh{background:#fff;border:1px solid #e3e3e3;border-radius:12px;padding:12px 14px;margin:14px 0}" +
+    ".veh .t{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#5a6b8c;margin-bottom:7px}" +
+    ".veh .grid{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:13px}" +
+    ".veh .k{color:#5a6b8c;font-weight:600;white-space:nowrap}" +
+    ".veh .v{font-weight:700;color:#001e50;word-break:break-word}" +
+    ".card{background:#fff;border:1px solid #e3e3e3;border-radius:12px;margin:12px 0;overflow:hidden}" +
+    ".chd{display:flex;align-items:center;gap:9px;padding:12px 14px;border-left:5px solid #5a6b8c}" +
+    ".chd svg{width:19px;height:19px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
+    ".chd b{font-size:14px;font-weight:700}" +
+    ".card.oil .chd{border-left-color:#b8860b}.card.oil .chd svg{stroke:#b8860b}" +
+    ".card.cool .chd{border-left-color:#0f6e9c}.card.cool .chd svg{stroke:#0f6e9c}" +
+    ".card.ac .chd{border-left-color:#0f6e56}.card.ac .chd svg{stroke:#0f6e56}" +
+    ".card.drive .chd{border-left-color:#534ab7}.card.drive .chd svg{stroke:#534ab7}" +
+    ".cbody{padding:2px 14px 12px}" +
+    ".row{padding:9px 0;border-top:1px solid #f0f0f0}" +
+    ".row:first-child{border-top:0}" +
+    ".lab{font-size:12px;color:#5a6b8c;font-weight:600}" +
+    ".lab.note{margin-top:6px;display:block}" +
+    ".cap{font-size:17px;font-weight:700;color:#1c1c1c;margin:2px 0}" +
+    ".spec{font-size:12.5px;color:#3a4a63}" +
+    ".tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.03em;padding:1px 7px;border-radius:20px;background:#eef1f6;color:#001e50;margin-left:6px;vertical-align:1px}" +
+    ".fill{display:inline-block;margin-right:14px}" +
+    ".fill b{font-weight:700}" +
+    ".none{font-size:13px;color:#9a9a9a;font-style:italic;padding:8px 0}" +
+    ".err{background:#fff5f5;border:1px solid #e6b0b0;color:#7a1f1f;border-radius:10px;padding:13px 14px;font-size:13.5px;margin:16px 0;line-height:1.45}" +
+    ".foot{font-size:11px;color:#5a6b8c;text-align:center;margin-top:18px;line-height:1.5}" +
+    "@media print{.bar{display:none}body{padding:0;background:#fff}.card{page-break-inside:avoid}}";
+
   // a clean, print-only document of the collected job
   function buildPrintHTML(r) {
     var multiSrc = srcCount(r) >= 2;
@@ -2053,6 +3005,12 @@
     var toolsLine;
     try { var stt = loadShopTools(); toolsLine = stt ? ("loaded " + (stt.count || 0) + " tools from " + (stt.file || "?") + " (" + (stt.fmt || "?") + "), uploaded " + (stt.updated || "?")) : "none loaded"; }
     catch (e) { toolsLine = "(unreadable)"; }
+    var fluidsLine;
+    try {
+      var flt = loadFluids();
+      var flys = flt && flt.years ? Object.keys(flt.years).sort() : [];
+      fluidsLine = flys.length ? (flys.length + " years (" + flys.join(", ") + "), updated " + (flt.updated || "?")) : "none loaded";
+    } catch (e) { fluidsLine = "(unreadable)"; }
     var veh = {}, isSum = false;
     try { veh = extractVehicle(lastSegments) || {}; } catch (e) {}
     try { isSum = isVehicleSummaryPage(lastSegments); } catch (e) {}
@@ -2060,6 +3018,7 @@
     return "H.A.H.N.S diagnostic — version " + BUILD + "\n" +
       "update reminder — last acknowledged week: " + remindSeen + " · this week: " + wedMarker(Date.now()) + "\n" +
       "shop tool list: " + toolsLine + "\n" +
+      "fluid tables (this computer): " + fluidsLine + "\n" +
       "looks like Vehicle Summary page: " + (isSum ? "yes" : "no") + "\n" +
       "vehicle grab (from last scan): " + vehLine + "\n" +
       "flags: B=read as bold, H=recognised as a part heading\n" +
@@ -2167,6 +3126,14 @@
           (st.file ? '<div class="setfile">' + esc(st.file) + "</div>" : "") +
           (meta ? '<div class="setmeta">' + esc(meta) + "</div>" : "") + "</div>"
       : '<div class="setstat none">No tool list loaded yet. Upload your shop’s list to see drawer locations next to each special tool.</div>';
+    // ---- fluid capacity tables status (v0.3.13) ----
+    var fl = loadFluids();
+    var flYears = fl && fl.years ? Object.keys(fl.years).sort() : [];
+    var flStatus = flYears.length
+      ? '<div class="setstat">Fluid tables loaded: <b>' + esc(String(flYears.length)) + "</b> year" + (flYears.length > 1 ? "s" : "") +
+          '<div class="setfile">' + esc(flYears.join(", ")) + "</div>" +
+          (fl.updated ? '<div class="setmeta">updated ' + esc(fl.updated) + "</div>" : "") + "</div>"
+      : '<div class="setstat none">No fluid tables loaded yet. Load the yearly “VW Fluid Capacity Tables” PDFs (you can pick several at once) to enable the Fluids &amp; Capacities lookup.</div>';
     ov.innerHTML = '<div class="setbox">' +
       '<p class="settl">Shop special-tool list</p>' +
       '<p class="setsub">Upload your shop’s tool list (a CSV or Excel <b>.xlsx</b> file). Hahns shows each special tool’s drawer location and flags tools that aren’t on the list.</p>' +
@@ -2176,7 +3143,15 @@
         (st ? '<button class="danger remove">Remove list</button>' : "") +
         '<button class="primary upload">' + (st ? "Replace list" : "Upload list") + "</button>" +
       "</div>" +
-      '<p class="setnote">Saved only on this computer (under ELSA). The file is never uploaded anywhere or sent to GitHub. To update, upload your spreadsheet again (CSV or .xlsx).</p>' +
+      '<div class="setdiv"></div>' +
+      '<p class="settl">Fluid capacity tables</p>' +
+      '<p class="setsub">Load the yearly <b>VW Fluid Capacity Tables</b> PDFs. Hahns converts them on this computer — the PDFs aren’t kept and nothing is uploaded — and shows the values matched to the loaded vehicle.</p>' +
+      flStatus +
+      '<div class="setbtns">' +
+        (flYears.length ? '<button class="danger flremove">Remove tables</button>' : "") +
+        '<button class="primary flupload">' + (flYears.length ? "Add / replace PDFs" : "Load PDFs") + "</button>" +
+      "</div>" +
+      '<p class="setnote">Everything here is saved only on this computer (under ELSA) — never uploaded anywhere or sent to GitHub.</p>' +
       "</div>";
     root.appendChild(ov);
     var close = function () { try { ov.remove(); } catch (e) {} };
@@ -2189,6 +3164,14 @@
       removeShopTools(); close();
       renderInto(host, r, options);
       flash(root, "Tool list removed");
+    });
+    var flup = ov.querySelector(".flupload");
+    if (flup) flup.addEventListener("click", function () { close(); pickFluidFiles(host, r, options, root); });
+    var flrm = ov.querySelector(".flremove");
+    if (flrm) flrm.addEventListener("click", function () {
+      removeFluids(); close();
+      renderInto(host, r, options);
+      flash(root, "Fluid tables removed");
     });
   }
 
@@ -2497,28 +3480,10 @@
       btn.addEventListener("click", function (e) {
         var act = btn.getAttribute("data-act");
         if (act === "fluids") {
-          // open the lookup in a small, centered pop-up window (not a full tab):
-          // just wide enough for the content (page is max-width 580px) so there's
-          // no side-scrolling, and tall with vertical scroll. A fixed window name
-          // means a second lookup reuses the same pop-up instead of stacking up.
+          // the lookup window is BUILT LOCALLY from the data stored on this
+          // computer (no network) — small, centered, reused on a second click
           if (e && e.preventDefault) e.preventDefault();
-          var url = btn.getAttribute("href");
-          var w = 620, h = 820;
-          try {
-            if (screen && screen.availWidth) w = Math.min(w, screen.availWidth - 40);
-            if (screen && screen.availHeight) h = Math.min(h, screen.availHeight - 80);
-          } catch (e2) {}
-          var left = 0, top = 0;
-          try {
-            left = Math.max(0, Math.round(((screen.availWidth || w) - w) / 2));
-            top = Math.max(0, Math.round(((screen.availHeight || h) - h) / 2));
-          } catch (e3) {}
-          var feats = "width=" + w + ",height=" + h + ",left=" + left + ",top=" + top +
-            ",scrollbars=yes,resizable=yes,menubar=no,toolbar=no,location=no,status=no";
-          var win = null;
-          try { win = window.open(url, "hahns_fluids", feats); } catch (e4) {}
-          if (win) { try { win.focus(); } catch (e5) {} }
-          else { try { window.open(url, "_blank"); } catch (e6) {} }   // pop-up blocked → fall back to a tab
+          if (!openFluidsWindow(r)) flash(root, "Allow pop-ups to open the fluids lookup");
           return;
         }
         if (act === "close") {
@@ -2797,5 +3762,8 @@
     gatherSegments: gatherSegments, renderInto: renderInto, plainText: plainText,
     emptyResults: emptyResults, mergeInto: mergeInto, loadJob: loadJob,
     saveJob: saveJob, clearJob: clearJob, extractVehicle: extractVehicle,
-    isVehicleSummaryPage: isVehicleSummaryPage };
+    isVehicleSummaryPage: isVehicleSummaryPage,
+    // fluid-table pipeline, exposed so new-year PDFs can be sanity-checked
+    // from a dev harness (PDF bytes → layout text → parsed models)
+    fluidsFromPdf: fluidsFromPdf, pdfTextLines: pdfTextLines, parseFluidModels: parseFluidModels };
 })();

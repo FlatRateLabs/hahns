@@ -1,18 +1,23 @@
 /*
- * parse-fluids.js — turn a year's "VW Fluid Capacity Tables" PDF into the data
- * Hahns serves to the fluid-lookup page. PROGRAMMER-ONLY, run locally.
+ * parse-fluids.js — DEV VERIFICATION TOOL (run locally, never shipped).
  *
- *   node tools/parse-fluids.js "~/Downloads/2019 VW Fluid Capacity Tables.pdf"
- *   node tools/parse-fluids.js <pdf> --year 2019
+ * Since v0.3.13 the app itself converts the "VW Fluid Capacity Tables" PDFs
+ * in the browser (the tech loads them through ⚙ Settings), and NO fluid data
+ * is hosted or committed. This tool remains the poppler-based reference
+ * pipeline: when a NEW model year comes out, run it and diff its output
+ * against `window.VWJB.fluidsFromPdf` (see SESSION_SUMMARY 2026-07-02 for the
+ * harness) to confirm the in-app reader still parses the new PDF correctly.
  *
- * Requires poppler's `pdftotext` on PATH (brew install poppler). We shell out to
- * it so the project stays dependency-free (no npm packages).
+ *   node tools/parse-fluids.js "~/Downloads/2027 VW Fluid Capacity Tables.pdf"
+ *   node tools/parse-fluids.js <pdf> --year 2027
  *
- * Emits:
- *   docs/fluids/<year>.json          — obfuscated data the lookup page loads
+ * Requires poppler's `pdftotext` on PATH (brew install poppler). Emits into
+ * the GITIGNORED tools/fluids-review/ dir only (plaintext VW data must never
+ * hit the public repo):
+ *   tools/fluids-review/<year>.json  — parsed data (plain JSON, reference)
  *   tools/fluids-review/<year>.txt   — PLAIN-TEXT review sheet. ALWAYS eyeball
- *                                      this against the PDF before committing —
- *                                      wrong capacities are a real-world problem.
+ *                                      this against the PDF — wrong capacities
+ *                                      are a real-world problem.
  *
  * The PDF is organised as model sections ("1.9  Atlas (CA1)"), each holding the
  * tables ENGINE OIL CAPACITY / ENGINE COOLANT / AIR CONDITIONING / DRIVETRAIN
@@ -24,7 +29,6 @@
 var fs = require("fs");
 var path = require("path");
 var cp = require("child_process");
-var codec = require("./fluids-codec");
 
 var ROOT = path.join(__dirname, "..");
 
@@ -334,17 +338,14 @@ function main() {
 
   var data = { _: "hahns-fluids", v: 1, year: Number(year), models: models };
 
-  var outDir = path.join(ROOT, "docs", "fluids");
   var revDir = path.join(ROOT, "tools", "fluids-review");
-  fs.mkdirSync(outDir, { recursive: true });
   fs.mkdirSync(revDir, { recursive: true });
-  fs.writeFileSync(path.join(outDir, year + ".json"),
-    JSON.stringify({ _: "hahns-fluids", v: 1, y: Number(year), d: codec.encode(data) }));
+  fs.writeFileSync(path.join(revDir, year + ".json"), JSON.stringify(data, null, 1));
   var review = reviewSheet(year, models);
   fs.writeFileSync(path.join(revDir, year + ".txt"), review);
 
   console.log("Parsed " + models.length + " models for " + year + ".");
-  console.log("  data   -> docs/fluids/" + year + ".json  (obfuscated)");
+  console.log("  data   -> tools/fluids-review/" + year + ".json  (gitignored reference)");
   console.log("  review -> tools/fluids-review/" + year + ".txt  (CHECK THIS)\n");
   console.log(review);
 }
