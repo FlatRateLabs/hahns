@@ -40,7 +40,7 @@
   // Special Tools section. Reading a user-picked file via FileReader is a LOCAL
   // read, not a network call, so the bookmarklet's zero-network posture on ELSA
   // is fully intact.
-  var TOOLS_KEY = "vwjb_tools_v1";   // localStorage: { updated, count, map:{NORM:{n,d,s}} }
+  var TOOLS_KEY = "vwjb_tools_v1";   // localStorage: { updated, count, file, fmt, map:{NORM:{n,d,s}} }
   var shopTools = null;              // in-memory cache: null=unread, false=none, obj=loaded
 
   // the segments captured by the last scan, kept so the build stamp can dump a
@@ -1496,6 +1496,8 @@
     ".setsub b{color:#001e50}" +
     ".setstat{background:#edf7ee;border:1px solid #cce6cf;border-radius:8px;padding:9px 11px;font-size:12.5px;color:#1e6b34;line-height:1.4;margin-bottom:12px}" +
     ".setstat b{color:#13502a}" +
+    ".setfile{margin-top:4px;font-weight:700;color:#13502a;word-break:break-all}" +
+    ".setmeta{margin-top:2px;font-size:11.5px;color:#3f7a52}" +
     ".setstat.none{background:#eef1f6;border-color:#dfe4ee;color:#3a4a63}" +
     ".setbtns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:6px}" +
     ".setbtns button{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:600;font-size:12.5px;padding:8px 14px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4;background:#fff;color:#001e50}" +
@@ -2049,7 +2051,7 @@
     var remindSeen;
     try { remindSeen = localStorage.getItem(REMIND_KEY) || "(unset)"; } catch (e) { remindSeen = "(unreadable)"; }
     var toolsLine;
-    try { var stt = loadShopTools(); toolsLine = stt ? ("loaded " + (stt.count || 0) + " tools, uploaded " + (stt.updated || "?")) : "none loaded"; }
+    try { var stt = loadShopTools(); toolsLine = stt ? ("loaded " + (stt.count || 0) + " tools from " + (stt.file || "?") + " (" + (stt.fmt || "?") + "), uploaded " + (stt.updated || "?")) : "none loaded"; }
     catch (e) { toolsLine = "(unreadable)"; }
     var veh = {}, isSum = false;
     try { veh = extractVehicle(lastSegments) || {}; } catch (e) {}
@@ -2130,7 +2132,7 @@
         fx.onload = function () {
           xlsxToRows(fx.result).then(function (rows) {
             if (!rows || !rows.length) { flash(root, "That .xlsx looked empty — is the list on the first sheet?"); return; }
-            openToolMapper(host, r, options, root, rows);
+            openToolMapper(host, r, options, root, rows, { name: f.name, fmt: "xlsx" });
           }).catch(function () { flash(root, "Couldn’t read that .xlsx — try saving it as CSV"); });
         };
         fx.onerror = function () { flash(root, "Could not read that file"); };
@@ -2144,7 +2146,7 @@
         var rows;
         try { rows = parseCSV(String(fr.result || "")); }
         catch (e) { flash(root, "Could not read that file"); return; }
-        openToolMapper(host, r, options, root, rows);
+        openToolMapper(host, r, options, root, rows, { name: f.name, fmt: "csv" });
       };
       fr.onerror = function () { flash(root, "Could not read that file"); };
       try { fr.readAsText(f); } catch (e) { flash(root, "Could not read that file"); }
@@ -2158,9 +2160,12 @@
     var st = loadShopTools();
     var ov = document.createElement("div");
     ov.className = "setc";
+    var fmtLabel = st ? (st.fmt === "xlsx" ? "Excel (.xlsx)" : st.fmt === "csv" ? "CSV" : "") : "";
+    var meta = st ? [fmtLabel, st.updated ? "uploaded " + st.updated : ""].filter(function (x) { return x; }).join(" · ") : "";
     var status = st
       ? '<div class="setstat">Tool list loaded: <b>' + esc(String(st.count || 0)) + "</b> tools" +
-          (st.updated ? " · uploaded " + esc(st.updated) : "") + "</div>"
+          (st.file ? '<div class="setfile">' + esc(st.file) + "</div>" : "") +
+          (meta ? '<div class="setmeta">' + esc(meta) + "</div>" : "") + "</div>"
       : '<div class="setstat none">No tool list loaded yet. Upload your shop’s list to see drawer locations next to each special tool.</div>';
     ov.innerHTML = '<div class="setbox">' +
       '<p class="settl">Shop special-tool list</p>' +
@@ -2190,7 +2195,8 @@
   // the column-mapper overlay — the tech tags which CSV column is which. Honors
   // any layout (3-col shop sheet, 4-col VW minimum index, …). Picking one role
   // removes it from the other dropdowns; the last column auto-fills.
-  function openToolMapper(host, r, options, root, rows) {
+  function openToolMapper(host, r, options, root, rows, meta) {
+    meta = meta || {};
     rows = (rows || []).filter(function (row) {
       return row && row.some(function (c) { return String(c == null ? "" : c).trim() !== ""; });
     });
@@ -2292,6 +2298,8 @@
         err.textContent = "No tools found in that column — double-check the Tool number selection.";
         err.style.display = "block"; return;
       }
+      if (meta.name) built.file = meta.name;   // remember what was uploaded
+      if (meta.fmt) built.fmt = meta.fmt;
       if (!saveShopTools(built)) {
         err.textContent = "Couldn’t save (storage blocked on this machine).";
         err.style.display = "block"; return;
