@@ -451,6 +451,118 @@
     return rows;
   }
 
+  // ---- native .xlsx reading (LOCAL, NO network) --------------------------
+  // A modern Excel file is a ZIP of XML. We read it in-browser with ZERO
+  // dependencies: parse the ZIP directory, inflate each entry with the
+  // browser's built-in DecompressionStream (no library, no network), then pull
+  // the FIRST worksheet's cells into the SAME 2D string array parseCSV()
+  // returns — so the column-mapper downstream is completely unchanged. Keeps
+  // the ELSA zero-network promise intact (it's pure local processing).
+  function u16(b, o) { return b[o] | (b[o + 1] << 8); }
+  function u32(b, o) { return b[o] + b[o + 1] * 256 + b[o + 2] * 65536 + b[o + 3] * 16777216; }
+  function utf8(bytes) {
+    try { return new TextDecoder("utf-8").decode(bytes); }
+    catch (e) { var s = "", i; for (i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return s; }
+  }
+  // native raw-DEFLATE inflate → Promise<Uint8Array> (Chrome/Edge/Safari)
+  function inflateRaw(bytes) {
+    var ds = new DecompressionStream("deflate-raw");
+    var stream = new Blob([bytes]).stream().pipeThrough(ds);
+    return new Response(stream).arrayBuffer().then(function (ab) { return new Uint8Array(ab); });
+  }
+  // parse a ZIP into { name: Uint8Array } for the entries want(name) selects.
+  // Reads the CENTRAL DIRECTORY (reliable even when Excel streams entries with
+  // data descriptors, which zero out the local-header sizes). Returns a Promise.
+  function unzipEntries(buf, want) {
+    var b = new Uint8Array(buf), i, eocd = -1, floor = Math.max(0, b.length - 22 - 65536);
+    for (i = b.length - 22; i >= floor; i--) {
+      if (b[i] === 0x50 && b[i + 1] === 0x4b && b[i + 2] === 0x05 && b[i + 3] === 0x06) { eocd = i; break; }
+    }
+    if (eocd < 0) return Promise.reject(new Error("not a zip"));
+    var n = u16(b, eocd + 10), p = u32(b, eocd + 16), jobs = [], out = {};
+    for (i = 0; i < n && p + 46 <= b.length; i++) {
+      if (!(b[p] === 0x50 && b[p + 1] === 0x4b && b[p + 2] === 0x01 && b[p + 3] === 0x02)) break;
+      var method = u16(b, p + 10), compSize = u32(b, p + 20);
+      var nameLen = u16(b, p + 28), extraLen = u16(b, p + 30), commentLen = u16(b, p + 32);
+      var lho = u32(b, p + 42), name = utf8(b.subarray(p + 46, p + 46 + nameLen));
+      p += 46 + nameLen + extraLen + commentLen;
+      if (want && !want(name)) continue;
+      var dataStart = lho + 30 + u16(b, lho + 26) + u16(b, lho + 28);
+      var comp = b.subarray(dataStart, dataStart + compSize);
+      if (method === 0) out[name] = comp;
+      else if (method === 8) jobs.push((function (nm, data) { return inflateRaw(data).then(function (u) { out[nm] = u; }); })(name, comp));
+    }
+    return Promise.all(jobs).then(function () { return out; });
+  }
+  function xmlDoc(text) { return new DOMParser().parseFromString(text, "application/xml"); }
+  // concatenated <t> text under a shared-string <si> / inline <is> (handles rich runs)
+  function joinTs(el) {
+    var ts = el.getElementsByTagName("t"), out = "", i;
+    for (i = 0; i < ts.length; i++) out += ts[i].textContent || "";
+    return out;
+  }
+  // "A1" / "AB12" → 0-based column index
+  function colToIdx(ref) {
+    var m = /^([A-Za-z]+)/.exec(String(ref || ""));
+    if (!m) return -1;
+    var s = m[1].toUpperCase(), n = 0, i;
+    for (i = 0; i < s.length; i++) n = n * 26 + (s.charCodeAt(i) - 64);
+    return n - 1;
+  }
+  // resolve the first tab's worksheet path via workbook.xml + rels; fall back
+  // to the lowest-numbered worksheet file
+  function firstSheetPath(files) {
+    try {
+      var wb = xmlDoc(utf8(files["xl/workbook.xml"])), sh = wb.getElementsByTagName("sheet")[0];
+      var RELNS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+      var rid = sh && (sh.getAttributeNS(RELNS, "id") || sh.getAttribute("r:id"));
+      if (rid && files["xl/_rels/workbook.xml.rels"]) {
+        var rels = xmlDoc(utf8(files["xl/_rels/workbook.xml.rels"])), rs = rels.getElementsByTagName("Relationship"), i;
+        for (i = 0; i < rs.length; i++) {
+          if (rs[i].getAttribute("Id") === rid) {
+            var tgt = rs[i].getAttribute("Target") || "";
+            return /^\//.test(tgt) ? tgt.replace(/^\//, "") : "xl/" + tgt.replace(/^\.\//, "");
+          }
+        }
+      }
+    } catch (e) {}
+    var names = Object.keys(files).filter(function (nm) { return /^xl\/worksheets\/sheet\d+\.xml$/.test(nm); });
+    names.sort(function (a, c) { return (parseInt((/(\d+)/.exec(a) || [])[1], 10) || 0) - (parseInt((/(\d+)/.exec(c) || [])[1], 10) || 0); });
+    return names[0];
+  }
+  // read the first worksheet into a dense 2D array of strings → Promise
+  function xlsxToRows(buf) {
+    return unzipEntries(buf, function (nm) {
+      return nm === "xl/sharedStrings.xml" || nm === "xl/workbook.xml" ||
+             nm === "xl/_rels/workbook.xml.rels" || /^xl\/worksheets\/sheet\d+\.xml$/.test(nm);
+    }).then(function (files) {
+      var shared = [];
+      if (files["xl/sharedStrings.xml"]) {
+        var sis = xmlDoc(utf8(files["xl/sharedStrings.xml"])).getElementsByTagName("si"), i;
+        for (i = 0; i < sis.length; i++) shared.push(joinTs(sis[i]));
+      }
+      var wsName = firstSheetPath(files), wsBytes = wsName && files[wsName];
+      if (!wsBytes) throw new Error("no worksheet");
+      var rowEls = xmlDoc(utf8(wsBytes)).getElementsByTagName("row"), rows = [], ri;
+      for (ri = 0; ri < rowEls.length; ri++) {
+        var cells = rowEls[ri].getElementsByTagName("c"), tmp = [], maxc = -1, ci, row = [];
+        for (ci = 0; ci < cells.length; ci++) {
+          var c = cells[ci], idx = colToIdx(c.getAttribute("r"));
+          if (idx < 0) idx = ci;
+          var t = c.getAttribute("t"), val = "", vEl;
+          if (t === "s") { vEl = c.getElementsByTagName("v")[0]; var si2 = vEl ? parseInt(vEl.textContent, 10) : -1; val = (si2 >= 0 && si2 < shared.length) ? shared[si2] : ""; }
+          else if (t === "inlineStr") { var isEl = c.getElementsByTagName("is")[0]; val = isEl ? joinTs(isEl) : ""; }
+          else { vEl = c.getElementsByTagName("v")[0]; val = vEl ? (vEl.textContent || "") : ""; }
+          tmp[idx] = val;
+          if (idx > maxc) maxc = idx;
+        }
+        for (ci = 0; ci <= maxc; ci++) row.push(tmp[ci] == null ? "" : tmp[ci]);
+        rows.push(row);
+      }
+      return rows;
+    });
+  }
+
   // find the header row: one cell names a tool column AND one names a location
   function findToolHeader(rows) {
     for (var i = 0; i < Math.min(rows.length, 15); i++) {
@@ -2005,13 +2117,28 @@
   function pickToolFile(host, r, options, root) {
     var inp = document.createElement("input");
     inp.type = "file";
-    inp.accept = ".csv,text/csv,text/plain";
+    inp.accept = ".csv,text/csv,text/plain,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     inp.style.display = "none";
     inp.addEventListener("change", function () {
       var f = inp.files && inp.files[0];
       try { inp.remove(); } catch (e) {}
       if (!f) return;
-      if (/\.(xlsx?|numbers)$/i.test(f.name)) { flash(root, "Save the spreadsheet as CSV first, then upload"); return; }
+      // modern Excel (.xlsx) → convert to rows in the browser (local, no network)
+      if (/\.xlsx$/i.test(f.name)) {
+        if (typeof DecompressionStream === "undefined") { flash(root, "This browser can’t read .xlsx — save it as CSV first"); return; }
+        var fx = new FileReader();
+        fx.onload = function () {
+          xlsxToRows(fx.result).then(function (rows) {
+            if (!rows || !rows.length) { flash(root, "That .xlsx looked empty — is the list on the first sheet?"); return; }
+            openToolMapper(host, r, options, root, rows);
+          }).catch(function () { flash(root, "Couldn’t read that .xlsx — try saving it as CSV"); });
+        };
+        fx.onerror = function () { flash(root, "Could not read that file"); };
+        try { fx.readAsArrayBuffer(f); } catch (e) { flash(root, "Could not read that file"); }
+        return;
+      }
+      // old .xls (binary) / Apple Numbers → different formats we can't parse
+      if (/\.(xls|numbers)$/i.test(f.name)) { flash(root, "Save the spreadsheet as CSV (or .xlsx) first, then upload"); return; }
       var fr = new FileReader();
       fr.onload = function () {
         var rows;
@@ -2037,14 +2164,14 @@
       : '<div class="setstat none">No tool list loaded yet. Upload your shop’s list to see drawer locations next to each special tool.</div>';
     ov.innerHTML = '<div class="setbox">' +
       '<p class="settl">Shop special-tool list</p>' +
-      '<p class="setsub">Upload your shop’s tool list (a CSV file). Hahns shows each special tool’s drawer location and flags tools that aren’t on the list.</p>' +
+      '<p class="setsub">Upload your shop’s tool list (a CSV or Excel <b>.xlsx</b> file). Hahns shows each special tool’s drawer location and flags tools that aren’t on the list.</p>' +
       status +
       '<div class="setbtns">' +
         '<button class="cancel">Close</button>' +
         (st ? '<button class="danger remove">Remove list</button>' : "") +
         '<button class="primary upload">' + (st ? "Replace list" : "Upload list") + "</button>" +
       "</div>" +
-      '<p class="setnote">Saved only on this computer (under ELSA). The file is never uploaded anywhere or sent to GitHub. To update, export your spreadsheet as CSV and upload it again.</p>' +
+      '<p class="setnote">Saved only on this computer (under ELSA). The file is never uploaded anywhere or sent to GitHub. To update, upload your spreadsheet again (CSV or .xlsx).</p>' +
       "</div>";
     root.appendChild(ov);
     var close = function () { try { ov.remove(); } catch (e) {} };

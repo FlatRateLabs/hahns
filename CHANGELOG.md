@@ -9,6 +9,18 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.12-alpha — in progress
+
+### Added
+- **Upload your tool list as Excel (.xlsx) — no more "save as CSV" step.** When you pick a
+  native Excel file in Settings, Hahns now reads it right in the browser and converts it for
+  you (first sheet). CSV still works exactly as before. This all happens **on your computer**
+  — nothing is uploaded, still **zero network calls** on ELSA. (Old-style `.xls` files and
+  Apple Numbers aren't supported — save those as CSV or `.xlsx` first.) **Re-drag to get
+  this.**
+
+---
+
 ## v0.3.11.1-alpha — 2026-07-01
 
 ### Changed
