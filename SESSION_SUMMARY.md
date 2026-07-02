@@ -5,6 +5,57 @@ permanent project reference.
 
 ---
 
+## 2026-07-01 — v0.3.12-alpha: load the shop tool list from a native Excel (.xlsx)
+
+**MERGED + LIVE** (PR #62 → `main`; live `v0.3.12-alpha` confirmed via `version.json`).
+**Bookmarklet code change → re-drag needed.** Owner ask: auto-convert a native Excel file
+when uploading the shop tool list, instead of "save as CSV first". All in `src/helper.js`.
+
+### What shipped
+- **In-browser `.xlsx` reader (zero dependencies, zero network).** An `.xlsx` is a ZIP of
+  XML; new self-contained code reads it locally:
+  - `unzipEntries(buf, want)` — parses the ZIP **central directory** (reliable even when
+    Excel streams entries with data descriptors that zero out local-header sizes), slices
+    each wanted entry's compressed bytes. `u16/u32/utf8` helpers.
+  - `inflateRaw(bytes)` — inflates via the browser's built-in
+    **`DecompressionStream("deflate-raw")`** (`Blob.stream().pipeThrough` → `Response.arrayBuffer`).
+    No library, no network. Returns a Promise.
+  - `xlsxToRows(buf)` — resolves `xl/sharedStrings.xml`, picks the **first worksheet** via
+    `firstSheetPath` (workbook.xml first `<sheet>` → `workbook.xml.rels` `r:id`, using
+    `getAttributeNS` on the relationships ns; falls back to lowest `sheetN.xml`), then reads
+    each `<row>`/`<c>` into a **dense** 2D string array (`colToIdx` maps `A1`→col; handles
+    `t="s"` shared, `t="inlineStr"`, and raw `<v>` numeric/formula-cached). Same shape
+    `parseCSV()` returns, so the column-mapper / `buildToolMap` dedup pipeline is **unchanged**.
+- **`pickToolFile` branches on extension:** `.xlsx` → `readAsArrayBuffer` → `xlsxToRows` →
+  `openToolMapper`; `.csv` unchanged; old binary `.xls` / Apple `.numbers` still get
+  "Save the spreadsheet as CSV (or .xlsx) first"; graceful fallback to the CSV message if a
+  browser lacks `DecompressionStream` (Chrome/Edge/Safari all have it). `accept` now includes
+  `.xlsx`.
+- **Settings copy** updated to "a CSV or Excel **.xlsx** file" (+ note wording).
+
+### On-architecture / privacy
+- Pure **local** processing (FileReader + native decompression) — **no new dependency, no
+  network call on ELSA**. Same posture as the existing CSV read and the print/fluids windows.
+
+### Limitation (surfaced)
+- Only modern **`.xlsx`** (2007+), **first sheet**, cached cell values. Old `.xls` binary
+  (BIFF) and Apple `.numbers` are different formats we don't parse → still ask for CSV/.xlsx.
+
+### Verified
+- `node --check` clean; rebuilt `v0.3.12-alpha`. **Browser unit test** (temporarily exposed
+  `xlsxToRows`, then removed the export): built a real **deflated** test `.xlsx` with a
+  shared-string table + 3-col layout via Python `zipfile`, fed its bytes to
+  `window.VWJB.xlsxToRows` → returned the exact 4 rows, header intact, tool numbers with
+  spaces + sub-parts preserved (`VAS 6909`, `10-222 A/1`). Settings overlay shows the new
+  copy; no console errors. Downstream mapper unchanged (proven with CSV rows in v0.3.10).
+
+### Next
+- **Re-drag** needed (code change). Owner should confirm end-to-end with the real
+  **MASTER LIST 2026 `.xlsx`** (multi-sheet? header not on row 1? the mapper already handles
+  those, but worth a live check) and a VW `.xlsx` if he has one.
+
+---
+
 ## 2026-07-01 — v0.3.11-alpha: SCAN works without a vehicle; fluids gated + discoverable
 
 **MERGED + LIVE** (PR #55 → `main`; live `v0.3.11-alpha` confirmed via `version.json`).
