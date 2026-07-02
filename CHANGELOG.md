@@ -9,6 +9,15 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.12.1-alpha — in progress
+
+### Changed
+- **Settings now shows which tool list is loaded.** Instead of just the upload date, it now
+  shows the **file name**, its **format** (CSV or Excel .xlsx), and the **date** — so you can
+  tell at a glance exactly which list Hahns is using. **Re-drag to get this.**
+
+---
+
 ## v0.3.12-alpha — 2026-07-01
 
 ### Added
