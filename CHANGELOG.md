@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.12-alpha — in progress
+## v0.3.12-alpha — 2026-07-01
 
 ### Added
 - **Upload your tool list as Excel (.xlsx) — no more "save as CSV" step.** When you pick a
