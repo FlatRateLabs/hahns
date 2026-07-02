@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.12.1-alpha — in progress
+## v0.3.12.1-alpha — 2026-07-01
 
 ### Changed
 - **Settings now shows which tool list is loaded.** Instead of just the upload date, it now

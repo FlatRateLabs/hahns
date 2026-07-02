@@ -5,6 +5,33 @@ permanent project reference.
 
 ---
 
+## 2026-07-01 — v0.3.12.1-alpha: show tool-list file name + format in Settings
+
+**MERGED + LIVE** (PR #64 → `main`; live `v0.3.12.1-alpha` confirmed). **Re-drag needed.**
+Owner ask: the Settings status showed only the upload date — add the **file name**, its
+**format** (CSV or .xlsx), and the date. All in `src/helper.js`.
+
+### What changed
+- **Store `file` + `fmt`** on the saved list (`vwjb_tools_v1` → `{updated,count,file,fmt,map}`).
+  `pickToolFile` now passes `{name:f.name, fmt:"xlsx"|"csv"}` as a new `meta` arg through
+  `openToolMapper(host,r,options,root,rows,meta)`; the mapper attaches `built.file`/`built.fmt`
+  right before `saveShopTools`.
+- **Settings status** (`openSettings`) renders the **filename on its own line** (`.setfile`)
+  + a **`FORMAT · uploaded DATE`** meta line (`.setmeta`), format label = "Excel (.xlsx)" /
+  "CSV". **Legacy lists** saved before this (no file/fmt) gracefully show just the date.
+- **Diagnostic dump** reports the file + format too. New CSS `.setfile`/`.setmeta`.
+
+### Verified
+- `node --check` clean; rebuilt. **Browser** (seeded `vwjb_tools_v1`, reload to bust the
+  `shopTools` module cache): xlsx → "MASTER LIST 2026.xlsx" + "Excel (.xlsx) · uploaded
+  2026-07-01"; csv → "shop_tools.csv" + "CSV · uploaded 2026-06-15". No console errors.
+
+### Note for owner
+- The name/format appear once the list is **re-uploaded** on the new version — existing saved
+  lists show just the date until then (they predate the stored filename).
+
+---
+
 ## 2026-07-01 — v0.3.12-alpha: load the shop tool list from a native Excel (.xlsx)
 
 **MERGED + LIVE** (PR #62 → `main`; live `v0.3.12-alpha` confirmed via `version.json`).
