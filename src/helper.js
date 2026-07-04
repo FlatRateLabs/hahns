@@ -728,7 +728,7 @@
   //   Keeping the original PDF lets us silently RE-PARSE with an improved
   //   parser (version bump below) without the tech re-uploading anything.
   var FLUID_DB = "hahns_fluids", FLUID_DB_VER = 1;
-  var MODERN_PARSER_VER = "1.3.0";   // 2011–2026, engine-code parser
+  var MODERN_PARSER_VER = "1.3.1";   // 2011–2026, engine-code parser (1.3.1: A/C split-tolerance fix)
   var LEGACY_PARSER_VER = "1.0.0";   // 2000–2010, displacement parser (not built yet)
   var FLUID_YEAR_MIN = 2000, FLUID_YEAR_MAX = 2026;  // span for "Years installed: N/M"
   var fluidsData = null;      // sync projection: null=unread, false=none, obj={updated,count,years:{Y:{models,file}}}
@@ -1521,6 +1521,14 @@
       if (!idx || isNoise(ln)) continue;
       var c = sliceCells(ln, idx), comp = c[0], app = c[1], capCell = c[2];
       if (comp) lastComp = comp;
+      // Some years' cells interleave the label words between a "N +/-" tolerance
+      // and its trailing "M unit" (2018 Golf R A/C + compressor oil render as
+      // "Initial 500 +/- Fill / Refill 15 g"). Left as-is, VAL_RE only sees the
+      // orphaned "15 g" and the real capacity "500" gets stranded in the label.
+      // Pull the label words out so the value reassembles to "500 +/- 15 g".
+      capCell = capCell.replace(
+        /(\d[\d.]*\s*\+\/-)\s+((?:Initial|Fill|Refill|\/|\s)+?)\s*([\d.]+\s*(?:L|g|cc|ml)\b)/gi,
+        "$2 $1 $3");
       var vals = valuesIn(capCell);
       var label = capCell.replace(VAL_RE, "").replace(/\s+/g, " ").trim();
       var codeOnly = /^\([A-Z0-9/\s]+\)$/.test(app);

@@ -9,6 +9,21 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.15.1-alpha — 2026-07-04
+
+### Fixed
+- **Air-conditioning (and A/C compressor oil) capacities on some years showed the wrong
+  number in bold.** On years like the 2018 Golf R the charge printed as *"Initial 500 +/-
+  Fill / Refill **15 g**"* — the real capacity (500 g) was buried in the small grey text and
+  the ± tolerance (15 g) was shown as the big number. Now it reads correctly as **500 +/- 15 g**
+  (and the compressor oils likewise), matching how other years already displayed. This was a
+  table-layout quirk where the "Initial Fill / Refill" label words landed between the number
+  and its tolerance.
+- Because of this fix the **modern fluid reader version ticks to 1.3.1**, so any fluid PDFs you
+  have saved are re-read automatically in the background on this update — no re-upload needed.
+
+---
+
 ## v0.3.15-alpha — 2026-07-04
 
 ### Changed

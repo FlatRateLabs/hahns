@@ -162,6 +162,11 @@ function parseCAC(lines, hdrIdx) {
     if (!idx || isNoise(ln)) continue;
     var c = slice(ln, idx), comp = c[0], app = c[1], capCell = c[2];
     if (comp) lastComp = comp;
+    // reassemble a "N +/-" tolerance split from its "M unit" by interleaved label
+    // words (2018 Golf R: "Initial 500 +/- Fill / Refill 15 g") — see helper.js
+    capCell = capCell.replace(
+      /(\d[\d.]*\s*\+\/-)\s+((?:Initial|Fill|Refill|\/|\s)+?)\s*([\d.]+\s*(?:L|g|cc|ml)\b)/gi,
+      "$2 $1 $3");
     var vals = valuesIn(capCell);
     var label = capCell.replace(VAL_RE, "").replace(/\s+/g, " ").trim();   // "Initial Fill / Refill", "Initial", "Refill"…
     var codeOnly = /^\([A-Z0-9/\s]+\)$/.test(app);   // a wrapped code line like "(0GC)"

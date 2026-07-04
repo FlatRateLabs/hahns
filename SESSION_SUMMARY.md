@@ -5,6 +5,46 @@ permanent project reference.
 
 ---
 
+## 2026-07-04 — v0.3.15.1-alpha: A/C split-tolerance fix (first live use of auto re-parse)
+
+**First bug found on live v0.3.15 + first real exercise of the new auto-reparse pipeline.**
+Owner tested the 2018 Golf R fluids window in the bay: the 0W-30 oil fix (v0.3.14) was
+confirmed, but the **A/C + A/C-compressor-oil capacities showed the wrong number in bold** —
+e.g. *"Initial 500 +/- Fill / Refill **15 g**"* (real charge 500 g stranded in the grey label,
+the ±15 tolerance bolded as if it were the capacity).
+
+### Root cause
+On some years' PDFs the A/C capacity cell interleaves the "Initial Fill / Refill" label words
+*between* the number and its tolerance, so the cell reads `Initial 500 +/- Fill / Refill 15 g`.
+`VAL_RE` (which matches `500 +/- 15 g` only when contiguous) then saw just the orphaned `15 g`;
+`500` fell into the label. 2019+ were fine because their cells stay contiguous (`650 +/- 25 g`).
+
+### Fix (`parseCAC`, ported to `tools/parse-fluids.js`)
+Before value extraction, reassemble a split tolerance by pulling label words out from between
+`N +/-` and the trailing `M unit`:
+`capCell.replace(/(\d[\d.]*\s*\+\/-)\s+((?:Initial|Fill|Refill|\/|\s)+?)\s*([\d.]+\s*(?:L|g|cc|ml)\b)/gi, "$2 $1 $3")`.
+→ cell becomes `Initial Fill / Refill 500 +/- 15 g` → value `500 +/- 15 g`, label `Initial Fill / Refill`.
+**`MODERN_PARSER_VER` bumped 1.3.0 → 1.3.1** so every tech's stored fluid PDFs auto-re-parse on
+this update and pick up the fix — no re-upload.
+
+### Verified
+- Unit-tested the reassembly against the four exact broken 2018 strings (A/C R134a/R1234yf +
+  two compressor oils) → all reassemble correctly; contiguous controls (2019 `650 +/- 25 g`,
+  plain oil, `Approximately …`) **unchanged** (no regression). `node --check` both files clean;
+  built `v0.3.15.1-alpha`.
+- **Browser (real IndexedDB):** a year stored at parserVersion `1.3.0` with a Blob → on boot the
+  reconcile detected `1.3.0 ≠ 1.3.1` and **auto-triggered a background reparse**; the (bogus test)
+  blob failed to parse and old data was **preserved non-destructively** (`status=reparse-error`).
+  A real 2018 PDF would parse & replace the values. No console errors.
+- **Not able to run the real 2018 PDF end-to-end** (PDF not in repo). Owner bay-verify the 2018
+  Golf R A/C after deploy.
+
+### Deploy
+- PR → `main` (admin merge); confirm live `version.json` = `v0.3.15.1-alpha`. **Re-drag needed.**
+  On first launch after re-drag, saved PDFs re-parse silently → A/C reads `500 +/- 15 g`.
+
+---
+
 ## 2026-07-04 — v0.3.15-alpha: fluid storage → IndexedDB (PDFs kept, auto re-parse, DB info panel)
 
 **Owner-requested production-ready rework of fluid storage.** Goal: stop making techs clear
