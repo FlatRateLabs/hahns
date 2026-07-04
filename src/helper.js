@@ -728,7 +728,7 @@
   //   Keeping the original PDF lets us silently RE-PARSE with an improved
   //   parser (version bump below) without the tech re-uploading anything.
   var FLUID_DB = "hahns_fluids", FLUID_DB_VER = 1;
-  var MODERN_PARSER_VER = "1.3.3";   // 2011–2026, engine-code parser (1.3.3: strip imperial A/C oz, e-Golf)
+  var MODERN_PARSER_VER = "1.3.4";   // 2011–2026, engine-code parser (1.3.4: capture range capacities, e.g. ID.Buzz 0MJ 0.88-0.93 L)
   var LEGACY_PARSER_VER = "1.0.0";   // 2000–2010, displacement parser (not built yet)
   var FLUID_YEAR_MIN = 2000, FLUID_YEAR_MAX = 2026;  // span for "Years installed: N/M"
   var fluidsData = null;      // sync projection: null=unread, false=none, obj={updated,count,years:{Y:{models,file}}}
@@ -1432,14 +1432,22 @@
     return m[1].split(/[\/,]/).map(function (s) { return s.trim().toUpperCase(); })
       .filter(function (s) { return /^[A-Z0-9]{2,6}$/.test(s); });
   }
-  var VAL_RE = /(?:Approximately\s+)?\d[\d.]*(?:\s*\+\/-\s*[\d.]+)?\s*(?:L|g|cc|ml)(?:\s*\+\/-\s*[\d.]+\s*(?:L|g|cc|ml))?(?:\s*\([^)]*\))?/g;
+  // The optional "(?:\d[\d.]*\s*[-‐-―−]\s*)?" prefix captures a RANGE low-end, so a
+  // capacity like "0.88 - 0.93 L (…)" (2025/26 ID.Buzz/ID.4/ID.7 Single Speed 0MJ,
+  // and the older DSG range nit) is taken whole instead of stranding "0.88 -" in the
+  // grey label with only "0.93 L" bolded. It stays optional + demands a real dash, so
+  // "500 +/- 15 g" and every plain value are unaffected.
+  var VAL_RE = /(?:Approximately\s+)?(?:\d[\d.]*\s*[-‐-―−]\s*)?\d[\d.]*(?:\s*\+\/-\s*[\d.]+)?\s*(?:L|g|cc|ml)(?:\s*\+\/-\s*[\d.]+\s*(?:L|g|cc|ml))?(?:\s*\([^)]*\))?/g;
   // a number can never have two decimal points — VW's 2023 PDF has a
   // "(0.6.3 qt)" typo for "(0.63 qt)". Collapse a stray middle dot.
   function fixDecimals(s) { return s.replace(/(\d+\.\d+)\.(\d+)/g, "$1$2"); }
+  // tidy a captured range so a glued source cell ("0.88- 0.93L") prints spaced
+  // ("0.88 - 0.93 L"); leaves the imperial "(… qt)" parenthetical alone.
+  function tidyRange(s) { return s.replace(/^(\d[\d.]*)\s*[-‐-―−]\s*(\d[\d.]*)\s*(L|g|cc|ml)\b/i, "$1 - $2 $3"); }
   function valuesIn(text) {
     var out = [], m;
     VAL_RE.lastIndex = 0;
-    while ((m = VAL_RE.exec(text || ""))) out.push(fixDecimals(m[0].replace(/\s+/g, " ").trim()));
+    while ((m = VAL_RE.exec(text || ""))) out.push(fixDecimals(tidyRange(m[0].replace(/\s+/g, " ").trim())));
     return out;
   }
   // noise lines inside tables (page chrome, footnotes, the Note block)

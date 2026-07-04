@@ -9,6 +9,18 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.15.4-alpha — 2026-07-04
+
+### Fixed
+- **Range capacities were half-shown.** When a fluid capacity is a range — e.g. the 2025/2026
+  ID.Buzz / ID.4 / ID.7 "Single Speed 0MJ" transmission `0.88 - 0.93 L`, and the older DSG
+  `6.9 - 7.2 L` — only the high end was picked up in bold and the low end got left behind in the
+  grey label. The full range now shows as the value. (Verified against the archived 2011–2026 data:
+  47 range cells corrected, no other values touched.) Modern fluid reader → **1.3.4**; saved PDFs
+  re-read automatically on this update.
+
+---
+
 ## v0.3.15.3-alpha — 2026-07-04
 
 ### Changed

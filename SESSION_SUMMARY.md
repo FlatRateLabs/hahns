@@ -5,6 +5,46 @@ permanent project reference.
 
 ---
 
+## 2026-07-04 — v0.3.15.4-alpha: range capacities captured whole (ID.Buzz 0MJ, DSG) — issue #75
+
+**Fixes [issue #75](https://github.com/FlatRateLabs/hahns/issues/75)** — deferred at the close of the
+previous session. A drivetrain capacity that's a **range** was half-shown: the low end stranded in the
+grey label, only the high end bolded.
+
+### Root cause
+`VAL_RE` matched a single `N unit` value, so a cell like `Initial Fill / Refill 0.88- 0.93L (0.93-0.98 qt)`
+(2025/26 **ID.Buzz / ID.4 / ID.7 "Single Speed 0MJ"**) matched only `0.93L (0.93-0.98 qt)`; the `0.88-`
+low end fell into the label. Same class as the long-standing DSG `6.9 - 7.2 L` nit. Different from the
+A/C tolerance saga — that was a `+/-` reassembly; this is a plain `N – M unit` range `VAL_RE` never captured.
+
+### Fix (`src/helper.js` + ported to `tools/parse-fluids.js`)
+- **`VAL_RE`** gains an optional leading range prefix `(?:\d[\d.]*\s*[-‐-―−]\s*)?` (any dash variant) so
+  the low end is taken as part of the value. Prefix is optional and demands a real dash → `500 +/- 15 g`
+  and every plain value are untouched.
+- New **`tidyRange()`** in `valuesIn` spaces a glued source cell (`0.88- 0.93L` → `0.88 - 0.93 L`),
+  leaving the imperial `(… qt)` parenthetical alone.
+- **`MODERN_PARSER_VER` 1.3.3 → 1.3.4** → saved PDFs auto-reparse on next load (no re-upload).
+
+### Verified
+- `node --check` clean (both files); built **v0.3.15.4-alpha** (bookmarklet 339,026 chars).
+- **Full-pipeline node test** through `parseFluidModels`/`parseCAC` on a synthetic ID.Buzz DRIVETRAIN
+  layout: 0MJ → label `Initial Fill / Refill`, value `0.88 - 0.93 L (0.93-0.98 qt)`; DSG `6.9 - 7.2 L`
+  captured whole; the 0MH control unchanged.
+- **Regression sweep over all 16 gold files (2011–2026):** ran OLD vs NEW `valuesIn` over every stored
+  value + every reconstructed `label+value` cell. **0 changes to any of 187 non-range values**;
+  **47 range cells corrected** — 4 distinct patterns only, all legitimate (DSG `6.9 - 7.2 L` across
+  2011–2016, ID.Buzz/ID.4/ID.7 `0.88 - 0.93 L`). No false positives.
+- **Browser (shipped bundle, real Chrome):** `window.VWJB` intact; `parseFluidModels` returns the
+  0MJ range value `0.88 - 0.93 L (0.93-0.98 qt)`; no console errors.
+
+### Next
+- **Deploy:** PR → `main` (branch-protected, merge `--admin`; `git pull --rebase` first); confirm live
+  `version.json` = `v0.3.15.4-alpha`. **Re-drag needed.** On first launch after re-drag, saved 2025/26
+  PDFs re-parse silently and 0MJ reads the full range. Owner bay-verify the ID.Buzz drivetrain.
+- Couldn't run the real 2025/2026 PDFs end-to-end (not in repo) — same as prior A/C fixes; owner confirms live.
+
+---
+
 ## 2026-07-04 — v0.3.15.3-alpha: e-Golf/Tiguan A/C fix (strip imperial oz)
 
 **Closed the e-Golf A/C edge from v0.3.15.2.** Owner OK'd dropping the imperial ounces entirely

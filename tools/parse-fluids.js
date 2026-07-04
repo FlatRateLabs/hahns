@@ -57,14 +57,20 @@ function codesIn(text) {
 
 // the capacity value(s) in a cell. Handles "650 +/- 25 g" (tolerance before unit)
 // AND "6.8 L +/- 0.1 L (7.2 qt)" (tolerance after unit), plus a trailing "(… qt)".
-var VAL_RE = /(?:Approximately\s+)?\d[\d.]*(?:\s*\+\/-\s*[\d.]+)?\s*(?:L|g|cc|ml)(?:\s*\+\/-\s*[\d.]+\s*(?:L|g|cc|ml))?(?:\s*\([^)]*\))?/g;
+// The optional "(?:\d[\d.]*\s*[-‐-―−]\s*)?" prefix captures a RANGE low-end so
+// "0.88 - 0.93 L (…)" (2025/26 ID.Buzz/ID.4/ID.7 Single Speed 0MJ, older DSG nit)
+// is taken whole instead of stranding "0.88 -" in the label; a real dash is
+// required so "500 +/- 15 g" and plain values are unaffected.
+var VAL_RE = /(?:Approximately\s+)?(?:\d[\d.]*\s*[-‐-―−]\s*)?\d[\d.]*(?:\s*\+\/-\s*[\d.]+)?\s*(?:L|g|cc|ml)(?:\s*\+\/-\s*[\d.]+\s*(?:L|g|cc|ml))?(?:\s*\([^)]*\))?/g;
 // a number can never have two decimal points — VW's 2023 PDF has a "(0.6.3 qt)"
 // typo for "(0.63 qt)". Collapse a stray middle dot so it reads correctly.
 function fixDecimals(s) { return s.replace(/(\d+\.\d+)\.(\d+)/g, "$1$2"); }
+// tidy a captured range so a glued cell ("0.88- 0.93L") prints "0.88 - 0.93 L"
+function tidyRange(s) { return s.replace(/^(\d[\d.]*)\s*[-‐-―−]\s*(\d[\d.]*)\s*(L|g|cc|ml)\b/i, "$1 - $2 $3"); }
 function valuesIn(text) {
   var out = [], m;
   VAL_RE.lastIndex = 0;
-  while ((m = VAL_RE.exec(text || ""))) out.push(fixDecimals(m[0].replace(/\s+/g, " ").trim()));
+  while ((m = VAL_RE.exec(text || ""))) out.push(fixDecimals(tidyRange(m[0].replace(/\s+/g, " ").trim())));
   return out;
 }
 
