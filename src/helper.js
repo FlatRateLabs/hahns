@@ -718,22 +718,275 @@
    *   Like the shop tool list, this is shop config — NOT cleared by
    *   Exit / New Vehicle / Clear info, only by Settings "Remove".
    * ------------------------------------------------------------------ */
-  var FLUIDS_KEY = "vwjb_fluids_v1";  // localStorage: { updated, count, years:{ "2022": { models:[...], file } } }
-  var fluidsData = null;              // in-memory cache: null=unread, false=none, obj=loaded
+  var FLUIDS_KEY = "vwjb_fluids_v1";  // legacy localStorage (pre-v0.3.15) — kept for migration + IDB-unavailable fallback
+  // ---- Fluid storage v2: IndexedDB is primary ----------------------------
+  //   Three data stores keyed by year (pdfs = original PDF Blob, parsed =
+  //   parsed models, meta = lightweight index) + a kv store for db-level
+  //   scalars. A SYNCHRONOUS in-memory projection (fluidsData, the same shape
+  //   the render path always used) is hydrated from `parsed` at boot, so
+  //   fluidsBar / openFluidsWindow / debugDump stay synchronous & unchanged.
+  //   Keeping the original PDF lets us silently RE-PARSE with an improved
+  //   parser (version bump below) without the tech re-uploading anything.
+  var FLUID_DB = "hahns_fluids", FLUID_DB_VER = 1;
+  var MODERN_PARSER_VER = "1.3.0";   // 2011–2026, engine-code parser
+  var LEGACY_PARSER_VER = "1.0.0";   // 2000–2010, displacement parser (not built yet)
+  var FLUID_YEAR_MIN = 2000, FLUID_YEAR_MAX = 2026;  // span for "Years installed: N/M"
+  var fluidsData = null;      // sync projection: null=unread, false=none, obj={updated,count,years:{Y:{models,file}}}
+  var fluidsDB = null;        // open IDBDatabase (null until boot resolves / on failure)
+  var fluidsIdbOk = true;     // false → IDB unavailable, using localStorage fallback
+  var fluidsReady = false;    // projection hydrated (render shows "loading" until true)
+  var fluidsBooted = false;   // boot runs once
+  var fluidsMetaList = [];    // sync mirror of the `meta` store (info page + reconcile)
+  var fluidsBgUpdate = 0;     // ms timestamp of the last successful background re-parse
+  var fluidsRerender = null;  // repaint the panel after async hydrate / re-parse
+  var reconcileActive = false;
 
-  function loadFluids() {
-    if (fluidsData !== null) return fluidsData || null;
-    try { var raw = localStorage.getItem(FLUIDS_KEY); fluidsData = raw ? JSON.parse(raw) : false; }
-    catch (e) { fluidsData = false; }
-    return fluidsData || null;
+  function familyForYear(y) { return (+y <= 2010) ? "legacy" : "modern"; }
+  function currentParserVer(fam) { return fam === "legacy" ? LEGACY_PARSER_VER : MODERN_PARSER_VER; }
+
+  // tiny promise-wrapped IndexedDB helpers (only the ops we need) --------
+  function idbOpen() {
+    return new Promise(function (res, rej) {
+      if (typeof indexedDB === "undefined") { rej(new Error("no IndexedDB")); return; }
+      var rq;
+      try { rq = indexedDB.open(FLUID_DB, FLUID_DB_VER); } catch (e) { rej(e); return; }
+      rq.onupgradeneeded = function () {
+        var db = rq.result;
+        if (!db.objectStoreNames.contains("pdfs")) db.createObjectStore("pdfs", { keyPath: "year" });
+        if (!db.objectStoreNames.contains("parsed")) db.createObjectStore("parsed", { keyPath: "year" });
+        if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta", { keyPath: "year" });
+        if (!db.objectStoreNames.contains("kv")) db.createObjectStore("kv", { keyPath: "k" });
+      };
+      rq.onsuccess = function () {
+        var db = rq.result;
+        try { db.onversionchange = function () { try { db.close(); } catch (e) {} fluidsDB = null; }; } catch (e) {}
+        res(db);
+      };
+      rq.onerror = function () { rej(rq.error || new Error("open failed")); };
+      rq.onblocked = function () { rej(new Error("blocked")); };
+    });
   }
-  function saveFluids(obj) {
-    try { localStorage.setItem(FLUIDS_KEY, JSON.stringify(obj)); fluidsData = obj; return true; }
-    catch (e) { return false; }
+  function idbReq(req) { return new Promise(function (res, rej) { req.onsuccess = function () { res(req.result); }; req.onerror = function () { rej(req.error); }; }); }
+  function idbGet(store, key) { try { return idbReq(fluidsDB.transaction(store, "readonly").objectStore(store).get(key)); } catch (e) { return Promise.reject(e); } }
+  function idbGetAll(store) { try { return idbReq(fluidsDB.transaction(store, "readonly").objectStore(store).getAll()); } catch (e) { return Promise.reject(e); } }
+  function idbTxDone(tx) { return new Promise(function (res, rej) { tx.oncomplete = function () { res(); }; tx.onerror = function () { rej(tx.error); }; tx.onabort = function () { rej(tx.error || new Error("aborted")); }; }); }
+  function idbPut(store, val) { try { var tx = fluidsDB.transaction(store, "readwrite"); tx.objectStore(store).put(val); return idbTxDone(tx); } catch (e) { return Promise.reject(e); } }
+  // write several records across stores in ONE atomic transaction
+  function idbPutMany(stores, recs) {
+    try {
+      var tx = fluidsDB.transaction(stores, "readwrite");
+      recs.forEach(function (rc) { tx.objectStore(rc.store).put(rc.val); });
+      return idbTxDone(tx);
+    } catch (e) { return Promise.reject(e); }
   }
+
+  // build the sync projection from `parsed` records (skips blobs entirely)
+  function buildProjection(parsedRecs) {
+    var years = {}, latest = "";
+    (parsedRecs || []).forEach(function (p) {
+      years[p.year] = { models: p.models || [], file: p.fileName || "" };
+      if (p.parsedDate && p.parsedDate > latest) latest = p.parsedDate;
+    });
+    fluidsData = Object.keys(years).length ? { years: years, count: Object.keys(years).length, updated: latest } : false;
+  }
+  function updateYearInProjection(year, models, file) {
+    if (!fluidsData) fluidsData = { years: {}, count: 0, updated: todayISO() };
+    fluidsData.years[year] = { models: models || [], file: file || "" };
+    fluidsData.count = Object.keys(fluidsData.years).length;
+    fluidsData.updated = todayISO();
+  }
+  function refreshMetaList() { return idbGetAll("meta").then(function (l) { fluidsMetaList = l || []; }).catch(function () {}); }
+  function setLastBgUpdate() { fluidsBgUpdate = Date.now(); return idbPut("kv", { k: "lastBgUpdate", v: fluidsBgUpdate }).catch(function () {}); }
+
+  // startup: open IDB → migrate old localStorage once → hydrate projection →
+  // (background) reconcile parser versions & auto re-parse. Falls back to the
+  // legacy localStorage read if IDB can't be opened, so fluids still work.
+  function fluidsBoot(onReady) {
+    if (fluidsBooted) { if (onReady) onReady(); return; }
+    fluidsBooted = true;
+    idbOpen().then(function (db) {
+      fluidsDB = db; fluidsIdbOk = true;
+      return migrateLegacyFluids();
+    }).then(function () {
+      return Promise.all([idbGetAll("parsed"), idbGetAll("meta"), idbGet("kv", "lastBgUpdate")]);
+    }).then(function (out) {
+      buildProjection(out[0]);
+      fluidsMetaList = out[1] || [];
+      fluidsBgUpdate = (out[2] && out[2].v) || 0;
+      fluidsReady = true;
+      if (onReady) onReady();
+      reconcileFluids();   // background, non-blocking
+    }).catch(function () {
+      // IDB unavailable → legacy sync read so the feature still works
+      fluidsIdbOk = false; fluidsDB = null;
+      try { var raw = localStorage.getItem(FLUIDS_KEY); fluidsData = raw ? JSON.parse(raw) : false; } catch (e) { fluidsData = false; }
+      fluidsReady = true;
+      if (onReady) onReady();
+    });
+  }
+
+  // one-time: convert pre-v0.3.15 localStorage fluid data into IDB. Those PDFs
+  // were discarded (no Blob), so records are marked hasBlob:false / parserVersion
+  // "0" → usable now, but can't auto re-parse until the tech re-uploads the PDF.
+  function migrateLegacyFluids() {
+    return idbGet("kv", "migratedV1").then(function (flag) {
+      if (flag && flag.v) return;
+      var old = null;
+      try { old = JSON.parse(localStorage.getItem(FLUIDS_KEY) || "null"); } catch (e) {}
+      var recs = [];
+      if (old && old.years) Object.keys(old.years).forEach(function (yy) {
+        var yd = old.years[yy] || {}, fam = familyForYear(yy), when = old.updated || todayISO();
+        recs.push({ store: "parsed", val: { year: yy, family: fam, parserVersion: "0", models: yd.models || [], fileName: yd.file || "", parsedDate: when } });
+        recs.push({ store: "meta", val: { year: yy, family: fam, parserVersion: "0", hash: "", fileName: yd.file || "", size: 0, hasBlob: false, status: "stale-no-source", importDate: when, lastParsedDate: when, appBuild: BUILD } });
+      });
+      var chain = recs.length ? idbPutMany(["parsed", "meta"], recs) : Promise.resolve();
+      return chain.then(function () { return idbPut("kv", { k: "migratedV1", v: 1, at: todayISO() }); });
+    });
+  }
+
+  // compare each year's stored parser version to the current one; if different
+  // AND we have the source PDF, re-parse it in the background (throttled, one at
+  // a time). Non-destructive: a failed re-parse keeps the last good data.
+  function reconcileFluids() {
+    if (!fluidsIdbOk || !fluidsDB) return;
+    var todo = [];
+    fluidsMetaList.forEach(function (m) {
+      if (m && m.parserVersion !== currentParserVer(m.family) && m.hasBlob) todo.push(m.year);
+    });
+    if (!todo.length) return;
+    reconcileActive = true;
+    var idle = window.requestIdleCallback || function (f) { return setTimeout(f, 120); };
+    (function next(i) {
+      if (i >= todo.length) { reconcileActive = false; if (fluidsRerender) fluidsRerender(); return; }
+      reparseYear(todo[i]).then(function () {}, function () {}).then(function () {
+        if (fluidsRerender) fluidsRerender();
+        idle(function () { next(i + 1); });
+      });
+    })(0);
+  }
+
+  function reparseYear(year) {
+    return idbGet("pdfs", year).then(function (pdf) {
+      if (!pdf || !pdf.blob) throw new Error("no source PDF");
+      return pdf.blob.arrayBuffer().then(function (buf) {
+        return fluidsFromPdf(buf, pdf.fileName || (year + ".pdf")).then(function (out) {
+          var fam = familyForYear(year), ver = currentParserVer(fam), now = todayISO();
+          return idbPutMany(["parsed", "meta"], [
+            { store: "parsed", val: { year: year, family: fam, parserVersion: ver, models: out.models, fileName: pdf.fileName || "", parsedDate: now } },
+            { store: "meta", val: { year: year, family: fam, parserVersion: ver, hash: pdf.hash || "", fileName: pdf.fileName || "", size: pdf.size || 0, hasBlob: true, status: "ok", importDate: pdf.importDate || now, lastParsedDate: now, appBuild: BUILD } }
+          ]).then(function () {
+            updateYearInProjection(year, out.models, pdf.fileName || "");
+            return refreshMetaList();
+          }).then(function () { return setLastBgUpdate(); });
+        });
+      });
+    }).catch(function (e) {
+      // keep the old parsed data; just record the error on meta
+      return idbGet("meta", year).then(function (m) {
+        m = m || { year: year, family: familyForYear(year) };
+        m.status = "reparse-error"; m.lastError = (e && e.message) || "parse failed";
+        return idbPut("meta", m);
+      }).then(function () { return refreshMetaList(); }).catch(function () {});
+    });
+  }
+
+  // save a batch of newly-uploaded years (Blob + parsed + meta, atomic per year).
+  // Falls back to the legacy localStorage shape if IDB is unavailable.
+  function fluidsSaveYears(list) {
+    if (!fluidsIdbOk || !fluidsDB) {
+      var st = null;
+      try { st = JSON.parse(localStorage.getItem(FLUIDS_KEY) || "null"); } catch (e) {}
+      st = st || { years: {} }; if (!st.years) st.years = {};
+      list.forEach(function (o) { st.years[o.year] = { models: o.models, file: o.name }; });
+      st.updated = todayISO(); st.count = Object.keys(st.years).length;
+      try { localStorage.setItem(FLUIDS_KEY, JSON.stringify(st)); } catch (e) { return Promise.reject(e); }
+      fluidsData = st;
+      return Promise.resolve();
+    }
+    var chain = Promise.resolve(), now = todayISO();
+    list.forEach(function (o) {
+      chain = chain.then(function () {
+        var fam = familyForYear(o.year), ver = currentParserVer(fam);
+        var blob = new Blob([o.buf], { type: "application/pdf" });
+        return idbPutMany(["pdfs", "parsed", "meta"], [
+          { store: "pdfs", val: { year: o.year, family: fam, blob: blob, hash: o.hash || "", size: o.size || blob.size, fileName: o.name, importDate: now } },
+          { store: "parsed", val: { year: o.year, family: fam, parserVersion: ver, models: o.models, fileName: o.name, parsedDate: now } },
+          { store: "meta", val: { year: o.year, family: fam, parserVersion: ver, hash: o.hash || "", fileName: o.name, size: o.size || blob.size, hasBlob: true, status: "ok", importDate: now, lastParsedDate: now, appBuild: BUILD } }
+        ]).then(function () { updateYearInProjection(o.year, o.models, o.name); });
+      });
+    });
+    return chain.then(function () { return refreshMetaList(); });
+  }
+
+  function loadFluids() { return fluidsData || null; }
   function removeFluids() {
+    fluidsData = false; fluidsMetaList = []; fluidsBgUpdate = 0;
     try { localStorage.removeItem(FLUIDS_KEY); } catch (e) {}
-    fluidsData = false;
+    if (fluidsIdbOk && fluidsDB) {
+      try {
+        var tx = fluidsDB.transaction(["pdfs", "parsed", "meta"], "readwrite");
+        tx.objectStore("pdfs").clear(); tx.objectStore("parsed").clear(); tx.objectStore("meta").clear();
+      } catch (e) {}
+    }
+  }
+  // SHA-256 hex of the PDF bytes (integrity / future dedupe). Optional — resolves
+  // to "" if the browser lacks crypto.subtle (secure context; ELSA + Pages https).
+  function sha256Hex(buf) {
+    try {
+      if (typeof window === "undefined" || !window.crypto || !window.crypto.subtle) return Promise.resolve("");
+      return window.crypto.subtle.digest("SHA-256", buf).then(function (h) {
+        var b = new Uint8Array(h), s = "", i;
+        for (i = 0; i < b.length; i++) s += (b[i] < 16 ? "0" : "") + b[i].toString(16);
+        return s;
+      }, function () { return ""; });
+    } catch (e) { return Promise.resolve(""); }
+  }
+  // ---- info-page formatters (Settings › Fluid database) ----
+  function fmtBytesMB(bytes) {
+    var mb = (bytes || 0) / 1048576;
+    if (bytes && mb < 0.1) return "<0.1 MB";
+    return (mb >= 10 ? Math.round(mb) : (Math.round(mb * 10) / 10)) + " MB";
+  }
+  function fmtWhen(ts) {
+    if (!ts) return "—";
+    var d = new Date(ts), now = new Date(), t = "";
+    try { t = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); } catch (e) {}
+    if (d.toDateString() === now.toDateString()) return "Today " + t;
+    var y = new Date(now); y.setDate(now.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return "Yesterday " + t;
+    var ds = ""; try { ds = d.toLocaleDateString(); } catch (e) {}
+    return (ds + " " + t).replace(/\s+$/, "");
+  }
+  function fluidsHealth() {
+    if (!fluidsReady) return { cls: "dbwait", txt: "Loading…" };
+    var err = 0, pending = 0, stale = 0;
+    var installed = fluidsData && fluidsData.years ? Object.keys(fluidsData.years).length : 0;
+    fluidsMetaList.forEach(function (m) {
+      if (!m) return;
+      if (m.status === "reparse-error") err++;
+      else if (m.parserVersion !== currentParserVer(m.family)) { if (m.hasBlob) pending++; else stale++; }
+    });
+    if (err) return { cls: "dbwarn", txt: "⚠ " + err + " year" + (err > 1 ? "s" : "") + " need attention" };
+    if (reconcileActive || pending) return { cls: "dbwait", txt: "⟳ Updating…" };
+    if (stale) return { cls: "dbwarn", txt: "⚠ Re-upload " + stale + " to enable auto-update" };
+    if (!installed) return { cls: "dbnone", txt: "No tables yet" };
+    return { cls: "dbok", txt: "✓ Healthy" };
+  }
+  function fluidsInfoHTML() {
+    var installed = fluidsData && fluidsData.years ? Object.keys(fluidsData.years).length : 0;
+    var total = FLUID_YEAR_MAX - FLUID_YEAR_MIN + 1;
+    var bytes = 0; fluidsMetaList.forEach(function (m) { if (m && m.hasBlob) bytes += (m.size || 0); });
+    var h = fluidsHealth();
+    function row(k, v, cls) { return '<div class="dbrow"><span class="k">' + k + '</span><span class="v' + (cls ? " " + cls : "") + '">' + v + "</span></div>"; }
+    return '<div class="dbinfo">' +
+      row("Storage", fluidsIdbOk ? "IndexedDB" : "Local storage (fallback)") +
+      row("Modern parser", esc(MODERN_PARSER_VER)) +
+      row("Legacy parser", esc(LEGACY_PARSER_VER)) +
+      row("Years installed", installed + " / " + total) +
+      row("PDF storage", fmtBytesMB(bytes)) +
+      row("Last background update", esc(fmtWhen(fluidsBgUpdate))) +
+      row("Status", h.txt, h.cls) +
+      "</div>";
   }
 
   /* ---- 1. mini PDF text extractor -----------------------------------
@@ -1588,10 +1841,15 @@
           return new Promise(function (res) {
             var fr = new FileReader();
             fr.onload = function () {
-              fluidsFromPdf(fr.result, f.name).then(function (out) {
-                results.push({ name: f.name, year: out.year, models: out.models }); res();
-              }).catch(function (err) {
-                results.push({ name: f.name, err: (err && err.message) || "could not read that PDF" }); res();
+              var buf = fr.result;
+              sha256Hex(buf).then(function (hash) {
+                fluidsFromPdf(buf, f.name).then(function (out) {
+                  // keep the bytes + hash so the year can be stored as a Blob and
+                  // silently re-parsed later when the parser improves
+                  results.push({ name: f.name, year: out.year, models: out.models, buf: buf, hash: hash, size: (f.size || (buf && buf.byteLength) || 0) }); res();
+                }).catch(function (err) {
+                  results.push({ name: f.name, err: (err && err.message) || "could not read that PDF" }); res();
+                });
               });
             };
             fr.onerror = function () { results.push({ name: f.name, err: "could not read that file" }); res(); };
@@ -1620,7 +1878,7 @@
     ov.innerHTML = '<div class="setbox">' +
       '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
       '<p class="settl">Load fluid capacity tables</p>' +
-      '<p class="setsub">Check each year’s models below against your PDFs, then save. Converted on this computer — the PDFs themselves aren’t kept, and nothing is uploaded.</p>' +
+      '<p class="setsub">Check each year’s models below against your PDFs, then save. Converted on this computer and kept only in this browser (so future parser fixes apply automatically) — nothing is uploaded.</p>' +
       rows +
       '<div class="maperr" style="display:none"></div>' +
       '<div class="setbtns"><button class="cancel">Cancel</button>' +
@@ -1633,19 +1891,16 @@
     ov.querySelector(".xclose").addEventListener("click", close);
     var sv = ov.querySelector(".save");
     if (sv) sv.addEventListener("click", function () {
-      var st = loadFluids() || { years: {} };
-      if (!st.years) st.years = {};
-      ok.forEach(function (o) { st.years[o.year] = { models: o.models, file: o.name }; });
-      st.updated = todayISO();
-      st.count = Object.keys(st.years).length;
-      if (!saveFluids(st)) {
+      sv.disabled = true;
+      fluidsSaveYears(ok).then(function () {
+        close();
+        renderInto(host, r, options);
+        flash(root, "Fluid tables saved: " + ok.map(function (o) { return o.year; }).sort().join(", "));
+      }).catch(function (e) {
         var err = ov.querySelector(".maperr");
-        err.textContent = "Couldn’t save (storage blocked or full on this machine).";
-        err.style.display = "block"; return;
-      }
-      close();
-      renderInto(host, r, options);
-      flash(root, "Fluid tables saved: " + ok.map(function (o) { return o.year; }).sort().join(", "));
+        err.textContent = "Couldn’t save (" + ((e && e.message) || "storage blocked or full on this machine") + ").";
+        err.style.display = "block"; sv.disabled = false;
+      });
     });
   }
 
@@ -2541,6 +2796,15 @@
     ".setfile{margin-top:4px;font-weight:700;color:#13502a;word-break:break-all}" +
     ".setmeta{margin-top:2px;font-size:11.5px;color:#3f7a52}" +
     ".setstat.none{background:#eef1f6;border-color:#dfe4ee;color:#3a4a63}" +
+    ".dbinfo{background:#f4f7fc;border:1px solid #dfe4ee;border-radius:8px;padding:4px 11px;margin-bottom:12px}" +
+    ".dbrow{display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding:6px 0;border-bottom:1px solid #e7ebf3;font-size:12.5px}" +
+    ".dbrow:last-child{border-bottom:0}" +
+    ".dbrow .k{color:#3a4a63}" +
+    ".dbrow .v{font-weight:700;color:#001e50;text-align:right;word-break:break-word}" +
+    ".dbrow .v.dbok{color:#1e7a3a}" +
+    ".dbrow .v.dbwarn{color:#a35a00}" +
+    ".dbrow .v.dbwait{color:#12508a}" +
+    ".dbrow .v.dbnone{color:#7a7a7a}" +
     ".setdiv{border-top:1px solid #e3e6ee;margin:16px 0 12px}" +
     // fluid-PDF confirm rows (year + models found per picked file)
     ".flrow{background:#eef1f6;border:1px solid #dfe4ee;border-radius:8px;padding:8px 11px;font-size:12px;color:#3a4a63;line-height:1.4;margin-bottom:8px}" +
@@ -2648,6 +2912,9 @@
     }
     var v = r.__vehicle || {};
     if (!v.year) return '<div class="fluidbar"><div class="fluidnote">Add the <b>Model Year</b> above to look up fluids &amp; capacities.</div></div>';
+    // fluid tables load asynchronously from IndexedDB at startup — show a neutral
+    // "loading" state until the projection is hydrated (a few ms), then re-render.
+    if (!fluidsReady) return '<div class="fluidbar"><div class="fluidbtn off" title="Reading saved fluid tables…">' + svg(DROPLET) + "Fluids &amp; capacities — loading…</div></div>";
     // the data now lives on THIS computer (loaded once via ⚙ Settings from the
     // yearly VW Fluid Capacity Tables PDFs). No data for this year yet → point
     // the tech at Settings; otherwise open the locally-built lookup window.
@@ -3128,7 +3395,12 @@
     try {
       var flt = loadFluids();
       var flys = flt && flt.years ? Object.keys(flt.years).sort() : [];
-      fluidsLine = flys.length ? (flys.length + " years (" + flys.join(", ") + "), updated " + (flt.updated || "?")) : "none loaded";
+      var errs = fluidsMetaList.filter(function (m) { return m && m.status === "reparse-error"; }).map(function (m) { return m.year; });
+      fluidsLine = (fluidsIdbOk ? "IndexedDB" : "localStorage(fallback)") +
+        " · parsers modern " + MODERN_PARSER_VER + " / legacy " + LEGACY_PARSER_VER +
+        " · " + (flys.length ? flys.length + " years (" + flys.join(", ") + ")" : "none loaded") +
+        " · last bg update " + fmtWhen(fluidsBgUpdate) +
+        (errs.length ? " · re-parse errors: " + errs.join(", ") : "");
     } catch (e) { fluidsLine = "(unreadable)"; }
     var veh = {}, isSum = false;
     try { veh = extractVehicle(lastSegments) || {}; } catch (e) {}
@@ -3264,12 +3536,16 @@
       "</div>" +
       '<div class="setdiv"></div>' +
       '<p class="settl">Fluid capacity tables</p>' +
-      '<p class="setsub">Load the yearly <b>VW Fluid Capacity Tables</b> PDFs. Hahns converts them on this computer — the PDFs aren’t kept and nothing is uploaded — and shows the values matched to the loaded vehicle.</p>' +
+      '<p class="setsub">Load the yearly <b>VW Fluid Capacity Tables</b> PDFs. Hahns converts them on this computer — kept only in this browser, never uploaded — and shows the values matched to the loaded vehicle.</p>' +
       flStatus +
       '<div class="setbtns">' +
         (flYears.length ? '<button class="danger flremove">Remove tables</button>' : "") +
         '<button class="primary flupload">' + (flYears.length ? "Add / replace PDFs" : "Load PDFs") + "</button>" +
       "</div>" +
+      '<div class="setdiv"></div>' +
+      '<p class="settl">Fluid database</p>' +
+      '<p class="setsub">The parsed tables and their source PDFs live in this browser’s database. When the parser is improved, saved PDFs are re-read automatically — no re-upload needed.</p>' +
+      fluidsInfoHTML() +
       '<p class="setnote">Everything here is saved only on this computer (under ELSA) — never uploaded anywhere or sent to GitHub.</p>' +
       "</div>";
     root.appendChild(ov);
@@ -3783,9 +4059,10 @@
     host.id = ID;
     document.documentElement.appendChild(host);
 
+    var opts = { onRescan: scan, onNewJob: newJob, persist: true };
     var show = function (job) {
       saveJob(job);
-      renderInto(host, job, { onRescan: scan, onNewJob: newJob, persist: true });
+      renderInto(host, job, opts);
     };
     // one Scan button, auto-detected:
     //  - scanning ELSA's Vehicle Summary page loads the vehicle (needed ONLY for
@@ -3884,6 +4161,11 @@
     // open showing the current job (blank if nothing collected yet) WITHOUT
     // auto-scanning — scanning the page is a deliberate "Scan page" click
     show(loadJob() || emptyResults());
+    // bring up the fluid store (IndexedDB): hydrate the sync projection, then
+    // repaint so the fluids bar reflects saved tables; also kicks off the
+    // background parser-version reconcile / auto re-parse. Async & non-blocking.
+    fluidsRerender = function () { try { renderInto(host, loadJob() || emptyResults(), opts); } catch (e) {} };
+    fluidsBoot(fluidsRerender);
   }
 
   window.VWJB = { run: run, extract: extract, extractSegments: extractSegments,
@@ -3893,5 +4175,8 @@
     isVehicleSummaryPage: isVehicleSummaryPage,
     // fluid-table pipeline, exposed so new-year PDFs can be sanity-checked
     // from a dev harness (PDF bytes → layout text → parsed models)
-    fluidsFromPdf: fluidsFromPdf, pdfTextLines: pdfTextLines, parseFluidModels: parseFluidModels };
+    fluidsFromPdf: fluidsFromPdf, pdfTextLines: pdfTextLines, parseFluidModels: parseFluidModels,
+    // fluid-store internals, exposed for dev harnesses (IndexedDB layer)
+    fluidsBoot: fluidsBoot, loadFluids: loadFluids, fluidsSaveYears: fluidsSaveYears,
+    reparseYear: reparseYear, fluidsInfoHTML: fluidsInfoHTML };
 })();

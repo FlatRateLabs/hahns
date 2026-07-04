@@ -9,6 +9,26 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.15-alpha — 2026-07-04
+
+### Changed
+- **Your fluid PDFs are now kept safely in this browser, and improvements apply by
+  themselves.** Before, Hahns converted a fluid PDF and threw the PDF away — so whenever the
+  fluid reader was improved (a page-break fix, a corrected oil grade, etc.), the only way to
+  get the fix was to clear your browser data and re-upload every PDF. Now the original PDFs
+  are stored on this computer (in the browser's own database, still **never uploaded
+  anywhere**). When you re-drag an updated Hahns, it quietly re-reads your saved PDFs with the
+  newer reader in the background — no re-uploading, no clearing anything.
+- **New "Fluid database" panel in ⚙ Settings.** Shows where the data is stored, the current
+  fluid-reader versions, how many model years you have installed, how much space the PDFs use,
+  when the last background update ran, and an overall health check.
+
+### Fixed
+- Fluid tables that were loaded on an older version keep working after this update; re-upload
+  those years once to also get automatic reader updates for them going forward.
+
+---
+
 ## v0.3.14-alpha — 2026-07-03
 
 ### Added
