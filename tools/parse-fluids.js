@@ -339,8 +339,10 @@ function main() {
   // Older PDFs (≈2006–2013) write tolerances with the Unicode ± ("525 ± 25 g");
   // newer ones already emit ASCII "+/-". VAL_RE expects "+/-", so without this the
   // grams CHARGE ("525") is dropped and only the tolerance ("25 g") is captured.
-  // Normalize once at the source so every year parses the same way.
-  text = text.replace(/±/g, " +/- ");
+  // Normalize once at the source so every year parses the same way. Some years
+  // (e.g. 2018 Golf R) render the tolerance as three spaced glyphs "+ / -" (any
+  // dash) instead of a ± — collapse that to the ASCII "+/-" too.
+  text = text.replace(/±/g, " +/- ").replace(/\+\s*\/\s*[-‐-―−]/g, "+/-");
 
   var models = parsePdf(text);
   if (!models.length) { console.error("no model sections found — PDF layout may have changed"); process.exit(1); }

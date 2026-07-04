@@ -9,6 +9,22 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.15.2-alpha — 2026-07-04
+
+### Fixed
+- **A/C capacity fix, take two — now handles the 2018 Golf R's tolerance format.** The v0.3.15.1
+  fix only caught tolerances written as `±` / `+/-`. On some years (e.g. the 2018 Golf R) the
+  "plus-or-minus" prints as three spaced characters — `+ / -` — which slipped through, so the A/C
+  charge (500 g) still showed in the small grey label with the tolerance (15 g) bolded. The reader
+  now normalizes that spaced form too, so A/C and A/C compressor oil read correctly as
+  **500 +/- 15 g**. (Modern fluid reader → **1.3.2**; saved PDFs re-read automatically.)
+
+> **If a year still looks wrong after re-dragging:** re-load that year's PDF once via ⚙ Settings.
+> Years loaded before v0.3.15 have no saved PDF to re-read automatically, so a one-time re-upload
+> applies the newest reader (and enables automatic fixes going forward).
+
+---
+
 ## v0.3.15.1-alpha — 2026-07-04
 
 ### Fixed

@@ -5,6 +5,36 @@ permanent project reference.
 
 ---
 
+## 2026-07-04 — v0.3.15.2-alpha: A/C tolerance fix take two (spaced "+ / -" form)
+
+**v0.3.15.1 didn't fully fix it — owner reported the 2018 Golf R A/C capacity still bold-wrong.**
+Root cause the first fix missed: the 2018 PDF doesn't use a Unicode `±` (or contiguous `+/-`) — it
+renders the tolerance as **three spaced glyphs `+ / -`**. Tell-tale: the rendered *label* in the
+screenshot was `Initial 500 + / - Fill / Refill` (spaces around the `/`), and since the label is
+just the raw cell minus the value, the raw cell is `Initial 500 + / - Fill / Refill 15 g`. My
+v0.3.15.1 reassembly regex (`\+\/-`, contiguous) never matched, and neither did `VAL_RE`.
+
+### Fix
+Broaden the source normalization (`parseFluidModels`, ported to `tools/parse-fluids.js`) to collapse
+the spaced form to ASCII `+/-` before parsing:
+`.replace(/\+\s*\/\s*[-‐-―−]/g, "+/-")` (any dash variant). Then the existing v0.3.15.1 reassembly +
+`VAL_RE` work. **`MODERN_PARSER_VER` 1.3.1 → 1.3.2** → auto-reparse re-runs.
+
+### Verified
+- Full-pipeline node test (norm → reassemble → VAL_RE → label) on the **spaced** 2018 strings
+  (A/C R134a/R1234yf + compressor oils) → all reassemble to `500 +/- 15 g` etc. with clean
+  `Initial Fill / Refill` label; contiguous `+/-`, real Unicode `±` (2019 `650 ± 25 g`), and plain
+  oil all **unchanged**. Extracted the exact in-file regex and confirmed the Unicode dash class is
+  valid + matches. `node --check` clean; built `v0.3.15.2-alpha`.
+- **Still not run against the real 2018 PDF** (not in repo) — but the fix is derived from the exact
+  rendered label text. **Owner: re-load the 2018 PDF via ⚙ Settings** to force a fresh parse (a
+  pre-v0.3.15 loaded year has no saved PDF blob, so it can't auto-reparse until re-uploaded once).
+
+### Deploy
+- PR → `main` (admin merge); confirm live `version.json` = `v0.3.15.2-alpha`. **Re-drag needed.**
+
+---
+
 ## 2026-07-04 — v0.3.15.1-alpha: A/C split-tolerance fix (first live use of auto re-parse)
 
 **First bug found on live v0.3.15 + first real exercise of the new auto-reparse pipeline.**

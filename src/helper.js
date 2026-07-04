@@ -728,7 +728,7 @@
   //   Keeping the original PDF lets us silently RE-PARSE with an improved
   //   parser (version bump below) without the tech re-uploading anything.
   var FLUID_DB = "hahns_fluids", FLUID_DB_VER = 1;
-  var MODERN_PARSER_VER = "1.3.1";   // 2011–2026, engine-code parser (1.3.1: A/C split-tolerance fix)
+  var MODERN_PARSER_VER = "1.3.2";   // 2011–2026, engine-code parser (1.3.2: spaced "+ / -" tolerance)
   var LEGACY_PARSER_VER = "1.0.0";   // 2000–2010, displacement parser (not built yet)
   var FLUID_YEAR_MIN = 2000, FLUID_YEAR_MAX = 2026;  // span for "Years installed: N/M"
   var fluidsData = null;      // sync projection: null=unread, false=none, obj={updated,count,years:{Y:{models,file}}}
@@ -1589,9 +1589,12 @@
   var MODEL_HDR = /^\d+\.\d+\s+(.+?)\s*\(([^)]*)\)\s*$/;
   // layout text → [{ model, modelCode, engineOil, engineCoolant, airConditioning, drivetrain }]
   function parseFluidModels(text) {
-    // older PDFs write tolerances with the Unicode ± — normalise to "+/-" so
-    // every year parses the same way (VAL_RE expects the ASCII form)
-    var lines = String(text || "").replace(/±/g, " +/- ").split(/\r?\n/);
+    // Tolerances arrive in two shapes: a Unicode ± (most years), OR — on years
+    // like the 2018 Golf R — three separate glyphs the layout spaces out into
+    // "+ / -" (any dash variant). Normalise BOTH to the contiguous ASCII "+/-"
+    // so VAL_RE and the A/C split-tolerance reassembly (parseCAC) match uniformly.
+    var lines = String(text || "").replace(/±/g, " +/- ")
+      .replace(/\+\s*\/\s*[-‐-―−]/g, "+/-").split(/\r?\n/);
     for (var cLn = 0; cLn < lines.length; cLn++) {
       if (/^\s*\d[\d.]*\s+Maintenance\s+Schedules?\b/i.test(lines[cLn])) { lines = lines.slice(0, cLn); break; }
     }
