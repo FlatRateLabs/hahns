@@ -162,6 +162,9 @@ function parseCAC(lines, hdrIdx) {
     if (!idx || isNoise(ln)) continue;
     var c = slice(ln, idx), comp = c[0], app = c[1], capCell = c[2];
     if (comp) lastComp = comp;
+    // A/C is metric (grams) — drop imperial "(… oz.)" conversions; also un-breaks
+    // e-Golf/Tiguan cells that interleave that paren into the value. See helper.js.
+    capCell = capCell.replace(/\([^)]*(?:oz|fl)[^)]*\)/gi, " ");
     // reassemble a "N +/-" tolerance split from its "M unit" by interleaved label
     // words (2018 Golf R: "Initial 500 +/- Fill / Refill 15 g") — see helper.js
     capCell = capCell.replace(

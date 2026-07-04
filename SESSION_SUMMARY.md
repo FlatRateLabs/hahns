@@ -5,6 +5,34 @@ permanent project reference.
 
 ---
 
+## 2026-07-04 — v0.3.15.3-alpha: e-Golf/Tiguan A/C fix (strip imperial oz)
+
+**Closed the e-Golf A/C edge from v0.3.15.2.** Owner OK'd dropping the imperial ounces entirely
+("we use grams in VW"), which is both the cleaner UX and the fix.
+
+### Root cause
+e-Golf (2015–2018) + 2017 Tiguan A/C cells wedge the imperial conversion **into the middle** of the
+metric value — `Initial 500 +/- (17.6 +/- 0.5 Fill / Refill oz.) 15 g` — so the charge (500) was
+stranded in the label and only the tolerance (`15 g`) showed.
+
+### Fix (`parseCAC`, ported to `tools/parse-fluids.js`)
+Strip imperial parentheticals before value extraction: `capCell.replace(/\([^)]*(?:oz|fl)[^)]*\)/gi, " ")`.
+Removes the `(… oz.)` / `(… fl. oz.)` conversion (A/C is metric) AND collapses the interleave so the
+metric value reassembles. **`MODERN_PARSER_VER` 1.3.2 → 1.3.3** → saved PDFs auto-reparse.
+
+### Verified (against the real archived 2011–2026 gold data — 500 A/C fills)
+- **36 broken cells fixed**, **0 values still contain oz**, **0 malformed**, **0 regressions**.
+  Concrete: e-Golf `500/950/850/450 +/- 15 g`, 2017 Tiguan `460 +/- 15 g` + `110/75 +/- 10 cc`,
+  2018 Golf R unchanged (`500/460 +/- 15 g`, `75/110/120 +/- 10 cc`), 2019 e-Golf unchanged
+  (`850/430 +/- 15 g`). All ~200 previously-correct cells simply lose their `(… oz.)` suffix (desired).
+- `node --check` clean; `window.VWJB` intact; built `v0.3.15.3-alpha`.
+- Design decision: strip is **A/C-only** (`parseCAC`), so oil/coolant `(… qt)` imperial is untouched.
+
+### Deploy
+- PR → `main` (admin merge); confirm live `version.json` = `v0.3.15.3-alpha`. **Re-drag needed.**
+
+---
+
 ## 2026-07-04 — v0.3.15.2-alpha: A/C tolerance fix take two (spaced "+ / -" form)
 
 **v0.3.15.1 didn't fully fix it — owner reported the 2018 Golf R A/C capacity still bold-wrong.**

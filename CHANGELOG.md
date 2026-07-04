@@ -9,6 +9,23 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.15.3-alpha — 2026-07-04
+
+### Changed
+- **A/C capacities now show grams only (imperial ounces dropped).** VW works in grams, so the
+  redundant `(… oz.)` / `(… fl. oz.)` conversions are removed from the Air Conditioning card —
+  cleaner, one unit.
+
+### Fixed
+- **e-Golf (2015–2018) and 2017 Tiguan A/C capacities were still wrong.** On those years the ounces
+  conversion was wedged into the middle of the metric value, so the charge got stranded and only the
+  tolerance showed (e.g. `15 g` instead of `500 +/- 15 g`). Removing the imperial conversion fixes
+  those cells: e-Golf reads `500 / 950 / 850 / 450 +/- 15 g`, the 2017 Tiguan `460 +/- 15 g`, etc.
+  (Verified against the full archived 2011–2026 A/C data — all correct, no other years affected.)
+  Modern fluid reader → **1.3.3**; saved PDFs re-read automatically on this update.
+
+---
+
 ## v0.3.15.2-alpha — 2026-07-04
 
 ### Fixed
