@@ -9,6 +9,15 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.16.2-alpha — 2026-07-05
+
+### Fixed
+- **Tool numbers written in spaced groups (e.g. `VAS 294 025`) are now read in full.** The scan used to
+  stop at the first space and grab only `VAS 294`. It now keeps the whole number (up to three
+  space-separated groups), without grabbing an unrelated trailing number. (Issue #78)
+
+---
+
 ## v0.3.16.1-alpha — 2026-07-05
 
 ### Added

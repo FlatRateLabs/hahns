@@ -387,12 +387,15 @@
   // matches a VW special-tool number, incl. a trailing "/N" sub-part. Forms:
   //   T10145 / T10145/1            (T-numbers)
   //   VAS 6395 / VAS6395A          (VAS numbers)
+  //   VAS 294 025                  (VAS numbers split into space-separated digit
+  //                                 groups — up to two extra groups, so the whole
+  //                                 number is kept, not just "VAS 294" (issue #78))
   //   VAG 1331A / V.A.G 1332A      (V.A.G/VAG numbers, with or without the dots,
   //                                 now incl. a trailing letter like 1331A)
   //   10-222 A / 10-222A/1         (classic hyphenated tool numbers + sub-parts;
   //                                 the trailing letter is REQUIRED here so plain
   //                                 ranges like "6-50 Nm" / "40-200 Nm" don't match)
-  var TOOL_RE = /\b(?:T\d{3,5}[A-Z]?(?:\/\d+)?|VAS\s?\d{3,5}[A-Z]?(?:\/\d+)?|V\.?A\.?[SG]\.?\s?\d{3,4}\s?[A-Z]?(?:\/\d+)?|\d{1,3}-\d{2,3}\s?[A-Z](?:\/\d+)?)\b/gi;
+  var TOOL_RE = /\b(?:T\d{3,5}[A-Z]?(?:\/\d+)?|VAS\s?\d{3,5}(?:\s\d{2,4}){0,2}[A-Z]?(?:\/\d+)?|V\.?A\.?[SG]\.?\s?\d{3,4}(?:\s\d{2,4}){0,2}\s?[A-Z]?(?:\/\d+)?|\d{1,3}-\d{2,3}\s?[A-Z](?:\/\d+)?)\b/gi;
 
   // ELSA writes tools as "<Tool Name> - <number> -". Pull the tool name out of the
   // text BEFORE the number: drop a trailing separator, keep the nearest clause,
