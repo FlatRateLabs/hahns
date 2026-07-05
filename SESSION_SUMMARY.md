@@ -5,6 +5,49 @@ permanent project reference.
 
 ---
 
+## 2026-07-05 — v0.3.17-alpha: magnifier reveals collapsed tool dropdowns + diagnostics (issue #47, branch `0.3.17`)
+
+**Issue #47:** the locate-on-page magnifier can't reach a special tool when it sits inside a collapsed
+ELSA "special tool list" dropdown (still broken after the v0.3.14 attempt). Can't test against real ELSA
+(licensed/authed), so per the owner's first prompt: **make reveal robust + instrument it** so a stubborn
+layout reports itself. All in `src/helper.js` (the `revealForLocate`/`highlightOnPage` block).
+
+### What changed
+- **`collapsedLike(el)`** — broader "is this section collapsed?" than the old display/visibility-only
+  `isElHidden`: also catches `hidden`/`aria-hidden` attrs and the **height:0 + overflow:hidden accordion**
+  pattern (offsetHeight 0 but scrollHeight > 0).
+- **`isVisibleNow(el)`** — real layout check via `getClientRects().length` (0 when the element OR any
+  ancestor is `display:none`). Fixes a bug where the old `!collapsedLike(el)` reported "revealed" for an
+  element whose own display was fine but whose ancestor was hidden.
+- **Broader, still-safe expander detection.** `expandersFor(panel)` gathers aria-controls owners, the
+  header/toggle before the panel (or its wrapper), a toggle nested at its top, and header-like children of
+  the parent (tree-node pattern). `looksExpander(el)` gates clicks to plausible expanders only (aria-expanded,
+  H1–6/summary, class/id words like toggle/expand/collaps/twisty/accordion/tree/chevron/header…, or a bare
+  ▶/▼/+/− glyph) — never a random/destructive button. `fireClick(el)` dispatches a **full pointer+mouse
+  sequence** (pointerdown→mousedown→pointerup→mouseup→click + `.click()`) since ELSA controls may act on
+  mousedown or a framework handler a bare `.click()` misses.
+- **Header fallback (owner's suggestion).** If the section still won't open, `findLandingHeader(el)` returns
+  the nearest **visible** header/toggle and the magnifier lands + pulses **that** — so the tech is taken to
+  the dropdown's own text to open it manually.
+- **Instrumentation (owner's first prompt).** Every magnifier click records a trace → `console.info`
+  (opened) / `console.warn` (couldn't) with: target, whether it opened, **which element hides it**, every
+  expander tried (+ aria before→after), and where it landed. Also stored in `lastLocate` and printed in the
+  **diagnostic dump** ("last magnifier (locate): …").
+
+### Verified (browser, synthetic collapse patterns)
+- **Opens** a standard aria accordion (`aria-controls` + display:none), a **class-based tree toggle with NO
+  aria** (`class="…toggle"`), and a **height:0 accordion** — tool visible after in all three.
+- **Non-openable** section (plain-div header, no aria/expander class): correctly reports `revealed:false`,
+  **falls back to highlighting the visible header**, and logs the full diagnostic (hidden by `div#p4`,
+  expanders tried none, landed on `div#h4`). No console errors. `node --check` clean.
+- **Still can't verify against real ELSA** — shipped so the owner can bay-test; if a dropdown still won't
+  open, the console/diagnostic now names the exact hiding element + what was tried, to target next.
+
+### Deploy
+- `v0.3.17-alpha`; PR → `main` (admin merge). **Re-drag needed.**
+
+---
+
 ## 2026-07-04 — v0.3.16-alpha: built-in tool scan list + tool descriptions (branch `0.3.16`)
 
 Two owner-requested additions on the `0.3.16` branch (alongside the IDB tool-list move + DB rename below).

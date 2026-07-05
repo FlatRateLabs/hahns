@@ -9,6 +9,22 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.17-alpha — 2026-07-05
+
+### Changed
+- **The magnifier now tries much harder to open a collapsed "special tools" dropdown before jumping to
+  it (issue #47).** It walks up from the tool to whatever is hiding it, handles more kinds of collapsed
+  sections (not just standard ones), and clicks the section's header/expander the same way a person
+  would. **If it still can't open the section, it now highlights the dropdown's header text** so you're
+  taken to the right spot and can open it with one click.
+
+### Added
+- **Magnifier diagnostics.** If a section won't open, Hahns prints a plain report to the browser console
+  (and into the diagnostic dump) — what it was looking for, which element hid it, what it tried, and
+  where it landed — so a stubborn ELSA layout can be pinned down exactly.
+
+---
+
 ## v0.3.16.2-alpha — 2026-07-05
 
 ### Fixed

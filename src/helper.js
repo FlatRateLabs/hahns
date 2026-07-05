@@ -93,6 +93,7 @@
   // the currently-highlighted element + its pending timers, so a new click
   // cancels the old pulse and fully restores the previous element's styling
   var hiState = null;
+  var lastLocate = null;   // last magnifier attempt (for the diagnostic dump / console)
   function clearHi() {
     if (!hiState) return;
     var st = hiState; hiState = null;
@@ -112,37 +113,150 @@
     } catch (e) {}
     return false;
   }
-  // A collapsed panel is usually opened by a control that points at it with
-  // aria-controls, or a header just before it — but ONLY click things explicitly
-  // marked aria-expanded="false" so we never fire a random (maybe destructive)
-  // button. Standard accordion markup; no-op otherwise.
-  function tryExpandPanel(panel) {
+  // broader "is this section collapsed?" test than isElHidden: also catches the
+  // accordion pattern (height:0 + overflow:hidden with real content inside) and
+  // hidden/aria-hidden attributes — ELSA's special-tool dropdown may use any of
+  // these, not just display:none (issue #47).
+  function collapsedLike(el) {
     try {
-      var doc = panel.ownerDocument, cand = [];
-      if (panel.id) {
-        try { cand = cand.concat(Array.prototype.slice.call(doc.querySelectorAll('[aria-controls="' + panel.id.replace(/"/g, '\\"') + '"]'))); } catch (e0) {}
-      }
-      var prev = panel.previousElementSibling;
-      if (prev) {
-        if (prev.getAttribute && prev.getAttribute("aria-expanded") != null) cand.push(prev);
-        if (prev.querySelector) { var q = prev.querySelector("[aria-expanded]"); if (q) cand.push(q); }
-      }
-      for (var i = 0; i < cand.length; i++) {
-        var c = cand[i];
-        if (c && c.getAttribute && c.getAttribute("aria-expanded") === "false") {
-          try { c.click(); } catch (e1) {}
-          if (!isElHidden(panel)) return;
+      if (el.hasAttribute && (el.hasAttribute("hidden") || el.getAttribute("aria-hidden") === "true")) return true;
+      var win = el.ownerDocument && el.ownerDocument.defaultView, cs = win && win.getComputedStyle(el);
+      if (!cs) return false;
+      if (cs.display === "none" || cs.visibility === "hidden") return true;
+      if ((cs.overflowY === "hidden" || cs.overflow === "hidden") && el.offsetHeight === 0 && el.scrollHeight > 1) return true;
+    } catch (e) {}
+    return false;
+  }
+  // is the element actually laid out / on-screen right now? getClientRects() is
+  // empty when the element OR any ancestor is display:none — the real test of
+  // whether reveal worked (an element's own computed display stays e.g. "inline"
+  // even inside a display:none parent, so collapsedLike(el) alone isn't enough).
+  function isVisibleNow(el) {
+    try {
+      if (!el || !el.getClientRects || el.getClientRects().length === 0) return false;
+      var r = el.getBoundingClientRect();
+      return (r.width > 0 || r.height > 0);
+    } catch (e) { return false; }
+  }
+  // the nearest VISIBLE header/toggle to land on when a section can't be opened —
+  // so the magnifier still takes the tech to the collapsed dropdown's own text.
+  function findLandingHeader(el) {
+    var p = el.parentNode;
+    while (p && p.nodeType === 1) {
+      try {
+        if (collapsedLike(p)) {
+          var cands = expandersFor(p);
+          for (var i = 0; i < cands.length; i++) if (isVisibleNow(cands[i])) return cands[i];
+          if (p.previousElementSibling && isVisibleNow(p.previousElementSibling)) return p.previousElementSibling;
+          var par = p.parentNode;
+          if (par && par.previousElementSibling && isVisibleNow(par.previousElementSibling)) return par.previousElementSibling;
         }
+      } catch (e) {}
+      p = p.parentNode;
+    }
+    return null;
+  }
+  // short "tag#id.class" description of an element for the diagnostic report
+  function elClass(el) {
+    try { var c = el.className; return (c && typeof c === "object" && c.baseVal != null) ? c.baseVal : (typeof c === "string" ? c : (el.getAttribute && el.getAttribute("class")) || ""); }
+    catch (e) { return ""; }
+  }
+  function descEl(el) {
+    if (!el || el.nodeType !== 1) return "(none)";
+    try {
+      var s = (el.tagName || "?").toLowerCase();
+      if (el.id) s += "#" + el.id;
+      var cls = elClass(el).trim();
+      if (cls) s += "." + cls.split(/\s+/).slice(0, 3).join(".");
+      var role = el.getAttribute && el.getAttribute("role"); if (role) s += "[role=" + role + "]";
+      var ae = el.getAttribute && el.getAttribute("aria-expanded"); if (ae != null) s += "[aria-expanded=" + ae + "]";
+      return s;
+    } catch (e) { return "?"; }
+  }
+  // Does this element look like a section EXPANDER — a thing a human clicks to open
+  // a collapsed panel — as opposed to a random (maybe destructive) button? We only
+  // ever "click" things that pass this (or that own the panel via aria-controls),
+  // so reveal stays safe on ELSA.
+  var EXP_WORD = /(?:^|[\s_\-])(?:toggle|expand|collaps|twisty|disclos|accordion|tree|node|arrow|chevron|caret|plus|minus|header|heading|title|caption|summary|dropdown|drop-down|expander|switch|folder|section|group|open|show)(?:$|[\s_\-])/i;
+  var EXP_GLYPH = /[+−＋▲▴▶▸►▼▾◀◂➕➖]/;   // + − ▲ ▴ ▶ ▸ ► ▼ ▾ ◀ ◂
+  function looksExpander(el) {
+    if (!el || el.nodeType !== 1) return false;
+    try {
+      if (el.getAttribute && el.getAttribute("aria-expanded") != null) return true;
+      if (/^H[1-6]$/.test(el.tagName) || el.tagName === "SUMMARY") return true;
+      var cls = elClass(el), id = el.id || "", txt = (el.textContent || "").trim();
+      if (EXP_WORD.test(cls) || EXP_WORD.test(id)) return true;
+      var role = el.getAttribute && el.getAttribute("role");
+      if ((role === "button" || el.tagName === "A" || el.tagName === "BUTTON") && (EXP_WORD.test(cls) || (txt.length <= 4 && EXP_GLYPH.test(txt)))) return true;
+      if (txt.length <= 3 && EXP_GLYPH.test(txt)) return true;   // a bare triangle/plus glyph
+    } catch (e) {}
+    return false;
+  }
+  // fire a full pointer/mouse sequence — some ELSA controls act on mousedown or a
+  // framework handler that a bare .click() would miss.
+  function fireClick(el) {
+    try {
+      var W = el.ownerDocument.defaultView, seq = ["pointerdown", "mousedown", "pointerup", "mouseup", "click"];
+      seq.forEach(function (type) {
+        var ev;
+        try { ev = new W.MouseEvent(type, { bubbles: true, cancelable: true, view: W }); }
+        catch (e0) { try { ev = el.ownerDocument.createEvent("MouseEvents"); ev.initEvent(type, true, true); } catch (e1) { ev = null; } }
+        if (ev) el.dispatchEvent(ev);
+      });
+    } catch (e) {}
+    try { if (typeof el.click === "function") el.click(); } catch (e2) {}
+  }
+  // collect controls that plausibly toggle `panel` open: aria-controls owners, a
+  // header/toggle just before it (or its wrapper), a toggle nested at its top, or
+  // header-like children of its parent (tree-node pattern).
+  function expandersFor(panel) {
+    var doc = panel.ownerDocument, out = [], seen = [];
+    function add(x, owns) { if (x && x.nodeType === 1 && seen.indexOf(x) < 0) { seen.push(x); if (owns) x.__hbOwns = 1; out.push(x); } }
+    try { if (panel.id) Array.prototype.slice.call(doc.querySelectorAll('[aria-controls="' + panel.id.replace(/"/g, '\\"') + '"]')).forEach(function (c) { add(c, 1); }); } catch (e) {}
+    try {
+      var prev = panel.previousElementSibling, hop = 0;
+      while (prev && hop < 3) { add(prev); if (prev.querySelectorAll) Array.prototype.slice.call(prev.querySelectorAll('[aria-expanded],[role="button"],summary,a,button')).forEach(function (x) { add(x); }); prev = prev.previousElementSibling; hop++; }
+    } catch (e) {}
+    try { if (panel.firstElementChild) add(panel.firstElementChild); Array.prototype.slice.call(panel.querySelectorAll ? panel.querySelectorAll('[aria-expanded],summary') : []).slice(0, 3).forEach(function (x) { add(x); }); } catch (e) {}
+    try {
+      var par = panel.parentNode;
+      if (par && par.nodeType === 1) {
+        add(par.previousElementSibling);
+        var kids = par.children || [];
+        for (var k = 0; k < kids.length && kids[k] !== panel; k++) add(kids[k]);
+        if (par.querySelectorAll) Array.prototype.slice.call(par.querySelectorAll('[aria-controls],[aria-expanded]')).slice(0, 4).forEach(function (x) { add(x); });
       }
     } catch (e) {}
+    return out;
+  }
+  // Try to open a collapsed `panel`. Clicks the best expander candidate(s), records
+  // each attempt into `trace`, and returns the control that opened it — or, if none
+  // did, the first header/toggle we found (so the magnifier can at least land on the
+  // dropdown's own text). Never clicks anything that isn't expander-like.
+  function tryExpandPanel(panel, trace) {
+    var cand = expandersFor(panel), firstHeader = null;
+    cand.sort(function (a, b) {
+      function rank(x) { return x.__hbOwns ? 0 : (x.getAttribute && x.getAttribute("aria-expanded") === "false" ? 1 : 2); }
+      return rank(a) - rank(b);
+    });
+    for (var i = 0; i < cand.length; i++) {
+      var c = cand[i];
+      if (!(c.__hbOwns || looksExpander(c))) continue;
+      if (!firstHeader) firstHeader = c;
+      var before = c.getAttribute && c.getAttribute("aria-expanded");
+      fireClick(c);
+      if (trace) trace.tried.push(descEl(c) + " (aria " + (before == null ? "-" : before) + "→" + (c.getAttribute && c.getAttribute("aria-expanded")) + ")");
+      if (!collapsedLike(panel)) return c;
+    }
+    return firstHeader;
   }
   // Reveal the element if it lives inside a collapsed/hidden section — ELSA lists
   // special tools (and other data) in expandable dropdowns, and scroll/highlight
-  // can't land on a hidden node. Best-effort + defensive: opens <details>, drops
-  // the `hidden` attribute, and clicks a standard aria toggle, walking up through
-  // ancestors and out of any nested iframe. Never throws into the host page.
-  function revealForLocate(el) {
-    var node = el, hops = 0;
+  // can't land on a hidden node. Walks up ancestors (and out of nested iframes),
+  // opening <details>, dropping hidden/aria-hidden, and clicking the section's
+  // expander. Records a trace for the diagnostic. Returns {revealed, fallback}.
+  function revealForLocate(el, trace) {
+    var node = el, hops = 0, fallback = null;
     while (node && hops < 15) {
       hops++;
       var p = node.parentNode;
@@ -150,38 +264,60 @@
         try {
           if (p.tagName === "DETAILS" && !p.open) p.open = true;
           if (p.hasAttribute && p.hasAttribute("hidden")) p.removeAttribute("hidden");
-          if (isElHidden(p)) tryExpandPanel(p);
+          if (p.getAttribute && p.getAttribute("aria-hidden") === "true") p.removeAttribute("aria-hidden");
+          if (collapsedLike(p)) {
+            if (trace) trace.hiding.push(descEl(p));
+            var opener = tryExpandPanel(p, trace);
+            if (opener && !fallback && !collapsedLike(opener)) fallback = opener;   // visible toggle to land on
+          }
         } catch (e) {}
         p = p.parentNode;
       }
       try { node = node.ownerDocument.defaultView.frameElement; } catch (e2) { node = null; }
     }
+    return { revealed: isVisibleNow(el), fallback: fallback };
   }
   // scroll ELSA to the element (incl. its iframe, if nested) and pulse it yellow,
-  // then fade back. Uses inline !important styles only — no network, fully
-  // reversible, never touches ELSA's stylesheets.
+  // then fade back. If the element can't be un-hidden, land on the section header
+  // instead (issue #47). Inline !important styles only — no network, fully
+  // reversible, never touches ELSA's stylesheets. Instruments every attempt.
   function highlightOnPage(el) {
     clearHi();
-    try { revealForLocate(el); } catch (eRev) {}
-    var doScroll = function () {
-      try { el.scrollIntoView({ behavior: "smooth", block: "center" }); }
-      catch (e) { try { el.scrollIntoView(); } catch (e2) {} }
+    var trace = { el: descEl(el), hiding: [], tried: [] };
+    var res = { revealed: true, fallback: null };
+    try { res = revealForLocate(el, trace); } catch (eRev) {}
+    // land on the element if we could reveal it, else on the dropdown's header/toggle
+    var target = (res.revealed ? el : (res.fallback || findLandingHeader(el) || el));
+    lastLocate = { when: new Date().toISOString(), el: trace.el, revealed: res.revealed, hiding: trace.hiding, tried: trace.tried, landedOn: descEl(target) };
+    if (trace.hiding.length) {
       try {
-        var fe = el.ownerDocument && el.ownerDocument.defaultView && el.ownerDocument.defaultView.frameElement;
+        var msg = "[Hahns] locate " + trace.el + " — " + (res.revealed ? "opened the section" : "COULD NOT open the section") +
+          "\n  hidden by: " + (trace.hiding.join(" < ") || "(none)") +
+          "\n  expanders tried: " + (trace.tried.join("; ") || "(none found)") +
+          "\n  landed on: " + descEl(target);
+        if (res.revealed) { if (window.console && console.info) console.info(msg); }
+        else if (window.console && console.warn) console.warn(msg);
+      } catch (e) {}
+    }
+    var doScroll = function () {
+      try { target.scrollIntoView({ behavior: "smooth", block: "center" }); }
+      catch (e) { try { target.scrollIntoView(); } catch (e2) {} }
+      try {
+        var fe = target.ownerDocument && target.ownerDocument.defaultView && target.ownerDocument.defaultView.frameElement;
         if (fe && fe.scrollIntoView) fe.scrollIntoView({ behavior: "smooth", block: "center" });
       } catch (e3) {}
     };
     doScroll();
     // a just-expanded panel often animates open — scroll once more after it settles
     setTimeout(doScroll, 350);
-    var st = { el: el, prevStyle: el.getAttribute("style"), timers: [] };
+    var st = { el: target, prevStyle: target.getAttribute("style"), timers: [] };
     hiState = st;
     function paint(c) {
       try {
-        el.style.setProperty("background-color", c, "important");
-        el.style.setProperty("outline", "3px solid #ffce00", "important");
-        el.style.setProperty("outline-offset", "1px", "important");
-        el.style.setProperty("transition", "background-color .3s ease", "important");
+        target.style.setProperty("background-color", c, "important");
+        target.style.setProperty("outline", "3px solid #ffce00", "important");
+        target.style.setProperty("outline-offset", "1px", "important");
+        target.style.setProperty("transition", "background-color .3s ease", "important");
       } catch (e) {}
     }
     var seq = ["#fff39a", "#ffe24d", "#fff39a", "#ffe24d", "#fff39a"];
@@ -3580,7 +3716,14 @@
       "large images on page: " + cands.length + " · diagrams kept: " + displayCount +
       (seqRef ? " (incl. tightening-sequence diagram)" : "") +
       (picked.length ? " (" + picked[0].slice(0, 80) + " …)" : "") + "\n" +
-      "segments captured: " + lastSegments.length + "\n\n" + lines.join("\n");
+      "segments captured: " + lastSegments.length + "\n" +
+      "last magnifier (locate): " + (lastLocate ?
+        (lastLocate.el + " — " + (lastLocate.revealed ? "section opened" : "COULD NOT open") +
+         "; hidden by: " + (lastLocate.hiding.join(" < ") || "(none)") +
+         "; tried: " + (lastLocate.tried.join("; ") || "(none)") +
+         "; landed on: " + lastLocate.landedOn)
+        : "(not used yet)") +
+      "\n\n" + lines.join("\n");
   }
 
   // keep the panel on-screen
