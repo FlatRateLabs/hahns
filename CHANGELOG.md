@@ -9,6 +9,18 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.17.1-alpha — 2026-07-05
+
+### Fixed
+- **The magnifier no longer triggers ELSA's Print button (bad v0.3.17 bug).** Clicking the magnifying
+  glass could fire ELSA's print command multiple times. The magnifier now has a hard rule that it will
+  **never** click print/save/close/etc. controls, and it clicks a section's opener only once.
+- **When it opens a tool dropdown, it now waits a moment and jumps to the tool** (ELSA opens these
+  sections a split-second after the click). If a section still can't be opened, it lands on the
+  dropdown's header so you can open it with one click — and records a more detailed diagnostic.
+
+---
+
 ## v0.3.17-alpha — 2026-07-05
 
 ### Changed

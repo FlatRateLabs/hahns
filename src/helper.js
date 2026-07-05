@@ -146,10 +146,10 @@
       try {
         if (collapsedLike(p)) {
           var cands = expandersFor(p);
-          for (var i = 0; i < cands.length; i++) if (isVisibleNow(cands[i])) return cands[i];
-          if (p.previousElementSibling && isVisibleNow(p.previousElementSibling)) return p.previousElementSibling;
+          for (var i = 0; i < cands.length; i++) if (isVisibleNow(cands[i]) && !isActionButton(cands[i]) && looksExpander(cands[i])) return cands[i];
+          if (p.previousElementSibling && isVisibleNow(p.previousElementSibling) && !isActionButton(p.previousElementSibling)) return p.previousElementSibling;
           var par = p.parentNode;
-          if (par && par.previousElementSibling && isVisibleNow(par.previousElementSibling)) return par.previousElementSibling;
+          if (par && par.previousElementSibling && isVisibleNow(par.previousElementSibling) && !isActionButton(par.previousElementSibling)) return par.previousElementSibling;
         }
       } catch (e) {}
       p = p.parentNode;
@@ -177,11 +177,30 @@
   // a collapsed panel — as opposed to a random (maybe destructive) button? We only
   // ever "click" things that pass this (or that own the panel via aria-controls),
   // so reveal stays safe on ELSA.
-  var EXP_WORD = /(?:^|[\s_\-])(?:toggle|expand|collaps|twisty|disclos|accordion|tree|node|arrow|chevron|caret|plus|minus|header|heading|title|caption|summary|dropdown|drop-down|expander|switch|folder|section|group|open|show)(?:$|[\s_\-])/i;
+  // Accordion/tree toggle words. Kept tight (NOT "section"/"group"/"open"/"show",
+  // which matched ELSA's "print-section-wrapper" and caused the v0.3.17 print
+  // spam). ELSA's own tool-list header (green_wz-liste_header) still matches via
+  // "header"/"liste"; whatever slips through is stopped by the NO_CLICK guard.
+  var EXP_WORD = /(?:^|[\s_\-])(?:toggle|expand|collaps|twisty|disclos|accordion|tree-?node|chevron|caret|dropdown|drop-down|expander|wz[-_]?liste|liste[-_]?header|gruppe|header|heading)(?:$|[\s_\-])|_header\b/i;
   var EXP_GLYPH = /[+−＋▲▴▶▸►▼▾◀◂➕➖]/;   // + − ▲ ▴ ▶ ▸ ► ▼ ▾ ◀ ◂
+  // NEVER click these — action/toolbar controls that fire a real command. This is
+  // the hard guard that stops the magnifier from ever triggering ELSA's print
+  // button again (the v0.3.17 regression: button.e2g-print-section-wrapper).
+  var NO_CLICK = /print|save|download|delete|discard|trash|remove|close|dismiss|pdf|export|e-?mail|mailto|share|submit|logout|sign-?out|favorit|bookmark|checkout|purchase|order|cancel/i;
+  function isActionButton(el) {
+    try {
+      if (NO_CLICK.test(elClass(el)) || NO_CLICK.test(el.id || "")) return true;
+      var tt = (el.getAttribute && (el.getAttribute("title") || el.getAttribute("aria-label"))) || "";
+      if (NO_CLICK.test(tt)) return true;
+      var t = (el.textContent || "").trim();
+      if (t && t.length <= 16 && NO_CLICK.test(t)) return true;
+    } catch (e) {}
+    return false;
+  }
   function looksExpander(el) {
     if (!el || el.nodeType !== 1) return false;
     try {
+      if (isActionButton(el)) return false;
       if (el.getAttribute && el.getAttribute("aria-expanded") != null) return true;
       if (/^H[1-6]$/.test(el.tagName) || el.tagName === "SUMMARY") return true;
       var cls = elClass(el), id = el.id || "", txt = (el.textContent || "").trim();
@@ -192,19 +211,17 @@
     } catch (e) {}
     return false;
   }
-  // fire a full pointer/mouse sequence — some ELSA controls act on mousedown or a
-  // framework handler that a bare .click() would miss.
+  // ELSA's expander often runs via a framework handler; a single NATIVE .click()
+  // is what a real click does (and Zone.js still sees it). NO extra mousedown/
+  // pointer events and NO double-fire — those double-triggered the print button.
   function fireClick(el) {
+    try { if (typeof el.click === "function") { el.click(); return; } } catch (e) {}
     try {
-      var W = el.ownerDocument.defaultView, seq = ["pointerdown", "mousedown", "pointerup", "mouseup", "click"];
-      seq.forEach(function (type) {
-        var ev;
-        try { ev = new W.MouseEvent(type, { bubbles: true, cancelable: true, view: W }); }
-        catch (e0) { try { ev = el.ownerDocument.createEvent("MouseEvents"); ev.initEvent(type, true, true); } catch (e1) { ev = null; } }
-        if (ev) el.dispatchEvent(ev);
-      });
-    } catch (e) {}
-    try { if (typeof el.click === "function") el.click(); } catch (e2) {}
+      var W = el.ownerDocument.defaultView, ev;
+      try { ev = new W.MouseEvent("click", { bubbles: true, cancelable: true, view: W }); }
+      catch (e0) { ev = el.ownerDocument.createEvent("MouseEvents"); ev.initEvent("click", true, true); }
+      el.dispatchEvent(ev);
+    } catch (e1) {}
   }
   // collect controls that plausibly toggle `panel` open: aria-controls owners, a
   // header/toggle just before it (or its wrapper), a toggle nested at its top, or
@@ -229,24 +246,31 @@
     } catch (e) {}
     return out;
   }
-  // Try to open a collapsed `panel`. Clicks the best expander candidate(s), records
-  // each attempt into `trace`, and returns the control that opened it — or, if none
-  // did, the first header/toggle we found (so the magnifier can at least land on the
-  // dropdown's own text). Never clicks anything that isn't expander-like.
+  var ELSA_HDR = /wz[-_]?liste|liste[-_]?header|gruppe|_header\b/i;   // ELSA's tool-list section header
+  // Try to open a collapsed `panel`. Clicks the most likely expander(s) — action
+  // buttons (print/save/…) are NEVER clicked. Because ELSA expands async (Angular),
+  // an immediate collapse re-check often can't see it; so we click at most a few
+  // best candidates and let highlightOnPage re-check after a beat. Returns the
+  // control we clicked (a header to land on / re-check around).
   function tryExpandPanel(panel, trace) {
-    var cand = expandersFor(panel), firstHeader = null;
+    var cand = expandersFor(panel), firstHeader = null, clicks = 0;
     cand.sort(function (a, b) {
-      function rank(x) { return x.__hbOwns ? 0 : (x.getAttribute && x.getAttribute("aria-expanded") === "false" ? 1 : 2); }
+      function rank(x) {
+        if (x.__hbOwns) return 0;
+        if (x.getAttribute && x.getAttribute("aria-expanded") === "false") return 1;
+        if (ELSA_HDR.test(elClass(x)) || ELSA_HDR.test(x.id || "")) return 2;   // ELSA tool-list header first
+        return 3;
+      }
       return rank(a) - rank(b);
     });
-    for (var i = 0; i < cand.length; i++) {
+    for (var i = 0; i < cand.length && clicks < 3; i++) {
       var c = cand[i];
+      if (isActionButton(c)) continue;                       // hard guard: never a print/save/… button
       if (!(c.__hbOwns || looksExpander(c))) continue;
       if (!firstHeader) firstHeader = c;
-      var before = c.getAttribute && c.getAttribute("aria-expanded");
-      fireClick(c);
-      if (trace) trace.tried.push(descEl(c) + " (aria " + (before == null ? "-" : before) + "→" + (c.getAttribute && c.getAttribute("aria-expanded")) + ")");
-      if (!collapsedLike(panel)) return c;
+      fireClick(c); clicks++;
+      if (trace) trace.tried.push(descEl(c));
+      if (!collapsedLike(panel)) return c;                   // opened synchronously
     }
     return firstHeader;
   }
@@ -277,55 +301,68 @@
     }
     return { revealed: isVisibleNow(el), fallback: fallback };
   }
-  // scroll ELSA to the element (incl. its iframe, if nested) and pulse it yellow,
-  // then fade back. If the element can't be un-hidden, land on the section header
-  // instead (issue #47). Inline !important styles only — no network, fully
-  // reversible, never touches ELSA's stylesheets. Instruments every attempt.
+  // scroll ELSA to `elm` (incl. its iframe, if nested) and pulse it yellow, then
+  // fade back. Inline !important styles only — reversible, never touches ELSA's
+  // stylesheets. Replaces any current pulse (clearHi restores the previous one).
+  function landOn(elm) {
+    clearHi();
+    var doScroll = function () {
+      try { elm.scrollIntoView({ behavior: "smooth", block: "center" }); }
+      catch (e) { try { elm.scrollIntoView(); } catch (e2) {} }
+      try {
+        var fe = elm.ownerDocument && elm.ownerDocument.defaultView && elm.ownerDocument.defaultView.frameElement;
+        if (fe && fe.scrollIntoView) fe.scrollIntoView({ behavior: "smooth", block: "center" });
+      } catch (e3) {}
+    };
+    doScroll();
+    setTimeout(doScroll, 350);   // a just-expanded panel often animates open
+    var st = { el: elm, prevStyle: elm.getAttribute("style"), timers: [] };
+    hiState = st;
+    function paint(c) {
+      try {
+        elm.style.setProperty("background-color", c, "important");
+        elm.style.setProperty("outline", "3px solid #ffce00", "important");
+        elm.style.setProperty("outline-offset", "1px", "important");
+        elm.style.setProperty("transition", "background-color .3s ease", "important");
+      } catch (e) {}
+    }
+    var seq = ["#fff39a", "#ffe24d", "#fff39a", "#ffe24d", "#fff39a"];
+    seq.forEach(function (c, i) { st.timers.push(setTimeout(function () { paint(c); }, i * 380)); });
+    st.timers.push(setTimeout(function () { if (hiState === st) clearHi(); }, seq.length * 380 + 1600));
+  }
+  // Reveal + jump to a located item. If the element can't be un-hidden, land on the
+  // section header instead (issue #47) — but keep watching briefly, because ELSA
+  // expands asynchronously, and jump to the tool the moment it appears. Instruments
+  // every attempt (console + diagnostic dump) so a stubborn layout can be pinned.
   function highlightOnPage(el) {
     clearHi();
-    var trace = { el: descEl(el), hiding: [], tried: [] };
+    var trace = { el: descEl(el), hiding: [], tried: [], chain: [] };
+    try { var a = el, d = 0; while (a && a.nodeType === 1 && d < 12) { trace.chain.push(descEl(a) + (collapsedLike(a) ? "*" : "")); a = a.parentNode; d++; } } catch (e0) {}
     var res = { revealed: true, fallback: null };
     try { res = revealForLocate(el, trace); } catch (eRev) {}
-    // land on the element if we could reveal it, else on the dropdown's header/toggle
     var target = (res.revealed ? el : (res.fallback || findLandingHeader(el) || el));
-    lastLocate = { when: new Date().toISOString(), el: trace.el, revealed: res.revealed, hiding: trace.hiding, tried: trace.tried, landedOn: descEl(target) };
+    landOn(target);
+    lastLocate = { when: new Date().toISOString(), el: trace.el, revealed: res.revealed, hiding: trace.hiding, tried: trace.tried, chain: trace.chain, landedOn: descEl(target) };
+    // ELSA expands async (Angular) — an immediate re-check often misses it, so poll
+    // briefly and jump to the tool once it becomes visible.
+    if (!res.revealed) {
+      var n = 0, iv = setInterval(function () {
+        n++;
+        if (isVisibleNow(el)) { clearInterval(iv); landOn(el); lastLocate.revealed = true; lastLocate.landedOn = descEl(el); }
+        else if (n >= 8) clearInterval(iv);
+      }, 200);
+    }
     if (trace.hiding.length) {
       try {
-        var msg = "[Hahns] locate " + trace.el + " — " + (res.revealed ? "opened the section" : "COULD NOT open the section") +
+        var msg = "[Hahns] locate " + trace.el + " — " + (res.revealed ? "opened the section" : "COULD NOT open the section (yet)") +
           "\n  hidden by: " + (trace.hiding.join(" < ") || "(none)") +
+          "\n  ancestor chain (*=collapsed): " + (trace.chain.join(" < ") || "(none)") +
           "\n  expanders tried: " + (trace.tried.join("; ") || "(none found)") +
           "\n  landed on: " + descEl(target);
         if (res.revealed) { if (window.console && console.info) console.info(msg); }
         else if (window.console && console.warn) console.warn(msg);
       } catch (e) {}
     }
-    var doScroll = function () {
-      try { target.scrollIntoView({ behavior: "smooth", block: "center" }); }
-      catch (e) { try { target.scrollIntoView(); } catch (e2) {} }
-      try {
-        var fe = target.ownerDocument && target.ownerDocument.defaultView && target.ownerDocument.defaultView.frameElement;
-        if (fe && fe.scrollIntoView) fe.scrollIntoView({ behavior: "smooth", block: "center" });
-      } catch (e3) {}
-    };
-    doScroll();
-    // a just-expanded panel often animates open — scroll once more after it settles
-    setTimeout(doScroll, 350);
-    var st = { el: target, prevStyle: target.getAttribute("style"), timers: [] };
-    hiState = st;
-    function paint(c) {
-      try {
-        target.style.setProperty("background-color", c, "important");
-        target.style.setProperty("outline", "3px solid #ffce00", "important");
-        target.style.setProperty("outline-offset", "1px", "important");
-        target.style.setProperty("transition", "background-color .3s ease", "important");
-      } catch (e) {}
-    }
-    var seq = ["#fff39a", "#ffe24d", "#fff39a", "#ffe24d", "#fff39a"];
-    seq.forEach(function (c, i) {
-      st.timers.push(setTimeout(function () { paint(c); }, i * 380));
-    });
-    // settle, then restore the element's original styling
-    st.timers.push(setTimeout(function () { if (hiState === st) clearHi(); }, seq.length * 380 + 1600));
   }
 
   /* ------------------------------------------------------------------ *
@@ -3720,6 +3757,7 @@
       "last magnifier (locate): " + (lastLocate ?
         (lastLocate.el + " — " + (lastLocate.revealed ? "section opened" : "COULD NOT open") +
          "; hidden by: " + (lastLocate.hiding.join(" < ") || "(none)") +
+         "; chain: " + ((lastLocate.chain && lastLocate.chain.join(" < ")) || "(none)") +
          "; tried: " + (lastLocate.tried.join("; ") || "(none)") +
          "; landed on: " + lastLocate.landedOn)
         : "(not used yet)") +
