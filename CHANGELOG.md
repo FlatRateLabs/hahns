@@ -9,7 +9,15 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.16-alpha — in progress
+## v0.3.16.1-alpha — 2026-07-05
+
+### Added
+- **Added special tool 3259 to the built-in scan list.** It now gets picked up when a page writes it as a
+  tool callout (`-3259-`).
+
+---
+
+## v0.3.16-alpha — 2026-07-05
 
 ### Added
 - **Tool descriptions in the "Find these tools" pop-up and the printout.** Each tool now shows what it
