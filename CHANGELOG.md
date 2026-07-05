@@ -9,6 +9,31 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.16-alpha — in progress
+
+### Added
+- **Tool descriptions in the "Find these tools" pop-up and the printout.** Each tool now shows what it
+  *is* (from your shop list, or what the scan read off the page) next to its number and drawer location —
+  so a number you don't recognize still tells you the tool. (Your shop list's descriptions appear after you
+  re-upload the list once on this version.)
+- **A built-in VW special-tool list baked into the page scan (~1,000 tools).** The scanner now recognizes
+  these tools even before you load a shop list, and catches number formats it used to miss. Plain-number
+  tools (like 1833) are only picked up when the page writes them as a tool callout (e.g. `-1833-`), so
+  ordinary numbers in the text aren't mistaken for tools.
+
+### Changed
+- **The shop special-tool list now lives in the browser database (IndexedDB), same as the fluid
+  tables.** It used to be kept in the browser's older "local storage." Your existing list moves over
+  automatically the first time you open this version — nothing to re-upload. Everything is still saved
+  only on this computer, never uploaded, and still isn't cleared by Exit / New Vehicle / Clear info
+  (only by Settings → "Remove list"). No change to how you use it.
+- **The app's browser database is now named `hahns_db`** (it holds more than fluids). The very
+  short-lived `hahns_fluids` database from the day before is simply removed on first open. If you had
+  loaded fluid PDFs on that one-day-old version, re-load them once in ⚙ Settings — your tool list
+  carries over automatically.
+
+---
+
 ## v0.3.15.4-alpha — 2026-07-04
 
 ### Fixed

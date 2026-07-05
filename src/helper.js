@@ -32,16 +32,21 @@
   // transient one-line note for the vehicle bar (e.g. a blocked procedure scan
   // before a vehicle is loaded). Cleared once shown — never persisted.
   var vehNotice = "";
-  // ---- shop special-tool list (v0.3.10) ----------------------------------
+  // ---- shop special-tool list (v0.3.10; moved to IndexedDB v0.3.16) -------
   // A per-shop list (tool number -> drawer/location, plus any "missing / check
-  // part number" status note) the tech uploads as a CSV. Stored ONLY in
-  // localStorage on this machine (under ELSA's origin) — never uploaded, never on
-  // GitHub. Powers the drawer locations + "Find these tools" gather list in the
-  // Special Tools section. Reading a user-picked file via FileReader is a LOCAL
-  // read, not a network call, so the bookmarklet's zero-network posture on ELSA
-  // is fully intact.
-  var TOOLS_KEY = "vwjb_tools_v1";   // localStorage: { updated, count, file, fmt, map:{NORM:{n,d,s}} }
-  var shopTools = null;              // in-memory cache: null=unread, false=none, obj=loaded
+  // part number" status note) the tech uploads as a CSV / .xlsx. Stored ONLY on
+  // this machine (under ELSA's origin) — never uploaded, never on GitHub. Powers
+  // the drawer locations + "Find these tools" gather list in the Special Tools
+  // section. Reading a user-picked file via FileReader is a LOCAL read, not a
+  // network call, so the bookmarklet's zero-network posture on ELSA is intact.
+  // As of v0.3.16 it lives in the shared `hahns_db` IndexedDB (the same DB
+  // the fluid tables use) — one record in the `tools` store. A SYNCHRONOUS
+  // in-memory cache (`shopTools`) is hydrated from IDB at boot so every render /
+  // match path stays synchronous & unchanged. The old `vwjb_tools_v1`
+  // localStorage key is kept only for a one-time migration + IDB-unavailable
+  // fallback.
+  var TOOLS_KEY = "vwjb_tools_v1";   // legacy localStorage (pre-v0.3.16) — migration source + fallback
+  var shopTools = null;              // sync cache: null=unread, false=none, obj={updated,count,file,fmt,map}
 
   // the segments captured by the last scan, kept so the build stamp can dump a
   // diagnostic of exactly what the page-walk saw (helps tune against real pages)
@@ -442,9 +447,12 @@
   }
 
   /* ------------------------------------------------------------------ *
-   *  Shop special-tool list — a local CSV the tech uploads (v0.3.10).
-   *  Stored as { updated, count, map:{ NORM: {n:original, d:drawer, s:status} } }
-   *  in localStorage (THIS machine only). Never leaves the page / no network.
+   *  Shop special-tool list — a local CSV/.xlsx the tech uploads (v0.3.10).
+   *  Stored as { updated, count, file, fmt, map:{ NORM:{n,d,s} } } in the
+   *  shared `hahns_db` IndexedDB (v0.3.16; was localStorage pre-v0.3.16),
+   *  THIS machine only. Never leaves the page / no network. `shopTools` is a
+   *  synchronous cache hydrated from IDB at boot (see fluidsBoot); saves are
+   *  async but update the cache first so renders stay synchronous.
    * ------------------------------------------------------------------ */
 
   // match key: strip everything but letters/digits, uppercase. So ELSA's
@@ -457,19 +465,51 @@
     return d.getFullYear() + "-" + (m < 10 ? "0" + m : m) + "-" + (day < 10 ? "0" + day : day);
   }
 
+  // synchronous read of the cache. Hydrated from IndexedDB at boot
+  // (hydrateShopTools). If a render path asks before boot finishes — or IDB is
+  // unavailable — fall back to a one-off legacy localStorage read so the feature
+  // still works and there's no flash of "no list" on first paint.
   function loadShopTools() {
     if (shopTools !== null) return shopTools || null;
     try { var raw = localStorage.getItem(TOOLS_KEY); shopTools = raw ? JSON.parse(raw) : false; }
     catch (e) { shopTools = false; }
     return shopTools || null;
   }
+  // persist the shop list. Updates the sync cache immediately (so the next render
+  // shows it), then writes to IndexedDB. Returns a Promise<boolean>. Falls back to
+  // localStorage if IDB is unavailable or the write fails, so a save never no-ops.
   function saveShopTools(obj) {
-    try { localStorage.setItem(TOOLS_KEY, JSON.stringify(obj)); shopTools = obj; return true; }
-    catch (e) { return false; }
+    shopTools = obj; _toolDict = null; _toolDictSig = "";   // cache + invalidate matcher
+    if (appIdbOk && appDB) {
+      return idbPut("tools", { k: "shop", data: obj }).then(function () { return true; }, function () {
+        try { localStorage.setItem(TOOLS_KEY, JSON.stringify(obj)); return true; } catch (e) { return false; }
+      });
+    }
+    try { localStorage.setItem(TOOLS_KEY, JSON.stringify(obj)); return Promise.resolve(true); }
+    catch (e) { return Promise.resolve(false); }
   }
   function removeShopTools() {
+    shopTools = false; _toolDict = null; _toolDictSig = "";
     try { localStorage.removeItem(TOOLS_KEY); } catch (e) {}
-    shopTools = false;
+    if (appIdbOk && appDB) { try { appDB.transaction("tools", "readwrite").objectStore("tools").clear(); } catch (e) {} }
+  }
+  // one-time: copy a pre-v0.3.16 localStorage tool list into IDB. Guarded by a kv
+  // flag so it runs once. The localStorage key is left in place as a fallback.
+  function migrateLegacyTools() {
+    return idbGet("kv", "migratedToolsV1").then(function (flag) {
+      if (flag && flag.v) return;
+      var old = null;
+      try { old = JSON.parse(localStorage.getItem(TOOLS_KEY) || "null"); } catch (e) {}
+      var chain = (old && old.map) ? idbPut("tools", { k: "shop", data: old }) : Promise.resolve();
+      return chain.then(function () { return idbPut("kv", { k: "migratedToolsV1", v: 1, at: todayISO() }); });
+    });
+  }
+  // hydrate the sync cache from IDB (called from fluidsBoot after the DB opens).
+  function hydrateShopTools() {
+    return idbGet("tools", "shop").then(function (rec) {
+      shopTools = (rec && rec.data && rec.data.map) ? rec.data : false;
+      _toolDict = null; _toolDictSig = "";
+    }).catch(function () { /* leave cache null → loadShopTools falls back to localStorage */ });
   }
 
   // look a tool number up in the loaded shop list (or null)
@@ -508,6 +548,46 @@
     try { _toolDict = { re: new RegExp("\\b(?:" + pats.map(function (p) { return p.src; }).join("|") + ")\\b", "gi"), map: st.map }; }
     catch (e) { _toolDict = null; }
     return _toolDict;
+  }
+
+  // ---- Built-in VW special-tool list (v0.3.16) --------------------------
+  // A curated master list so the page scan recognises these tools even with NO
+  // shop list loaded (and catches formats TOOL_RE misses). Tools WITH a letter or
+  // separator match anywhere (word-boundaried); a BARE-INTEGER tool (e.g. "1833")
+  // matches ONLY as a VW callout — dash-wrapped like "-1833-" — so ordinary
+  // numbers on the page (torque values, years, part-number fragments) aren't
+  // mistaken for tools. Built once (constant list), then memoised.
+  var BUILTIN_TOOLS = ["1833","2003","2010","2026","2036","2039","2050","2085","2587","2596","3033","3036","3067","3070","3079","3083","3099","3114","3118","3129","3147","3176","3180","3203","3212","3217","3220","3240","3241","3253","3266","3269","3270","3282","3299","3301","3305","3307","3310","3312","3316","3357","3359","3362","3364","3365","3366","3368","3369","3370","3371","3387","3391","3392","3400","3409","3410","3411","3415","3417","3424","3438","3450","3904","4003","9613","10200","10202","10369","10-203","10-206","10-222A","10-222A/10","10-222A/12","10-222A/13","10-222A/16","10-222A/16-1","10-222A/17","10-222A/18","10-222A/19","10-222A/22","10-222A/25","10-222A/28","10-222A/28-1","10-222A/28-2","10-222A/29","10-222A/3","10-222A/31-2","10-222A/31A","10-222A/35","10-222A/4","10-222A/5","10-222A/6","10-222A/7","10-222A/8","10-222B","10-22A/14","1184-13100","1184-14100","1184-15100","1310/25","17707","2024A","2024B","204/1","2085/2","30-211A","30-23","3032A","3047A","3122B","3145/2","3190A","3241/5","3247","3257","3276A","3282/29","3282/71","3287A","3300A","3356","3450/2A","3450/3","40-105","401NSM","4487-1","5571/9","582277","621001US","7/16 WLL 3/8T","80-200","8333-VW","8443A-VW","9336A","9336B","9721","9723","9725","9727","9729","9730","9735","9738","9741","9908","9951","9952","ACT760B","BGP9850","BRT-DBL4","C2934","c-4995A","CAB400A","CAB400B","FLUKE835","FM3000DH","FM3000GH","GRX3000VAS","HUNRX10KAU","HUNRX10KAUBL","HUNTCA34SBLK","J-48840","J-48843","J-48844","JC1000","KL3633","KL9001","KLI9210/50","KLI9210/52","KLI9210/54","KLI9210/55","KLI9210/57","KLI9210DLX","KLIAT1006","LIL20540","MCAL12A","MD9981","MD998772","MTRMSP0702","MTRPSC700SKT","MWG3282-49","NRI71233A","OTC7503","PRO8000A","ROB134APF","ROTSPOA10RA","RTI360831840","SET PICK I","SET PICK L","SET740","SET850","SNA007","T03000","T03001","T03002","T03003","T03003A","T03004","T03005A","T03006","T10001","T10004","T10006A","T10007A","T10008","T10010","T10011","T10012","T10013","T10014","T10020","T10021","T10027A","T10034","T10038","T10039","T10044","T10049","T10050","T10051","T10051A","T10052","T10053","T10054","T10055","T10055/1","T10055/4","T10057","T10058","T10060A","T10061","T10066","T10068A","T10069","T10070","T10071","T10092","T10093","T10094A","T10095A","T10096","T10097","T10099","T10100","T10101A","T10103/1","T10107A","T10115","T10118","T10122/1","T10122/2","T10122/3","T10122/4","T10122/5","T10122/6","T10122B","T10122C","T10133/23","T10133C","T10134","T10143","T10145","T10146","T10146/6","T10149","T10157/1","T10158/1","T10159A","T10159B","T10160","T10161","T10162A","T10165","T10166","T10170A","T10171A","T10172/11","T10172/4","T10172/5-9","T10172A","T10173","T10174","T10175","T10176","T10177","T10178","T10179","T10181","T10182","T10183","T10187","T10188","T10189","T10190","T10197","T10198","T10202","T10206","T10209","T10215","T10219","T10228","T10230","T10230/14-16","T10236","T10238","T10243","T10252","T10255","T10264","T10265","T10300","T10302","T10303","T10313","T10315","T10320","T10323","T10332","T10333","T10337","T10338","T10339","T10340","T10346","T10346/1","T10352/3","T10352/5","T10352B","T10352C","T10353","T10353/1","T10354","T10355A","T10356/7+/8","T10356A","T10358","T10359/2","T10359A","T10360","T10363","T10364","T10368","T10369","T10370","T10371","T10372","T10373","T10373A","T10374","T10375","T10376","T10377","T10378","T10382","T10383","T10384","T10385","T10387","T10388","T10389","T10391","T10392","T10394","T10395B","T10401","T10406","T10407","T10408","T10408/1","T10408/2","T10408/3","T10409","T10415","T10419","T10420","T10420A","T10421","T10422A","T10423","T10439","T10441","T10442","T10443","T10444","T10448","T10452","T10457","T10461","T10466","T10467","T10468","T10472","T10473","T10475","T10478B","T10479A","T10480","T10485A","T10486A","T10487","T10488","T10489","T10490","T10491","T10492","T10493","T10494","T10497A","T10498","T10499","T10499A","T10500","T10501","T10504","T10505","T10506","T10508","T10511","T10512","T10513","T10515","T10516","T10517","T10518","T10518A","T10520","T10520A","T10524","T10525","T10526","T10527","T10530","T10531","T10531/5-/6","T10533","T10538","T10539","T10541","T10546","T10547","T10548","T10549","T10554","T10558A","T10561","T10563","T10567","T10568","T10570","T10571","T10575A","T10576","T10577","T10578","T10581","T10582","T10585","T10587","T10589","T10606","T10607","T10608","T10610","T10612","T10614","T10615","T10623","T10626","T10628","T10633","T10634","T10635","T10635/3","T10640","T10647","T10659","T10660","T10681","T10688","T10691","T20097","T20143/1/2","T30114","T40001","T40001/3","T40001/5","T40001/6","T40001/7","T40004","T40005","T40009","T40010A","T40011","T40012","T40019","T40039","T40045","T40048/1","T40048/2","T40048/7","T40048A","T40049","T40055","T40057","T40058","T40060","T40061","T40062","T40064","T40064/1","T40064/2","T40069","T40070","T40073","T40074","T40075A","T40080","T40087","T40091","T40091/1","T40091/2","T40091/3","T40091/4","T40091/4-8","T40091/8","T40093/1","T40093/2","T40093/3","T40093/3-2","T40093/3-6","T40093/4","T40093/5","T40093/6","T40093B","T40093C","T40094A","T40100","T40135","T40138","T40148","T40155","T40155A","T40159","T40175","T40178A","T40178B","T40187","T40191","T40196","T40199","T40218","T40237","T40243","T40245","T40246","T40248","T40262/1","T40263","T40263/1","T40265","T40266","T40267","T40268","T40270/12","T40271","T40271/3+/4","T40274","T40276","T40280","T40288","T40301","T40302","T40311","T40314","T40345","T40346","T40347","T40363","T40372","T40376A","T40379A","T40414","T40427","T40433","T40433/2A","T40434","T40435","T40452","T40463","T40465","T40503","T40504","T50014","T50112/1","T50112/17","T50117/11","T50117/12","T50117/13","T50117/6","T50117/7","T50117/8","T50117/9","T-70","US1033/S","US1058","US1059","US1061","US1062","US1063","US1071","US9025","V/159","V/170","V-160","VAG10351/1","VAG1274/10","VAG1274/2","VAG1274/3A4A","VAG1274/8","VAG1274/9","VAG1274B","VAG1318","VAG1318/16","VAG1318/16A","VAG1318/17A","VAG1318/20","VAG1331","VAG1331/1","VAG1331A","VAG1332/10","VAG1342","VAG1342/14","VAG1342/15+16","VAG1342/20+21","VAG1348/3-3","VAG1348/3A","VAG1397A","VAG1397B","VAG1402","VAG1402/17","VAG1402/1A","VAG1402/6","VAG1582","VAG1582/3","VAG1582/3A","VAG1582/4","VAG1582/4A","VAG1582/5","VAG1582/5A","VAG1582/7","VAG159/29","VAG1590","VAG1594/14A","VAG1594/29A","VAG1594/30A","VAG1594/31","VAG1594/51","VAG1594D","VAG1598/20","VAG1598/21","VAG1598/31","VAG1598/36","VAG1598/37","VAG1598/39","VAG1598/40","VAG1598/41","VAG1598/42","VAG1598/43","VAG1598/44","VAG1598/47","VAG1598/48","VAG1598/49","VAG1598/57","VAG1598/58","VAG1598A","VAG1682A","VAG1687","VAG1687/10","VAG1687/11","VAG1687/15","VAG1687/17","VAG1687/5","VAG1687/50","VAG1739","VAG1752","VAG1752/8","VAG1752/9","VAG1763","VAG1763/13","VAG1763/6","VAG1763/8","VAG1788/10","VAG1921","VAG1924","VAS1763/06","VAS1978/1-3","VAS1978/35-13","VAS1978/35-19","VAS1978B","VAS211 011","VAS211003","VAS241001","VAS251001","VAS251409","VAS251419","VAS2516/35","VAS251601","VAS251605","VAS251607","VAS251613","VAS251615","VAS251621","VAS251623","VAS251805","VAS262017","VAS271013","VAS271015","VAS281025","VAS501019","VAS50121","VAS5051/66","VAS5055/4","VAS5056/11B","VAS5056/12","VAS5056/14","VAS5056/15","VAS5056/5","VAS5056/6","VAS5056C","VAS5094","VAS5103A","VAS5155","VAS5161/19C","VAS5161A","VAS5161A/44","VAS5161A/46","VAS5190A","VAS5226","VAS5232/1","VAS5232/2","VAS5234","VAS5237","VAS5255","VAS5256","VAS5256/1","VAS5257","VAS5258","VAS5258A","VAS5259","VAS5260A","VAS5261","VAS5262","VAS5301/7","VAS531001","VAS531011","VAS5503A","VAS5565","VAS5570","VAS5571","VAS5572","VAS5575","VAS5578","VAS5579","VAS5583","VAS581005","VAS6025","VAS6046","VAS6046/3","VAS6056","VAS6058A","VAS6068","VAS6069","VAS6070","VAS6071","VAS6079","VAS6080A","VAS6095/01(R/,L)","VAS6095/1-22","VAS6095/1-4","VAS6095A","VAS6095A/1-21","VAS6095A/1-22","VAS6096","VAS6096/3","VAS6096-2","VAS6100","VAS6101","VAS6103","VAS6103/2","VAS6103/2-1","VAS611 007/19","VAS611007","VAS611-013","VAS6122","VAS6131/1","VAS6131/16","VAS6131/16-1","VAS6131/16-2","VAS6131/16-3","VAS6131/6","VAS6131/8","VAS6131B","VAS6136","VAS6138","VAS6150C","VAS6150E","VAS6150E/TSP","VAS6160A/TSP","VAS6160E","VAS6161","VAS6161/1","VAS6178","VAS6179","VAS6190/2","VAS6205","VAS6205-1","VAS6213","VAS6229","VAS6230BE3","VAS6230BE3NP","VAS6230BE4","VAS6230BE4NP","VAS6235","VAS6254","VAS6262/2","VAS6262A","VAS6262A/8","VAS6262A/SET2","VAS6291/2","VAS6291A","VAS6291A/4","VAS6292CM","VAS6292FM","VAS6292PCM","VAS6292PFM","VAS6292PLCM","VAS6292PLFM","VAS6292PLWM","VAS6292PLWMB","VAS6292PWM","VAS6292WM","VAS6320","VAS6330","VAS6337/1A","VAS6338/1","VAS6338/38","VAS6338/48","VAS6338/60","VAS6338/63","VAS6338/81","VAS6338/82","VAS6338/88","VAS6338/90","VAS6338/93","VAS6339","VAS6340","VAS6345","VAS6349","VAS6350/1A","VAS6350/2A","VAS6350/4","VAS6350A","VAS6356/11","VAS6362","VAS6365","VAS6367","VAS6368","VAS6369","VAS6370","VAS6371","VAS6373","VAS638/82","VAS6394","VAS6394/3","VAS6395/6","VAS6395B","VAS6427","VAS6430/10","VAS6430/1A","VAS6430/2","VAS6430/3","VAS6430/4","VAS6430/8","VAS6454","VAS6532A","VAS6532A/5","VAS6542","VAS6550","VAS6550/3","VAS6550/4","VAS6551","VAS6551/5","VAS6551/6","VAS6558/15","VAS6558/16","VAS6558/1A","VAS6558/9-1","VAS6558/9-2","VAS6558/9-3","VAS6558/9-4","VAS6558/9-5","VAS6558/9-6","VAS6558A","VAS6558A/33A","VAS6558A/35","VAS6558A/36A","VAS6558A/37A","VAS6586","VAS6586/3","VAS6586/4","VAS6594","VAS6606/1","VAS6606/10","VAS6606/11","VAS6606/2","VAS6606/3","VAS6606/7-1","VAS6606/7-2","VAS6606/9","VAS6613","VAS6616","VAS6620A","VAS6633","VAS6649","VAS6650A","VAS6684","VAS671005","VAS671007","VAS6722A","VAS6750","VAS6762/10","VAS6762/29","VAS6762/41","VAS6762/44","VAS6762/45","VAS6774","VAS6775","VAS6779A","VAS6786","VAS6860US","VAS6871","VAS6881","VAS6882","VAS6884US","VAS6886","VAS6909","VAS691003A","VAS691005","VAS691005/11","VAS691009US","VAS6931","VAS6966","VAS701001","VAS721001","VAS741003","VAS741005","VAS741011","VAS861001-1","VAS895015","VAS895025","VTS-500","VW207","VW207C","VW210","VW222A","VW244B","VW295","VW295A","VW309A","VW353","VW382/10","VW382/7","VW385/17","VW385/19","VW385/22","VW387","VW388","VW391","VW401","VW402","VW407","VW408A","VW409","VW411","VW412","VW415A","VW416B","VW418A","VW420","VW421","VW422","VW423","VW426","VW431","VW432","VW433","VW434","VW442","VW447H","VW447I","VW454","VW457","VW459","VW472","VW516","VW519","VW521/4","VW522","VW541/1A","VW558","VW5BNKCAB","VW637/2","VW771","VW792","VWMICROPOD","WIL577102","WIL577172","WIL745","WSPEQU132","WV622N-VWKIT"];
+  var BTOOL_SEP = "[\\s.\\u2010-\\u2015\\-/+]*";   // like TOOL_SEP, also allows "+"
+  var _builtinDict = null;
+  function builtinToolDict() {
+    if (_builtinDict !== null) return _builtinDict.built ? _builtinDict : null;
+    var anyPats = [], numPats = [], map = {};
+    BUILTIN_TOOLS.forEach(function (orig) {
+      var norm = normTool(orig);
+      if (norm.length < 3) return;
+      if (!map[norm]) map[norm] = orig;                          // canonical display, first wins
+      // split at every letter↔digit boundary too, so a list entry written solid
+      // ("VW771", "VAS6909", "T10001") still matches ELSA's spaced "VW 771" etc.
+      var parts = String(orig).toUpperCase().match(/[A-Z]+|[0-9]+/g);
+      if (!parts || !parts.length) return;
+      var src = parts.map(reEsc).join(BTOOL_SEP);
+      (/^[0-9]+$/.test(orig) ? numPats : anyPats).push({ len: norm.length, src: src });
+    });
+    anyPats.sort(function (a, b) { return b.len - a.len; });      // longest first
+    numPats.sort(function (a, b) { return b.len - a.len; });
+    var d = { built: true, map: map, reAny: null, reNum: null };
+    try { if (anyPats.length) d.reAny = new RegExp("\\b(?:" + anyPats.map(function (p) { return p.src; }).join("|") + ")\\b", "gi"); } catch (e) {}
+    // bare integers: leading dash (VW callout "-1833-") + a non-alphanumeric
+    // trailing boundary. Capture group 1 is the tool number.
+    try { if (numPats.length) d.reNum = new RegExp("[-\\u2010-\\u2015]\\s*(" + numPats.map(function (p) { return p.src; }).join("|") + ")(?![0-9A-Za-z])", "gi"); } catch (e) {}
+    _builtinDict = d;
+    return d;
+  }
+  // canonical display for a matched built-in tool number
+  function builtinCanon(numStr) {
+    var d = builtinToolDict();
+    return (d && d.map[normTool(numStr)]) || String(numStr).replace(/\s+/g, " ").trim();
   }
 
   // detect a "this isn't a normal tool description" note baked into the
@@ -687,10 +767,12 @@
       key = normTool(num);
       if (!key) continue;
       drawer = cols.drawer >= 0 ? String(row[cols.drawer] == null ? "" : row[cols.drawer]).trim() : "";
-      desc = cols.desc >= 0 ? String(row[cols.desc] == null ? "" : row[cols.desc]) : "";
+      desc = cols.desc >= 0 ? String(row[cols.desc] == null ? "" : row[cols.desc]).replace(/\s+/g, " ").trim() : "";
       st = toolStatus(desc);
-      if (!map[key]) { map[key] = { n: num, d: drawer, s: st }; count++; }
-      else { if (!map[key].d && drawer) map[key].d = drawer; if (!map[key].s && st) map[key].s = st; }
+      // keep the shop's description too (v0.3.16) so the "Find these tools" window
+      // and the printout can show what each tool is, not just its number.
+      if (!map[key]) { map[key] = { n: num, d: drawer, s: st, desc: desc }; count++; }
+      else { if (!map[key].d && drawer) map[key].d = drawer; if (!map[key].s && st) map[key].s = st; if (!map[key].desc && desc) map[key].desc = desc; }
     }
     return { updated: todayISO(), count: count, map: map };
   }
@@ -727,13 +809,18 @@
   //   fluidsBar / openFluidsWindow / debugDump stay synchronous & unchanged.
   //   Keeping the original PDF lets us silently RE-PARSE with an improved
   //   parser (version bump below) without the tech re-uploading anything.
-  var FLUID_DB = "hahns_fluids", FLUID_DB_VER = 1;
+  // Shared app database `hahns_db` (v0.3.16 — it holds more than fluids: the
+  // `tools` store too). Five stores: pdfs / parsed / meta / kv (fluids) + tools
+  // (shop tool list), created fresh at v1. (The short-lived v0.3.15 `hahns_fluids`
+  // DB is intentionally NOT migrated — it shipped one day earlier and had almost
+  // no real-world uptake; on update the tech re-loads their fluid PDFs once.)
+  var APP_DB = "hahns_db", APP_DB_VER = 1;
   var MODERN_PARSER_VER = "1.3.4";   // 2011–2026, engine-code parser (1.3.4: capture range capacities, e.g. ID.Buzz 0MJ 0.88-0.93 L)
   var LEGACY_PARSER_VER = "1.0.0";   // 2000–2010, displacement parser (not built yet)
   var FLUID_YEAR_MIN = 2000, FLUID_YEAR_MAX = 2026;  // span for "Years installed: N/M"
   var fluidsData = null;      // sync projection: null=unread, false=none, obj={updated,count,years:{Y:{models,file}}}
-  var fluidsDB = null;        // open IDBDatabase (null until boot resolves / on failure)
-  var fluidsIdbOk = true;     // false → IDB unavailable, using localStorage fallback
+  var appDB = null;        // open IDBDatabase (null until boot resolves / on failure)
+  var appIdbOk = true;     // false → IDB unavailable, using localStorage fallback
   var fluidsReady = false;    // projection hydrated (render shows "loading" until true)
   var fluidsBooted = false;   // boot runs once
   var fluidsMetaList = [];    // sync mirror of the `meta` store (info page + reconcile)
@@ -749,17 +836,18 @@
     return new Promise(function (res, rej) {
       if (typeof indexedDB === "undefined") { rej(new Error("no IndexedDB")); return; }
       var rq;
-      try { rq = indexedDB.open(FLUID_DB, FLUID_DB_VER); } catch (e) { rej(e); return; }
+      try { rq = indexedDB.open(APP_DB, APP_DB_VER); } catch (e) { rej(e); return; }
       rq.onupgradeneeded = function () {
         var db = rq.result;
         if (!db.objectStoreNames.contains("pdfs")) db.createObjectStore("pdfs", { keyPath: "year" });
         if (!db.objectStoreNames.contains("parsed")) db.createObjectStore("parsed", { keyPath: "year" });
         if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta", { keyPath: "year" });
         if (!db.objectStoreNames.contains("kv")) db.createObjectStore("kv", { keyPath: "k" });
+        if (!db.objectStoreNames.contains("tools")) db.createObjectStore("tools", { keyPath: "k" });
       };
       rq.onsuccess = function () {
         var db = rq.result;
-        try { db.onversionchange = function () { try { db.close(); } catch (e) {} fluidsDB = null; }; } catch (e) {}
+        try { db.onversionchange = function () { try { db.close(); } catch (e) {} appDB = null; }; } catch (e) {}
         res(db);
       };
       rq.onerror = function () { rej(rq.error || new Error("open failed")); };
@@ -767,14 +855,14 @@
     });
   }
   function idbReq(req) { return new Promise(function (res, rej) { req.onsuccess = function () { res(req.result); }; req.onerror = function () { rej(req.error); }; }); }
-  function idbGet(store, key) { try { return idbReq(fluidsDB.transaction(store, "readonly").objectStore(store).get(key)); } catch (e) { return Promise.reject(e); } }
-  function idbGetAll(store) { try { return idbReq(fluidsDB.transaction(store, "readonly").objectStore(store).getAll()); } catch (e) { return Promise.reject(e); } }
+  function idbGet(store, key) { try { return idbReq(appDB.transaction(store, "readonly").objectStore(store).get(key)); } catch (e) { return Promise.reject(e); } }
+  function idbGetAll(store) { try { return idbReq(appDB.transaction(store, "readonly").objectStore(store).getAll()); } catch (e) { return Promise.reject(e); } }
   function idbTxDone(tx) { return new Promise(function (res, rej) { tx.oncomplete = function () { res(); }; tx.onerror = function () { rej(tx.error); }; tx.onabort = function () { rej(tx.error || new Error("aborted")); }; }); }
-  function idbPut(store, val) { try { var tx = fluidsDB.transaction(store, "readwrite"); tx.objectStore(store).put(val); return idbTxDone(tx); } catch (e) { return Promise.reject(e); } }
+  function idbPut(store, val) { try { var tx = appDB.transaction(store, "readwrite"); tx.objectStore(store).put(val); return idbTxDone(tx); } catch (e) { return Promise.reject(e); } }
   // write several records across stores in ONE atomic transaction
   function idbPutMany(stores, recs) {
     try {
-      var tx = fluidsDB.transaction(stores, "readwrite");
+      var tx = appDB.transaction(stores, "readwrite");
       recs.forEach(function (rc) { tx.objectStore(rc.store).put(rc.val); });
       return idbTxDone(tx);
     } catch (e) { return Promise.reject(e); }
@@ -805,10 +893,16 @@
     if (fluidsBooted) { if (onReady) onReady(); return; }
     fluidsBooted = true;
     idbOpen().then(function (db) {
-      fluidsDB = db; fluidsIdbOk = true;
+      appDB = db; appIdbOk = true;
+      // tidy up the short-lived v0.3.15 `hahns_fluids` DB if it's still around —
+      // we don't migrate it (see APP_DB note), we just drop it so only `hahns_db`
+      // remains. Fire-and-forget; deleting a non-existent DB is a harmless no-op.
+      try { indexedDB.deleteDatabase("hahns_fluids"); } catch (e) {}
       return migrateLegacyFluids();
     }).then(function () {
-      return Promise.all([idbGetAll("parsed"), idbGetAll("meta"), idbGet("kv", "lastBgUpdate")]);
+      return migrateLegacyTools();   // v0.3.16: one-time localStorage → IDB for the tool list
+    }).then(function () {
+      return Promise.all([idbGetAll("parsed"), idbGetAll("meta"), idbGet("kv", "lastBgUpdate"), hydrateShopTools()]);
     }).then(function (out) {
       buildProjection(out[0]);
       fluidsMetaList = out[1] || [];
@@ -818,7 +912,7 @@
       reconcileFluids();   // background, non-blocking
     }).catch(function () {
       // IDB unavailable → legacy sync read so the feature still works
-      fluidsIdbOk = false; fluidsDB = null;
+      appIdbOk = false; appDB = null;
       try { var raw = localStorage.getItem(FLUIDS_KEY); fluidsData = raw ? JSON.parse(raw) : false; } catch (e) { fluidsData = false; }
       fluidsReady = true;
       if (onReady) onReady();
@@ -848,7 +942,7 @@
   // AND we have the source PDF, re-parse it in the background (throttled, one at
   // a time). Non-destructive: a failed re-parse keeps the last good data.
   function reconcileFluids() {
-    if (!fluidsIdbOk || !fluidsDB) return;
+    if (!appIdbOk || !appDB) return;
     var todo = [];
     fluidsMetaList.forEach(function (m) {
       if (m && m.parserVersion !== currentParserVer(m.family) && m.hasBlob) todo.push(m.year);
@@ -893,7 +987,7 @@
   // save a batch of newly-uploaded years (Blob + parsed + meta, atomic per year).
   // Falls back to the legacy localStorage shape if IDB is unavailable.
   function fluidsSaveYears(list) {
-    if (!fluidsIdbOk || !fluidsDB) {
+    if (!appIdbOk || !appDB) {
       var st = null;
       try { st = JSON.parse(localStorage.getItem(FLUIDS_KEY) || "null"); } catch (e) {}
       st = st || { years: {} }; if (!st.years) st.years = {};
@@ -922,9 +1016,9 @@
   function removeFluids() {
     fluidsData = false; fluidsMetaList = []; fluidsBgUpdate = 0;
     try { localStorage.removeItem(FLUIDS_KEY); } catch (e) {}
-    if (fluidsIdbOk && fluidsDB) {
+    if (appIdbOk && appDB) {
       try {
-        var tx = fluidsDB.transaction(["pdfs", "parsed", "meta"], "readwrite");
+        var tx = appDB.transaction(["pdfs", "parsed", "meta"], "readwrite");
         tx.objectStore("pdfs").clear(); tx.objectStore("parsed").clear(); tx.objectStore("meta").clear();
       } catch (e) {}
     }
@@ -979,7 +1073,7 @@
     var h = fluidsHealth();
     function row(k, v, cls) { return '<div class="dbrow"><span class="k">' + k + '</span><span class="v' + (cls ? " " + cls : "") + '">' + v + "</span></div>"; }
     return '<div class="dbinfo">' +
-      row("Storage", fluidsIdbOk ? "IndexedDB" : "Local storage (fallback)") +
+      row("Storage", appIdbOk ? "IndexedDB" : "Local storage (fallback)") +
       row("Modern parser", esc(MODERN_PARSER_VER)) +
       row("Legacy parser", esc(LEGACY_PARSER_VER)) +
       row("Years installed", installed + " / " + total) +
@@ -2089,6 +2183,27 @@
               entries.push({ num: canon, desc: toolDescBefore(line.slice(0, dm.index)) || toolDescAfter(line.slice(dm.index + dm[0].length)) });
             }
           }
+          // ALSO catch tools from the built-in VW master list (v0.3.16). Letter/
+          // separator tools match anywhere; bare-integer tools only as a "-1833-"
+          // callout (reNum, group 1 = the number). Dedup below handles overlaps.
+          var bd = builtinToolDict();
+          if (bd) {
+            if (bd.reAny) {
+              bd.reAny.lastIndex = 0;
+              var bam;
+              while ((bam = bd.reAny.exec(line))) {
+                entries.push({ num: builtinCanon(bam[0]), desc: toolDescBefore(line.slice(0, bam.index)) || toolDescAfter(line.slice(bam.index + bam[0].length)) });
+              }
+            }
+            if (bd.reNum) {
+              bd.reNum.lastIndex = 0;
+              var bnm;
+              while ((bnm = bd.reNum.exec(line))) {
+                var ni = bnm.index + bnm[0].indexOf(bnm[1]);
+                entries.push({ num: builtinCanon(bnm[1]), desc: toolDescBefore(line.slice(0, ni)) || toolDescAfter(line.slice(ni + bnm[1].length)) });
+              }
+            }
+          }
           if (entries.length) {
             entries.forEach(function (e) {
               var tk = normTool(e.num);
@@ -2964,6 +3079,12 @@
     if (hit.s) return ' <span class="tbadge warn">' + esc(hit.s) + "</span>";
     return "";
   }
+  // the best description for a tool: the shop list's (curated) if we have it,
+  // else the one parsed off the ELSA page during the scan.
+  function toolDesc(it) {
+    var hit = it && it.num ? matchShopTool(it.num) : null;
+    return (hit && hit.desc) || (it && it.desc) || "";
+  }
 
   // the self-contained "Find these tools" document, written into a new window
   // (like the fluids pop-up). Built locally — NO network — and styled to read +
@@ -2975,16 +3096,19 @@
     // one row per tool: tool number (left) + location (right) + a tick box. Sorted
     // by location so same-drawer tools sit together (still a one-trip grab list).
     var items = [], missing = [];
-    toolNums(r).forEach(function (num) {
-      var hit = matchShopTool(num);
-      if (!hit) { missing.push(num); return; }
-      items.push({ num: num, loc: hit.d || "(no location)", flag: hit.s || "" });
+    (r.tools || []).forEach(function (it) {
+      if (!it || !it.num) return;
+      var hit = matchShopTool(it.num);
+      var desc = (hit && hit.desc) || it.desc || "";
+      if (!hit) { missing.push({ num: it.num, desc: desc }); return; }
+      items.push({ num: it.num, desc: desc, loc: hit.d || "(no location)", flag: hit.s || "" });
     });
     items.sort(function (a, b) { var c = locSort(a.loc, b.loc); return c !== 0 ? c : String(a.num).localeCompare(String(b.num)); });
     var rows = "";
     items.forEach(function (it) {
       rows += '<label class="row"><input type="checkbox" class="cb">' +
         '<span class="tnum">' + esc(it.num) + (it.flag ? '<span class="flag">' + esc(it.flag) + "</span>" : "") + "</span>" +
+        '<span class="tdesc">' + esc(it.desc) + "</span>" +
         '<span class="tloc">' + esc(it.loc) + "</span></label>";
     });
     var h = '<!doctype html><html><head><meta charset="utf-8">' +
@@ -2998,9 +3122,9 @@
     if (!items.length && !missing.length) {
       h += '<p class="empty">No special tools to locate yet.</p>';
     } else {
-      if (items.length) h += '<div class="thead"><span class="cbh"></span><span class="nh">Tool</span><span class="lh">Location</span></div>' + rows;
+      if (items.length) h += '<div class="thead"><span class="cbh"></span><span class="nh">Tool</span><span class="dh">Description</span><span class="lh">Location</span></div>' + rows;
       if (missing.length) h += '<div class="callout order"><b>Not in your list — order, or update your list</b>' +
-        '<div class="ordnums">' + missing.map(function (n) { return esc(n); }).join(", ") + "</div></div>";
+        '<div class="ordnums">' + missing.map(function (n) { return esc(n.num) + (n.desc ? " — " + esc(n.desc) : ""); }).join("<br>") + "</div></div>";
     }
     h += '<div class="foot">From your shop tool list · H.A.H.N.S ' + esc(BUILD) + "</div></body></html>";
     return h;
@@ -3240,14 +3364,16 @@
     // tick-off list: [box] Tool#  ........  Location
     ".thead{display:flex;align-items:center;gap:12px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#5a6b8c;border-bottom:1px solid #ccc;padding:0 4px 6px}" +
     ".thead .cbh{width:20px;flex:none}" +
-    ".thead .nh{flex:1}" +
-    ".thead .lh{width:36%;flex:none}" +
+    ".thead .nh{width:24%;flex:none}" +
+    ".thead .dh{flex:1}" +
+    ".thead .lh{width:24%;flex:none}" +
     ".row{display:flex;align-items:center;gap:12px;padding:9px 4px;border-bottom:1px solid #eee;cursor:pointer}" +
     ".row .cb{width:18px;height:18px;flex:none;margin:0;cursor:pointer}" +
-    ".row .tnum{flex:1;font-weight:700;color:#1b232b;font-size:15px}" +
-    ".row .tloc{width:36%;flex:none;color:#333}" +
+    ".row .tnum{width:24%;flex:none;font-weight:700;color:#1b232b;font-size:15px;word-break:break-word}" +
+    ".row .tdesc{flex:1;color:#444;font-size:13px}" +
+    ".row .tloc{width:24%;flex:none;color:#333}" +
     ".row .flag{display:inline-block;margin-left:8px;font-size:10px;font-weight:700;color:#8a4708;background:#fff4e6;border:1px solid #f0d4a6;border-radius:7px;padding:1px 6px;vertical-align:middle;text-transform:none;letter-spacing:0}" +
-    ".row input:checked~.tnum,.row input:checked~.tloc{text-decoration:line-through;color:#aaa}" +
+    ".row input:checked~.tnum,.row input:checked~.tdesc,.row input:checked~.tloc{text-decoration:line-through;color:#aaa}" +
     ".row input:checked~.tnum .flag{opacity:.45}" +
     ".callout{border-radius:8px;padding:10px 14px;margin:14px 0 12px;font-size:13px;line-height:1.5}" +
     ".callout b{display:block;margin-bottom:4px}" +
@@ -3320,10 +3446,16 @@
       any = true;
       p.push("<h2>" + esc(s.title) + "</h2>");
       if (s.key === "tools") {
+        // quick chip row of numbers, then a list of tool number + description
+        // (shop-list description preferred, else what the scan parsed).
         var nums = toolNums(r);
         if (nums.length) p.push('<div class="chips">' + nums.map(function (t) { return '<span class="chip">' + esc(t) + "</span>"; }).join("") + "</div>");
-      }
-      if (multiSrc && s.key !== "tools") {
+        p.push("<ul>" + (r.tools || []).map(function (it) {
+          if (!it.num) return "<li>" + esc(it.text) + "</li>";
+          var d = toolDesc(it);
+          return "<li><b>" + esc(it.num) + "</b>" + (d ? " — " + esc(d) : "") + "</li>";
+        }).join("") + "</ul>");
+      } else if (multiSrc) {
         groupBySource(items).forEach(function (g) {
           p.push("<h3>" + esc(g.src || "page") + "</h3><ul>" + g.entries.map(function (e) { return li(e.it); }).join("") + "</ul>");
         });
@@ -3414,14 +3546,17 @@
     var remindSeen;
     try { remindSeen = localStorage.getItem(REMIND_KEY) || "(unset)"; } catch (e) { remindSeen = "(unreadable)"; }
     var toolsLine;
-    try { var stt = loadShopTools(); toolsLine = stt ? ("loaded " + (stt.count || 0) + " tools from " + (stt.file || "?") + " (" + (stt.fmt || "?") + "), uploaded " + (stt.updated || "?")) : "none loaded"; }
-    catch (e) { toolsLine = "(unreadable)"; }
+    try {
+      var stt = loadShopTools();
+      var toolsBackend = (appIdbOk && appDB) ? "IndexedDB" : "localStorage(fallback)";
+      toolsLine = (stt ? ("loaded " + (stt.count || 0) + " tools from " + (stt.file || "?") + " (" + (stt.fmt || "?") + "), uploaded " + (stt.updated || "?")) : "none loaded") + " [" + toolsBackend + "]";
+    } catch (e) { toolsLine = "(unreadable)"; }
     var fluidsLine;
     try {
       var flt = loadFluids();
       var flys = flt && flt.years ? Object.keys(flt.years).sort() : [];
       var errs = fluidsMetaList.filter(function (m) { return m && m.status === "reparse-error"; }).map(function (m) { return m.year; });
-      fluidsLine = (fluidsIdbOk ? "IndexedDB" : "localStorage(fallback)") +
+      fluidsLine = (appIdbOk ? "IndexedDB" : "localStorage(fallback)") +
         " · parsers modern " + MODERN_PARSER_VER + " / legacy " + LEGACY_PARSER_VER +
         " · " + (flys.length ? flys.length + " years (" + flys.join(", ") + ")" : "none loaded") +
         " · last bg update " + fmtWhen(fluidsBgUpdate) +
@@ -3705,13 +3840,17 @@
       }
       if (meta.name) built.file = meta.name;   // remember what was uploaded
       if (meta.fmt) built.fmt = meta.fmt;
-      if (!saveShopTools(built)) {
-        err.textContent = "Couldn’t save (storage blocked on this machine).";
-        err.style.display = "block"; return;
-      }
-      close();
-      renderInto(host, r, options);
-      flash(root, built.count + " tools loaded");
+      // saveShopTools updates the sync cache immediately then persists to IDB
+      // (async). Render right away off the cache; report a genuine write failure.
+      saveShopTools(built).then(function (ok) {
+        if (!ok) {
+          err.textContent = "Couldn’t save (storage blocked on this machine).";
+          err.style.display = "block"; return;
+        }
+        close();
+        renderInto(host, r, options);
+        flash(root, built.count + " tools loaded");
+      });
     });
   }
 
@@ -4203,5 +4342,7 @@
     fluidsFromPdf: fluidsFromPdf, pdfTextLines: pdfTextLines, parseFluidModels: parseFluidModels,
     // fluid-store internals, exposed for dev harnesses (IndexedDB layer)
     fluidsBoot: fluidsBoot, loadFluids: loadFluids, fluidsSaveYears: fluidsSaveYears,
-    reparseYear: reparseYear, fluidsInfoHTML: fluidsInfoHTML };
+    reparseYear: reparseYear, fluidsInfoHTML: fluidsInfoHTML,
+    // shop tool-list store (IndexedDB v0.3.16), exposed for dev harnesses
+    loadShopTools: loadShopTools, saveShopTools: saveShopTools, removeShopTools: removeShopTools };
 })();

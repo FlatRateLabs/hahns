@@ -5,6 +5,120 @@ permanent project reference.
 
 ---
 
+## 2026-07-04 — v0.3.16-alpha: built-in tool scan list + tool descriptions (branch `0.3.16`)
+
+Two owner-requested additions on the `0.3.16` branch (alongside the IDB tool-list move + DB rename below).
+
+### 1. Tool descriptions in the "Find these tools" window + printout
+- `buildToolMap` now stores the shop list's **description** column (`map[key].desc`) — previously read only
+  for status detection, now kept. New `toolDesc(it)` = shop-list desc (preferred) → scanned desc → "".
+- **Window** (`buildToolsWindowHTML`) now iterates `r.tools` (not just `toolNums`) and renders a 3-column
+  row: **Tool · Description · Location** (+ `TOOLS_WIN_CSS` grid + strike-through includes `.tdesc`). The
+  "Not in your list" callout shows each tool's description too.
+- **Main print** (`buildPrintHTML`) tools section: chip row of numbers, then a list of **number — description**;
+  restructured so tools no longer double-render (dedicated branch, not the generic `li` fallthrough).
+- Note: migrated/old shop lists have no stored desc until re-uploaded once (scanned desc shows meanwhile).
+
+### 2. Built-in VW special-tool list baked into the scan (~1,000 tools)
+- Owner supplied a master list of **1,022 unique** VW special tools. Stored as `BUILTIN_TOOLS` (a JSON array
+  literal, ~10.5 KB) so the scan recognises them **even with no shop list loaded** + catches formats
+  `TOOL_RE` misses. `builtinToolDict()` builds two memoised regexes from it:
+  - **`reAny`** (936 letter/separator tools) — match anywhere, word-boundaried. Parts split at every
+    letter↔digit boundary (`/[A-Z]+|[0-9]+/`) + `BTOOL_SEP` (spaces/dots/dashes/slashes/`+`), so a solid list
+    entry `VW771` still matches ELSA's spaced `VW 771`.
+  - **`reNum`** (86 bare-integer tools, e.g. `1833`) — **callout-only** per owner's choice (Option 1):
+    matches ONLY when dash-wrapped like `-1833-` (leading dash + non-alphanumeric trailing boundary,
+    capture group 1 = the number). Keeps ordinary page numbers (torque, years, part fragments) from being
+    mistaken for tools.
+  - Wired into the scan tools bucket after the shop `toolDict`; existing normTool dedup handles overlaps.
+
+### Verified (node logic harness + browser)
+- Matcher: `T10001`/`VAS 6909`/`VW 771` (spaced)/`10-203`/`T 10004` all detected anywhere; `-1833-`/`-3033-`/
+  `-10200-` detected as callouts; **bare `1833 Nm` / `3033 times` in prose NOT matched**; `VW 502 00` fluid
+  spec **not** mistaken for a tool. Descriptions: shop-list desc preferred, scanned fallback, one `<ul>` for
+  tools (no double render). **Browser screenshot** of the "Find these tools" window confirms the 3-column
+  Tool/Description/Location layout, sorted by location, with the not-in-list callout showing a description.
+- `node --check` clean; built (bookmarklet grew ~11 KB for the built-in list).
+
+---
+
+## 2026-07-04 — v0.3.16-alpha: DB renamed → `hahns_db` (branch `0.3.16`)
+
+**Owner ask (follow-on):** now that the DB holds more than fluids, rename the IndexedDB to `hahns_db`.
+**Owner then simplified the ask:** don't bother migrating the day-old `hahns_fluids` fluid data —
+it shipped only yesterday (v0.3.15), ~nobody in the 4-person shop has it, and re-loading fluid PDFs
+once is trivial. So: **no IDB-to-IDB copy migration** — just use `hahns_db` and drop the old DB.
+
+### What changed (all `src/helper.js`)
+- **Constants:** `FLUID_DB="hahns_fluids"` → `APP_DB="hahns_db"`, `FLUID_DB_VER=2` → `APP_DB_VER=1`
+  (fresh DB, all five stores `pdfs/parsed/meta/kv/tools` created in one upgrade). Shared-scope vars
+  `fluidsDB`/`fluidsIdbOk` → `appDB`/`appIdbOk` (app-wide now). (`openFluidsWindow`'s `"hahns_fluids"`
+  is a **window** name, not the DB — left as-is.)
+- **No copy migration.** An earlier draft had a `migrateDbRename()` that copied every store out of
+  `hahns_fluids` into `hahns_db` and preserved the PDF Blobs — **removed per the owner's simplification.**
+  Instead boot does a one-line **fire-and-forget `indexedDB.deleteDatabase("hahns_fluids")`** so only
+  `hahns_db` remains (deleting a non-existent DB is a harmless no-op; no guard/flag needed).
+- **Kept the lightweight localStorage → IDB migrations** (`migrateLegacyFluids`, `migrateLegacyTools`):
+  the **tool list is still in localStorage in production** (since v0.3.10), so `migrateLegacyTools` carries
+  it into `hahns_db` with **no re-upload**. Only the fluid PDFs (which lived in the dropped `hahns_fluids`)
+  need a one-time re-load in Settings.
+
+### Verified (real-browser IndexedDB harness, Chrome preview)
+- Seeded a leftover `hahns_fluids` (with data) + a tool list in localStorage → boot → **only `hahns_db@1`
+  remains** (old `hahns_fluids` deleted), **tool list migrated** into `hahns_db` (count 2, correct),
+  fluids empty (old DB intentionally not migrated). kv holds `migratedV1`/`migratedToolsV1` (no
+  `migratedDbName` — that logic is gone). No console errors. `node --check` clean; rebuilt.
+- Net: the tech loses nothing they can't trivially restore — tool list auto-carries, fluid PDFs re-load once.
+
+---
+
+## 2026-07-04 — v0.3.16-alpha: shop tool list → IndexedDB (branch `0.3.16`, NOT yet deployed)
+
+**Owner ask:** now that fluids live in IndexedDB (v0.3.15), move the shop special-tool list there too.
+Done — the tool list now lives in the **same `hahns_fluids` IDB** as the fluid tables (one DB, one
+connection), off `localStorage`. All in `src/helper.js`. **Bookmarklet code change → re-drag needed.**
+
+### What changed
+- **DB `hahns_fluids` bumped v1 → v2**, adding a **`tools` object store** (single record, key `"shop"`,
+  shape `{k:"shop", data:{updated,count,file,fmt,map}}`). Upgrade only ADDS a store (`if(!contains)
+  create`), so existing fluid data (pdfs/parsed/meta/kv) survives untouched — verified.
+- **Sync cache preserved.** `shopTools` is hydrated from IDB at boot (`hydrateShopTools`, folded into the
+  existing `fluidsBoot` so the DB opens once), so `loadShopTools()` and every render/match path stay
+  **synchronous & unchanged** — same object shape as before.
+- **One-time migration** `migrateLegacyTools()` (kv flag `migratedToolsV1`, alongside `migratedV1`):
+  copies the old `vwjb_tools_v1` localStorage list into IDB. Legacy key kept as the IDB-unavailable fallback.
+- **`saveShopTools(obj)` → async (returns `Promise<boolean>`):** updates the sync cache + invalidates the
+  `toolDict` matcher immediately (so the next render shows the new list), then writes IDB; falls back to
+  localStorage if IDB is unavailable/write fails. `removeShopTools()` clears cache + IDB `tools` store +
+  legacy key. Mapper save call site updated to `.then`.
+- Diagnostic dump tags the tool-list backend (`[IndexedDB]` / `[localStorage(fallback)]`). Exposed
+  `loadShopTools`/`saveShopTools`/`removeShopTools` on `window.VWJB` for dev harnesses.
+
+### On-architecture / privacy
+- Still 100% local, **zero network**, still shop-config lifecycle (NOT cleared by Exit / New Vehicle /
+  Clear info — only Settings "Remove list"). No new data leaves the browser; it just moves from one local
+  store to another.
+
+### Verified
+- `node --check` clean; `window.VWJB` intact (tool fns exposed); built **v0.3.16-alpha** (bookmarklet
+  343,746 chars). **Real-browser IndexedDB harness (Chrome preview):**
+  - **Migration:** seeded a legacy `vwjb_tools_v1`, ran boot → DB upgraded to **v2**, `tools` store added
+    (fluid stores `kv/meta/parsed/pdfs` all still present), legacy list migrated into IDB, sync cache
+    hydrated (count/file/fmt/keys correct), `migratedToolsV1` flag set.
+  - **Save round-trip:** `saveShopTools` → `true`, cache updated, record read back from a **fresh** DB
+    handle (persistence confirmed).
+  - **Remove:** cache → null, IDB `tools` store cleared.
+  - No console errors.
+
+### Next
+- **Deploy:** PR → `main` (branch-protected, merge `--admin`; `git pull --rebase` first); confirm live
+  `version.json` = `v0.3.16-alpha`. **Re-drag needed.** Owner: existing tool list migrates automatically
+  on first open — no re-upload. Bay-verify: Settings shows the loaded list, "Find these tools" works.
+- Optional later: keep the original uploaded CSV/.xlsx as a Blob (like the fluid PDFs) for re-export;
+  a Settings "database" line for the tool list too.
+
+---
+
 ## 2026-07-04 — v0.3.15.4-alpha: range capacities captured whole (ID.Buzz 0MJ, DSG) — issue #75
 
 **Fixes [issue #75](https://github.com/FlatRateLabs/hahns/issues/75)** — deferred at the close of the
