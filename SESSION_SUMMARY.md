@@ -5,6 +5,53 @@ permanent project reference.
 
 ---
 
+## 2026-07-06 — v0.3.18-alpha: legacy fluid parsers (2000–2010) + parser rename (issue #43)
+
+Built out fluid support for the older years that the modern engine-code parser couldn't match, and
+renamed the parser registry to a clear year-range scheme. All in `src/helper.js`. **Re-drag needed.**
+Verified end-to-end against the owner's real 2000–2010 PDFs (he supplied every year).
+
+### Parser rename (owner's ask)
+- `MODERN_PARSER_VER`/`LEGACY_PARSER_VER` → **`PARSER_1126_VER` (1.3.4)**, **`PARSER_0610_VER` (2.0.0)**,
+  **`PARSER_0005_VER` (1.0.0)**. `familyForYear`: ≤2005→`p0005`, 2006–2010→`p0610`, else `p1126`.
+  `reconcileFluids` now keys off `familyForYear(m.year)` (not stored `m.family`) so the rename doesn't
+  strand old metas — stored legacy years auto-reparse on the update. Settings "Fluid database" panel +
+  diagnostic dump list all three by name.
+
+### Parser 06-10 (2006–2010) — displacement match
+- Same layout as 11-26 but engines keyed by **displacement** ("2.0L"), not code. `parseOil(…, family)`
+  tags `displacements` + uses a looser capacity regex (`CAP_RE_LOOSE`) so bare "7.5 L" cells (no "(qt)")
+  aren't dropped — **fixed a real data-loss bug** (2006/2007/2008 Touareg 4.2L/5.0L capacities were
+  merging into the previous row). Matching (`pickByDispFuel`): nearest cc to the vehicle's `#### ccm`,
+  **fuel-aware** so a 2.0 TDI diesel doesn't get the 2.0 TSI gas oil/capacity (2009/2010 Jetta). Handles
+  the V10 TDI "5.0L" (4921 cc). `isDispYear` gates disp-matching to 2000–2010 so 11-26 is untouched.
+
+### Parser 00-05 (2000–2005) — new parser, different layout
+- These use the old **`Component/System | Capacity`** two-column layout (no ENGINE OIL / DRIVETRAIN
+  section headers). New `parseFluidModels0005`: model families via `MODEL_HDR` (leading-space tolerant +
+  a data-guard so wrapped "10.8 L (0.85 qt)" values aren't mistaken for headers); group headers detected
+  by **column position** (left margin) + must contain a letter (so a bare page-number "3" isn't a
+  phantom group that swallows the next row — a bug found + fixed in the sweep); engines carry
+  displacement **and** bare codes (AZG/BDC/BEV/BGD) so same-size engines disambiguate; drivetrain groups
+  become one entry per gearbox with all fills; A/C best-effort (charges show; wrapped qualifiers/Eurovan
+  sums imperfect). Oil/coolant/drivetrain are solid.
+- Matching fix: added `veh.engineCode` (leading code out of ELSA's "ATQ - 2771 ccm …") — the oil/coolant
+  code match had been comparing the row code against the full engine string, so BGD got BEV's oil.
+
+### Verified
+- `node --check` clean; built **v0.3.18-alpha** (~400 KB). Full parse sweep 2000–2010 = **0 oil flags,
+  every year**. Real in-panel card path (`fluidVeh → pickFluidModel → fluidOilHTML/fluidCoolHTML`)
+  spot-checked via a temporary `__t` export (reverted before build; confirmed absent from `dist/`):
+  2003 Passat V6 ATQ → oil 6.2 L / coolant 9.0 L / drivetrain 01V; AZG/BDC/BEV/BGD code splits; 2005 New
+  Jetta 2.5 → 6.0 L; 2000 Golf 1.8T → 4.4 L; 2000 Jetta 1.9 TDI diesel → 4.5 L. **06-10/11-26 regression
+  clean** (2006 GTI 4.6 L, 2009 Jetta TDI 4.0 L vs gas 4.6 L, Parser 11-26 byte-identical default path).
+
+### Deploy
+- v0.3.18-alpha → `main` (admin merge). **Re-drag needed;** stored 2000–2010 PDFs auto-reparse on update.
+- Owner offered a bay spot-check on an old car; chose to ship. Follow-up if any A/C for 2000–2005 needs work.
+
+---
+
 ## 2026-07-05 — session wrap: patches v0.3.16.1 / v0.3.16.2 / v0.3.17.1 (all LIVE)
 
 Follow-up patches after the entries below. All merged to `main` (admin squash), live-confirmed, tree clean.

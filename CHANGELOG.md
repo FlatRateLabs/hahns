@@ -9,6 +9,32 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.18-alpha — in progress
+
+### Added
+- **Fluids & Capacities now works on 2000–2010 vehicles (issue #43).**
+  - **2006–2010:** those tables list engines by their size (like "2.0L") instead of the letter engine code
+    newer years use, so Hahns couldn't pin down the right row before. It now reads your vehicle's engine size
+    and picks the matching engine oil and coolant automatically. It also tells apart a gas and a diesel of the
+    **same** size (e.g. 2.0L TSI vs 2.0L TDI get different oil and capacity) and handles the V10 TDI ("5.0L").
+  - **2000–2005:** these use a completely different older page layout (one combined table per model). Hahns now
+    reads it too — engine oil, coolant, and transmission/final-drive capacities, matched to your vehicle by
+    engine size, engine code (e.g. the two different 2.0L Beetles, AZG vs BDC), and fuel type. Air-conditioning
+    charges are shown best-effort for these years.
+  - Load each year's PDF in ⚙ Settings the same as always. Verified against the real 2000–2010 tables.
+
+### Changed
+- **The three fluid readers are now named by the years they cover: Parser 00-05, Parser 06-10, Parser 11-26.**
+  This is an under-the-hood cleanup that makes each one easy to maintain and improve on its own. The Settings
+  "Fluid database" panel shows all three. (Parser 00-05 covers 2000–2005 and isn't built yet.)
+
+### Fixed
+- **A rare capacity could go missing on 2006–2010 tables.** When an engine's oil capacity was printed without
+  the "(quarts)" conversion next to it (e.g. the 2006 Touareg 4.2L/5.0L), that number was being dropped. It's
+  now read correctly.
+
+---
+
 ## v0.3.17.1-alpha — 2026-07-05
 
 ### Fixed

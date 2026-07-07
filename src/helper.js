@@ -991,8 +991,12 @@
   // DB is intentionally NOT migrated — it shipped one day earlier and had almost
   // no real-world uptake; on update the tech re-loads their fluid PDFs once.)
   var APP_DB = "hahns_db", APP_DB_VER = 1;
-  var MODERN_PARSER_VER = "1.3.4";   // 2011–2026, engine-code parser (1.3.4: capture range capacities, e.g. ID.Buzz 0MJ 0.88-0.93 L)
-  var LEGACY_PARSER_VER = "1.0.0";   // 2000–2010, displacement parser (not built yet)
+  // Three parsers, named by the model-year range each one owns. Bump a range's
+  // version string in ONE place → every stored PDF of that range auto-re-parses
+  // on the next load (the other ranges are untouched). See familyForYear below.
+  var PARSER_1126_VER = "1.3.4";   // Parser 11-26 — engine-code layout (1.3.4: range capacities, e.g. ID.Buzz 0MJ 0.88-0.93 L)
+  var PARSER_0610_VER = "2.0.0";   // Parser 06-10 — same layout, engines keyed by DISPLACEMENT ("2.0L") + nearest-cc match
+  var PARSER_0005_VER = "1.0.0";   // Parser 00-05 — old two-column layout (Component/System | Capacity)
   var FLUID_YEAR_MIN = 2000, FLUID_YEAR_MAX = 2026;  // span for "Years installed: N/M"
   var fluidsData = null;      // sync projection: null=unread, false=none, obj={updated,count,years:{Y:{models,file}}}
   var appDB = null;        // open IDBDatabase (null until boot resolves / on failure)
@@ -1004,8 +1008,11 @@
   var fluidsRerender = null;  // repaint the panel after async hydrate / re-parse
   var reconcileActive = false;
 
-  function familyForYear(y) { return (+y <= 2010) ? "legacy" : "modern"; }
-  function currentParserVer(fam) { return fam === "legacy" ? LEGACY_PARSER_VER : MODERN_PARSER_VER; }
+  // family = which parser owns a year. Names match the version constants above.
+  function familyForYear(y) { y = +y; return y <= 2005 ? "p0005" : (y <= 2010 ? "p0610" : "p1126"); }
+  function currentParserVer(fam) {
+    return fam === "p0005" ? PARSER_0005_VER : (fam === "p0610" ? PARSER_0610_VER : PARSER_1126_VER);
+  }
 
   // tiny promise-wrapped IndexedDB helpers (only the ops we need) --------
   function idbOpen() {
@@ -1121,7 +1128,9 @@
     if (!appIdbOk || !appDB) return;
     var todo = [];
     fluidsMetaList.forEach(function (m) {
-      if (m && m.parserVersion !== currentParserVer(m.family) && m.hasBlob) todo.push(m.year);
+      // key off familyForYear(year), not the stored m.family — so a family
+      // rename (or a year moving parsers) re-parses instead of stranding.
+      if (m && m.parserVersion !== currentParserVer(familyForYear(m.year)) && m.hasBlob) todo.push(m.year);
     });
     if (!todo.length) return;
     reconcileActive = true;
@@ -1250,8 +1259,9 @@
     function row(k, v, cls) { return '<div class="dbrow"><span class="k">' + k + '</span><span class="v' + (cls ? " " + cls : "") + '">' + v + "</span></div>"; }
     return '<div class="dbinfo">' +
       row("Storage", appIdbOk ? "IndexedDB" : "Local storage (fallback)") +
-      row("Modern parser", esc(MODERN_PARSER_VER)) +
-      row("Legacy parser", esc(LEGACY_PARSER_VER)) +
+      row("Parser 11-26", esc(PARSER_1126_VER)) +
+      row("Parser 06-10", esc(PARSER_0610_VER)) +
+      row("Parser 00-05", esc(PARSER_0005_VER)) +
       row("Years installed", installed + " / " + total) +
       row("PDF storage", fmtBytesMB(bytes)) +
       row("Last background update", esc(fmtWhen(fluidsBgUpdate))) +
@@ -1694,6 +1704,17 @@
     return String(s || "").replace(/[‐‑­]/g, "-").replace(/([a-z])-\s+([a-z])/g, "$1$2");
   }
   var CAP_RE = /\d[\d.]*\s*L\s*\([^)]*qt[^)]*\)/;
+  // Parser 06-10: some engine-oil cells omit the "(… qt)" conversion (2006
+  // Touareg: "4.2L … 7.5 L", "5.0L … 11.5 L"). CAP_RE would miss those and the
+  // rows would wrongly merge into the previous engine, dropping their capacity.
+  // This looser form also accepts a bare "N L". Used only for the 06-10 family.
+  var CAP_RE_LOOSE = /\d[\d.]*\s*L\s*\([^)]*qt[^)]*\)|\d[\d.]*\s*L(?![A-Za-z])/;
+  // displacement tokens ("2.0L", "6.0 L", "3.2L 4.2L 5.0L") → [2.0, 6.0, ...]
+  function dispIn(text) {
+    var out = [], m, re = /(\d\.\d)\s*L\b/g;
+    while ((m = re.exec(String(text || "")))) out.push(parseFloat(m[1]));
+    return out;
+  }
   var SPEC_RE = /VW\s*\d{3}\s*\d{2}(?:\s*\(\s*\d[0-9W\s-]*\))?/g;
   // engine/trans codes out of "(DDSA / DDSB)" or "(0CR / 0CQ)"
   function codesIn(text) {
@@ -1753,7 +1774,11 @@
     return cells;
   }
   // ENGINE OIL CAPACITY: Engine | Engine Oil Type | Capacity
-  function parseOil(lines, hdrIdx) {
+  // family "p0610" (2006–2010): engines are keyed by displacement ("2.0L"), so
+  // use the looser capacity regex (bare "N L" allowed) and tag each row's
+  // displacement(s) for the nearest-cc match in fluidOilHTML.
+  function parseOil(lines, hdrIdx, family) {
+    var disp = family === "p0610", capRe = disp ? CAP_RE_LOOSE : CAP_RE;
     var idxType = lines[hdrIdx].indexOf("Engine Oil Type");
     if (idxType < 0) return [];
     var rows = [], cur = null;
@@ -1770,7 +1795,7 @@
       // (2018 Golf R: line 1 ends "VW 508 00 (0W-20) VW 504 00", line 2 is
       // "(0W-30) /") — otherwise the "(0W-30)" was appended after the capacity in
       // `rest` and dropped by SPEC_RE.
-      var cm = rest.match(CAP_RE);
+      var cm = rest.match(capRe);
       if (cm) { cur = { eng: col1, rest: rest, type: rest.slice(0, cm.index) }; rows.push(cur); }
       else if (cur) { if (col1) cur.eng += " " + col1; cur.rest += " " + rest; cur.type += " " + rest; }
     }
@@ -1782,9 +1807,10 @@
       if (bare) engines.forEach(function (c) { desc = desc.replace(new RegExp("\\b" + c + "\\b", "g"), " "); });
       return {
         engines: engines.map(function (s) { return s.toUpperCase(); }),
+        displacements: disp ? dispIn(r.eng) : [],
         desc: desc.replace(/\s+/g, " ").replace(/^\s*[—-]\s*/, "").replace(/[—-]\s*$/, "").trim(),
         specs: ((r.type || r.rest).match(SPEC_RE) || []).map(function (s) { return s.replace(/\s+/g, " ").trim(); }),
-        capacity: ((r.rest.match(CAP_RE) || [""])[0]).replace(/\s+/g, " ").trim()
+        capacity: ((r.rest.match(capRe) || [""])[0]).replace(/\s+/g, " ").trim()
       };
     });
   }
@@ -1872,7 +1898,9 @@
   };
   var MODEL_HDR = /^\d+\.\d+\s+(.+?)\s*\(([^)]*)\)\s*$/;
   // layout text → [{ model, modelCode, engineOil, engineCoolant, airConditioning, drivetrain }]
-  function parseFluidModels(text) {
+  // `family` selects the parser variant (default "p1126"); "p0610" keys oil by
+  // displacement. Parsers 11-26 and 06-10 share this layout core.
+  function parseFluidModels(text, family) {
     // Tolerances arrive in two shapes: a Unicode ± (most years), OR — on years
     // like the 2018 Golf R — three separate glyphs the layout spaces out into
     // "+ / -" (any dash variant). Normalise BOTH to the contiguous ASCII "+/-"
@@ -1909,8 +1937,100 @@
           if (/^\s*(Engine\s+Engine Oil Type|Component\s+Application)/.test(sub[h])) { hdr = h; break; }
         }
         if (hdr < 0) continue;
-        model[sys[k].key] = (sys[k].key === "engineOil") ? parseOil(sub, hdr) : parseCAC(sub, hdr);
+        model[sys[k].key] = (sys[k].key === "engineOil") ? parseOil(sub, hdr, family) : parseCAC(sub, hdr);
         if (sys[k].key === "drivetrain") model[sys[k].key] = fixEvSingleSpeed(model[sys[k].key]);
+      }
+      models.push(model);
+    }
+    return models;
+  }
+
+  /* ---- Parser 00-05 (2000–2005): the old two-column layout ------------
+   * Each model family is ONE flat "Component/System | Capacity" table.
+   * A left-margin line names a GROUP (an engine like "2.0 L Engine AZG", a
+   * transmission like "4 Speed Automatic Transmission 01M", or "A/C System");
+   * the indented lines under it are its capacity rows ("Oil and Filter
+   * Change", "Coolant", "Initial Fill", …). Produces the SAME model shape as
+   * the newer parsers so the window/cards/matching are unchanged. Oil/coolant/
+   * drivetrain are clean; A/C in these years is messy (wrapped qualifiers,
+   * omitted units) and captured best-effort. */
+  function disp0005(name) {   // displacement tokens, NOT requiring a trailing "L" ("1.8T" → 1.8)
+    var out = [], m, re = /(\d\.\d)/g;
+    while ((m = re.exec(String(name || "")))) out.push(parseFloat(m[1]));
+    return out;
+  }
+  var FUEL_WORD = /^(TDI|TSI|TFSI|FSI|MPI|PD|SRE|SULEV|BEW)$/;
+  function engCodes0005(name) {   // bare 3–4 letter engine codes appended to an engine name (AZG, BDC), minus fuel words
+    return (String(name || "").match(/\b[A-Z]{3,4}\b/g) || []).filter(function (c) { return !FUEL_WORD.test(c); });
+  }
+  // split a data line into { label, value } at the LAST capacity value on the
+  // line (A/C rows carry a qualifier value first, e.g. "…with 4.0 L (4.2 qt)  600 +/- 25 g").
+  function splitCap0005(ln) {
+    var last = null; VAL_RE.lastIndex = 0; var m;
+    while ((m = VAL_RE.exec(ln))) last = m;
+    if (!last) return null;
+    return { label: ln.slice(0, last.index).trim(), value: fixDecimals(tidyRange(last[0].replace(/\s+/g, " ").trim())) };
+  }
+  function groupKind0005(name) {
+    if (/transmission|transaxle|gearbox|final drive/i.test(name)) return "trans";
+    if (/a\/c|air cond|refriger/i.test(name)) return "ac";
+    if (/power steering|washer|brake|clutch/i.test(name)) return "skip";
+    if (/engine/i.test(name) || /^\s*\d\.\d/.test(name)) return "engine";
+    return "skip";
+  }
+  function parseFluidModels0005(text) {
+    // "N + M unit" is a tolerance in these years (metric mirrors the "±" the
+    // imperial column uses) → normalise to "+/-" like the newer parsers.
+    var lines = String(text || "").replace(/±/g, " +/- ")
+      .replace(/(\d)\s*\+\s*(\d[\d.]*\s*(?:g|cc|ml|L)\b)/g, "$1 +/- $2").split(/\r?\n/);
+    var secs = [];
+    for (var i = 0; i < lines.length; i++) {
+      // some model headers carry a leading space ("  1.4  Eurovan Family (70/7D)") → trim before matching.
+      // Guard against a wrapped capacity value ("10.8 L (0.85 qt)") looking like "1.4 …": a real model
+      // header carries no capacity token (L/g/cc/qt after a number).
+      var mh = MODEL_HDR.exec(lines[i].replace(/^\s+/, ""));
+      if (mh && !/Component|Capacity/i.test(lines[i]) && !/\d\s*(?:L|g|cc|ml|qt)\b/i.test(lines[i]))
+        secs.push({ name: mh[1].replace(/\s+/g, " ").trim(), code: mh[2].replace(/\s+/g, " ").trim(), at: i });
+    }
+    var models = [];
+    for (var s = 0; s < secs.length; s++) {
+      var start = secs[s].at, end = (s + 1 < secs.length) ? secs[s + 1].at : lines.length;
+      var model = { model: secs[s].name, modelCode: secs[s].code, engineOil: [], engineCoolant: [], airConditioning: [], drivetrain: [] };
+      var kind = null, gname = "", drive = null, disps = [], codes = [], fuel = "";
+      for (var j = start + 1; j < end; j++) {
+        var ln = normHyphens(lines[j]);
+        if (!ln.trim() || /Component\/System|^\s*Capacity\s*$/i.test(ln)) continue;
+        var col = ln.search(/\S/);
+        // Group vs data row is decided by COLUMN, not by whether an "N L" appears:
+        // a group header sits at the left margin (an engine name like "2.8 L
+        // Engine" contains "2.8 L", which would otherwise look like a capacity).
+        // Must contain a letter — a bare left-margin page number ("3") is NOT a
+        // group (it would otherwise reset the group and swallow the next row).
+        if (col >= 0 && col < 24 && /[A-Za-z]/.test(ln)) {
+          gname = ln.trim(); kind = groupKind0005(gname);
+          disps = disp0005(gname); codes = engCodes0005(gname); fuel = fuelOf(gname);
+          if (kind === "trans") { drive = { component: "Transmission", application: gname, fills: [] }; model.drivetrain.push(drive); }
+          continue;
+        }
+        var sc = splitCap0005(ln);
+        if (!sc) continue;                                  // indented text with no value → wrapped qualifier, ignore
+        var label = sc.label.replace(/\s+/g, " ").replace(/\s*\/\s*/g, " / ").trim(), value = sc.value;
+        if (kind === "engine") {
+          if (/oil/i.test(label)) model.engineOil.push({ engines: codes.slice(), displacements: disps.slice(), desc: gname, fuel: fuel, specs: [], capacity: value });
+          else if (/coolant/i.test(label)) model.engineCoolant.push({ application: gname + (/\bexchang|heater/i.test(label) ? " · " + label : ""), fills: [{ label: "", value: value }] });
+        } else if (kind === "trans" && drive) {
+          drive.fills.push({ label: label.replace(/^-$/, "").trim(), value: value });
+        } else if (kind === "ac") {
+          if (!/\b(?:g|cc|ml)\b/.test(value)) continue;     // A/C charges are grams/cc, never litres — skip "4.0 L" qualifier fragments
+          var isOil = /pag|oil/i.test(label);
+          var rt = /R\s?1234yf|R\s?134a/i.exec(gname + " " + label);
+          model.airConditioning.push({
+            component: isOil ? "Refrigerant Compressor Oil" : "A/C System Refrigerant",
+            application: label.replace(/^refrigerant\b[,:]?/i, "").replace(/^pag oil\b[,:]?/i, "").trim(),
+            fills: [{ label: "", value: value }],
+            refrigerant: isOil ? undefined : (rt ? rt[0].replace(/\s+/g, "") : "R134a")
+          });
+        }
       }
       models.push(model);
     }
@@ -1925,13 +2045,15 @@
     m = /\b(20\d\d)\b/.exec(String(text || "").split("\n").slice(0, 40).join(" "));
     return m ? m[1] : "";
   }
-  // PDF bytes → { year, models } (rejects with a plain-language message)
+  // PDF bytes → { year, models } (rejects with a plain-language message).
+  // Year (and therefore which parser owns it) is resolved BEFORE parsing.
   function fluidsFromPdf(buf, name) {
     return pdfTextLines(buf).then(function (text) {
-      var models = parseFluidModels(text);
-      if (!models.length) throw new Error("no fluid tables found — is this a VW Fluid Capacity Tables PDF?");
       var year = fluidYearOf(name, text);
       if (!year) throw new Error("couldn’t tell the model year — put it in the file name (e.g. “2022 ….pdf”)");
+      var fam = familyForYear(year);
+      var models = (fam === "p0005") ? parseFluidModels0005(text) : parseFluidModels(text, fam);
+      if (!models.length) throw new Error("no fluid tables found — is this a VW Fluid Capacity Tables PDF?");
       return { year: year, models: models };
     });
   }
@@ -1948,7 +2070,46 @@
     veh.transCodes = veh.trans.split(/[^A-Z0-9]/).filter(function (s) { return /^[A-Z0-9]{3,6}$/.test(s); });
     veh.transCode = veh.transCodes[0] || "";
     veh.awd = /\bAWD\b|4 ?MOTION|4MOT/i.test(veh.model);
+    // displacement in litres, for the Parser 06-10 nearest-cc oil/coolant match.
+    // Prefer the exact "#### ccm" from the Engine Code field ("BPY - 1984 ccm");
+    // fall back to a "N.NL" printed in the engine or model text. 0 = unknown.
+    var cc = /(\d{3,5})\s*CCM/.exec(veh.engine);
+    var lit = /(\d\.\d)\s*L\b/.exec(veh.engine) || /(\d\.\d)\s*L\b/.exec(veh.model);
+    veh.liters = cc ? (+cc[1] / 1000) : (lit ? parseFloat(lit[1]) : 0);
+    veh.fuel = fuelOf(veh.engine + " " + veh.model);   // diesel/gas, for 06-10 same-displacement tie-break
+    // the bare engine code — ELSA's Engine Code field is "ATQ - 2771 ccm, …",
+    // so pull the leading code for the 00-05 code match (2.0 AZG vs BDC etc.)
+    veh.engineCode = (veh.engine.match(/^\s*([A-Z][A-Z0-9]{1,4})\b/) || [])[1] || "";
     return veh;
+  }
+  // diesel vs gas from an engine/description string. 2006–2010 VW tables tell
+  // apart two engines of the SAME displacement (e.g. "2.0L TSI" gas vs "2.0L
+  // TDI" diesel) only by this word, and it drives a different oil spec/capacity.
+  function fuelOf(text) {
+    var t = String(text || "").toUpperCase();
+    if (/\bTDI\b|\bSDI\b|DIESEL|PUMPE/.test(t)) return "diesel";
+    if (/\bT?FSI\b|\bTSI\b|\bMPI\b|\bTURBO\b|\bFSI\b|GAS/.test(t)) return "gas";
+    return "";
+  }
+  // Parser 06-10 row picker: nearest displacement (litres) to the vehicle,
+  // within a tolerance so "1984 ccm" → 2.0L and the V10 TDI "4921 ccm" → "5.0L".
+  // Among rows at the SAME displacement, break the tie by fuel type so a 2.0 TDI
+  // doesn't get the 2.0 gas capacity. Returns the row, or null if none is close.
+  function pickByDispFuel(rows, veh, getDisps, getFuel) {
+    if (!veh.liters) return null;
+    var cand = [];
+    (rows || []).forEach(function (r) {
+      var best = Infinity;
+      (getDisps(r) || []).forEach(function (d) { var df = Math.abs(d - veh.liters); if (df < best) best = df; });
+      if (best < 0.35) cand.push({ r: r, d: best });   // >0.35 L off ⇒ not a match
+    });
+    if (!cand.length) return null;
+    cand.sort(function (a, b) { return a.d - b.d; });
+    // rows sharing the closest displacement token (their distances are ~identical);
+    // 0.03 keeps adjacent tokens like 1.9 vs 2.0 (≥0.1 apart) from grouping.
+    var minD = cand[0].d, tie = cand.filter(function (c) { return c.d - minD < 0.03; });
+    if (veh.fuel) { var fm = tie.filter(function (c) { return getFuel(c.r) === veh.fuel; }); if (fm.length) return fm[0].r; }
+    return tie[0].r;
   }
   function bareCodes(text) {
     return String(text || "").toUpperCase().split(/[\/,]/).map(function (s) { return s.trim(); })
@@ -2002,8 +2163,15 @@
     return '<div class="card ' + cls + '"><div class="chd"><svg viewBox="0 0 24 24"><path d="' + icon + '"/></svg><b>' +
       esc(title) + '</b></div><div class="cbody">' + (inner || '<div class="none">Not listed for this vehicle.</div>') + "</div></div>";
   }
+  function isDispYear(veh) { var y = +veh.year; return y >= 2000 && y <= 2010; }
   function fluidOilHTML(m, veh) {
-    var rows = (m.engineOil || []).filter(function (r) { return (r.engines || []).indexOf(veh.engine) >= 0; });
+    var rows = (m.engineOil || []).filter(function (r) { return (r.engines || []).some(function (e) { return e === veh.engine || (veh.engineCode && e === veh.engineCode); }); });
+    // Parser 06-10: no engine codes — match by displacement + fuel type instead.
+    if (!rows.length && isDispYear(veh)) {
+      var byDisp = pickByDispFuel(m.engineOil, veh,
+        function (r) { return r.displacements; }, function (r) { return fuelOf(r.desc); });
+      if (byDisp) rows = [byDisp];
+    }
     var fallback = !rows.length && (m.engineOil || []).length;
     if (fallback) rows = m.engineOil;
     var inner = rows.map(function (r) {
@@ -2015,7 +2183,16 @@
     return fCard("oil", FL_ICON.oil, "Engine Oil", inner);
   }
   function fluidCoolHTML(m, veh) {
-    var rows = (m.engineCoolant || []).filter(function (r) { return bareCodes(r.application).indexOf(veh.engine) >= 0; });
+    var rows = (m.engineCoolant || []).filter(function (r) {
+      return bareCodes(r.application).indexOf(veh.engine) >= 0 ||
+        (veh.engineCode && new RegExp("\\b" + veh.engineCode + "\\b").test(String(r.application).toUpperCase()));
+    });
+    // Parser 06-10 / 00-05: coolant Application is displacement ("1.9L / 2.0L", "2.0 L Engine") — match by disp + fuel.
+    if (!rows.length && isDispYear(veh)) {
+      var byDisp = pickByDispFuel(m.engineCoolant, veh,
+        function (r) { return dispIn(r.application); }, function (r) { return fuelOf(r.application); });
+      if (byDisp) rows = [byDisp];
+    }
     if (!rows.length) rows = m.engineCoolant || [];
     var inner = rows.map(function (r) {
       return '<div class="row"><div class="cap">' + esc((r.fills[0] && r.fills[0].value) || "—") + "</div></div>";
@@ -3733,7 +3910,7 @@
       var flys = flt && flt.years ? Object.keys(flt.years).sort() : [];
       var errs = fluidsMetaList.filter(function (m) { return m && m.status === "reparse-error"; }).map(function (m) { return m.year; });
       fluidsLine = (appIdbOk ? "IndexedDB" : "localStorage(fallback)") +
-        " · parsers modern " + MODERN_PARSER_VER + " / legacy " + LEGACY_PARSER_VER +
+        " · parsers 11-26 " + PARSER_1126_VER + " / 06-10 " + PARSER_0610_VER + " / 00-05 " + PARSER_0005_VER +
         " · " + (flys.length ? flys.length + " years (" + flys.join(", ") + ")" : "none loaded") +
         " · last bg update " + fmtWhen(fluidsBgUpdate) +
         (errs.length ? " · re-parse errors: " + errs.join(", ") : "");
