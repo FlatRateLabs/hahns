@@ -5,6 +5,34 @@ permanent project reference.
 
 ---
 
+## 2026-07-06 — v0.3.18.1-alpha: fix stuck "Updating" / legacy years not re-parsing
+
+**Owner bay report right after v0.3.18 shipped: 2006 GTI and 2003 Passat both still showed nothing, and
+the Fluid database status was stuck on "Updating."** Root cause = two coupled reparse-trigger bugs:
+1. **Version-string collision.** Stored 2000–2005 years carried `parserVersion:"1.0.0"` (the old
+   `LEGACY_PARSER_VER`), and I'd set the new `PARSER_0005_VER` to the same `"1.0.0"` → `reconcileFluids`
+   saw no change → never re-parsed → 2003 kept its old (modern-parser) garbage forever.
+2. **`fluidsHealth` compared against the stored `m.family`** (`"legacy"`), which fell through
+   `currentParserVer` to the 11-26 version (`"1.3.4"`) → every legacy year looked permanently "pending"
+   → status stuck on "⟳ Updating…" even though nothing was queued.
+
+**Fix:** a single `needsReparse(m)` helper judged by **`familyForYear(m.year)`** — reparse if the family
+moved (pre-v0.3.18 `"legacy"`/`"modern"` → `p0005`/`p0610`/`p1126`) **or** the version bumped. Used in
+BOTH `reconcileFluids` and `fluidsHealth` so they agree. This reliably migrates every stored legacy year
+regardless of version-string collisions, and health clears once done. (No version bump needed — the
+family mismatch is the trigger.)
+
+**Verified in a real browser (IndexedDB):** seeded a stuck 2003 (`family:"legacy"`, `parserVersion:"1.0.0"`,
+empty models, real PDF blob) → `fluidsBoot` → reconcile auto-re-parsed it to 4 families, migrated
+`family:"p0005"`, Passat V6 oil 4.1/6.2/8.5 L correct, `meta.status:"ok"`, and the info panel went to
+**"✓ Healthy."** No console errors. `needsReparse` unit-verified across all migration scenarios.
+
+**Deploy:** v0.3.18.1 → `main` (admin merge). **Re-drag needed.** Owner: hard-refresh setup page, re-drag,
+reopen Hahns — saved 2000–2010 PDFs re-parse themselves within a few seconds. If a year shows
+"Re-upload to enable auto-update," that year was saved on a version that didn't keep the PDF — load it once.
+
+---
+
 ## 2026-07-06 — v0.3.18-alpha: legacy fluid parsers (2000–2010) + parser rename (issue #43)
 
 Built out fluid support for the older years that the modern engine-code parser couldn't match, and

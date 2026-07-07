@@ -1013,6 +1013,16 @@
   function currentParserVer(fam) {
     return fam === "p0005" ? PARSER_0005_VER : (fam === "p0610" ? PARSER_0610_VER : PARSER_1126_VER);
   }
+  // A stored year needs re-parsing if the parser that OWNS its year-range has
+  // changed — either the family moved (pre-v0.3.18 "legacy" → "p0005"/"p0610")
+  // OR that family's version bumped. Always judged by familyForYear(year), never
+  // the stored m.family (which can predate the rename) and never a version
+  // string alone (the old legacy "1.0.0" collided with the new p0005 "1.0.0").
+  function needsReparse(m) {
+    if (!m) return false;
+    var fam = familyForYear(m.year);
+    return m.family !== fam || m.parserVersion !== currentParserVer(fam);
+  }
 
   // tiny promise-wrapped IndexedDB helpers (only the ops we need) --------
   function idbOpen() {
@@ -1128,9 +1138,7 @@
     if (!appIdbOk || !appDB) return;
     var todo = [];
     fluidsMetaList.forEach(function (m) {
-      // key off familyForYear(year), not the stored m.family — so a family
-      // rename (or a year moving parsers) re-parses instead of stranding.
-      if (m && m.parserVersion !== currentParserVer(familyForYear(m.year)) && m.hasBlob) todo.push(m.year);
+      if (m && needsReparse(m) && m.hasBlob) todo.push(m.year);
     });
     if (!todo.length) return;
     reconcileActive = true;
@@ -1243,7 +1251,7 @@
     fluidsMetaList.forEach(function (m) {
       if (!m) return;
       if (m.status === "reparse-error") err++;
-      else if (m.parserVersion !== currentParserVer(m.family)) { if (m.hasBlob) pending++; else stale++; }
+      else if (needsReparse(m)) { if (m.hasBlob) pending++; else stale++; }
     });
     if (err) return { cls: "dbwarn", txt: "⚠ " + err + " year" + (err > 1 ? "s" : "") + " need attention" };
     if (reconcileActive || pending) return { cls: "dbwait", txt: "⟳ Updating…" };

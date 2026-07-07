@@ -9,6 +9,17 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.18.1-alpha — in progress
+
+### Fixed
+- **2000–2005 vehicles now actually update, and the "Updating…" status clears.** After the v0.3.18 update,
+  the older fluid tables saved on your computer weren't re-reading themselves with the new parser (so a 2003
+  still showed nothing), and the Fluid database status could stay stuck on "Updating." Both are fixed — every
+  saved year now correctly refreshes itself once with the right parser on this update. (If a year was loaded
+  on a very old version that didn't keep the PDF, it'll ask you to re-load that one PDF.)
+
+---
+
 ## v0.3.18-alpha — in progress
 
 ### Added
