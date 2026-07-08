@@ -9,6 +9,15 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.18.5-alpha — in progress
+
+### Changed
+- **Smaller minimized bar.** When you minimize Hahns, SCAN now sits up in the title bar as compact green
+  text (just left of the minimize button) instead of a full green button below it — so the collapsed panel
+  takes up as little room as possible. Expanded, the big green SCAN button is unchanged.
+
+---
+
 ## v0.3.18.4-alpha — in progress
 
 ### Fixed

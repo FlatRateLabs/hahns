@@ -5,6 +5,20 @@ permanent project reference.
 
 ---
 
+## 2026-07-06 — v0.3.18.5-alpha: compact minimized bar (SCAN moved into the header)
+
+Owner UI ask: when minimized, move SCAN into the title bar (left of the minimize icon) as plain green
+text — no button box, small size — to keep the collapsed bar as small as possible. Added a `.hdscan`
+SCAN button in `.hd` (`data-act="rescan"`), hidden by default (`.hdscan{display:none}`) and shown only
+minimized (`.wrap.min .hdscan{...color:#2fb84d;font-size:12px;font-weight:800;background:transparent...}`)
+sitting just before the minimize button. Hid the separate `.scanbar` when minimized (added to the
+`.wrap.min …{display:none}` list). Expanded state unchanged (full green `.scan` button). Verified in the
+browser (real render + computed styles + screenshot): minimized header = brand · title · gear · **SCAN**
+(green, 12px, transparent, left of minimize) · minimize · close; scanbar hidden; expanded hides `.hdscan`
+and keeps the green button. Deploy: v0.3.18.5 → `main` (admin). Re-drag needed.
+
+---
+
 ## 2026-07-06 — v0.3.18.4-alpha: filter A/C rows to the vehicle's engine size
 
 **Owner: why show the 4.0L A/C spec when the vehicle isn't a 4.0L?** `fluidAcHTML` rendered every

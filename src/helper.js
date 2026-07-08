@@ -3183,10 +3183,14 @@
     ".hd .hbtn{display:inline-flex;align-items:center;justify-content:center;padding:3px 5px}" +
     ".hd .hbtn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".wrap.min{max-height:none}" +
-    // minimized = header + SCAN only (so a tech can collapse the panel and still
-    // scan a page). New Vehicle / everything else is hidden.
-    ".wrap.min .sub,.wrap.min .topbar,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar,.wrap.min .vbar,.wrap.min .fluidbar{display:none}" +
-    ".wrap.min .scanbar{padding:11px 13px}" +
+    // minimized = just the header bar (with a compact green SCAN in it). The full
+    // scanbar and everything else are hidden so the collapsed bar stays tiny.
+    ".wrap.min .sub,.wrap.min .topbar,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar,.wrap.min .vbar,.wrap.min .fluidbar,.wrap.min .scanbar{display:none}" +
+    // SCAN in the header: hidden while expanded, shown as plain green text (no
+    // button box) only when minimized, sitting just left of the minimize icon.
+    ".hdscan{display:none}" +
+    ".wrap.min .hdscan{display:inline-flex;align-items:center;background:transparent;border:0;color:#2fb84d;font-family:inherit;font-size:12px;font-weight:800;letter-spacing:.08em;padding:3px 6px;cursor:pointer}" +
+    ".wrap.min .hdscan:hover{color:#4bd268;background:rgba(255,255,255,.12)}" +
     // vehicle bar — the up-front "what car is this" identity strip
     ".vbar{padding:9px 13px;border-bottom:1px solid #eee;font-size:12px;line-height:1.4}" +
     ".vbar.empty{background:#eef1f6;color:#3a4a63}" +
@@ -3552,6 +3556,9 @@
       '<div class="wrap' + (embed ? " embed" : "") + (mini ? " min" : "") + '"><div class="hd"><img class="brand" src="' + HAHNS_ICON + '" alt="Hahns">' +
         '<b title="Hardware, Advisories, Highlights, &amp; Navigation Specialist">H.A.H.N.S</b>' +
         (embed ? "" : '<button data-act="settings" class="hbtn" title="Settings — shop tool list &amp; fluid tables">' + svg(GEAR) + "</button>") +
+        // SCAN shown in the header only when minimized (green text, no button box) —
+        // left of the minimize icon, so the collapsed bar stays as small as possible.
+        (embed ? "" : '<button data-act="rescan" class="hdscan" title="Read this page and add its specs to the job">SCAN</button>') +
         (embed ? "" : '<button data-act="min" class="hbtn" title="' + (mini ? "Expand" : "Minimize") + '">' + svg(mini ? "M7 7h10v10H7z" : "M6 12h12") + "</button>") +
         '<button data-act="close" title="Close">&#10005;</button></div>' +
       // version stamp — pinned to the very top, directly under the title bar
