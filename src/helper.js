@@ -2234,8 +2234,20 @@
     }).join("");
     return fCard("cool", FL_ICON.cool, "Engine Coolant", inner);
   }
-  function fluidAcHTML(m) {
-    var inner = (m.airConditioning || []).map(function (r) {
+  // Some 2000–2005 A/C rows are engine-specific ("with 4.0 L" only, or
+  // "except with 4.0 L" = every engine BUT that one). Keep only the rows that
+  // apply to this vehicle's engine size. Rows with no size qualifier apply to all.
+  function acAppliesTo(app, veh) {
+    if (!isDispYear(veh) || !veh.liters) return true;
+    var m = String(app || "").match(/(\d\.\d)\s*L\b/);
+    if (!m) return true;
+    var isThisEngine = Math.abs(parseFloat(m[1]) - veh.liters) < 0.3;
+    return /except|other than|all but/i.test(app) ? !isThisEngine : isThisEngine;
+  }
+  function fluidAcHTML(m, veh) {
+    var rows = (m.airConditioning || []).filter(function (r) { return acAppliesTo(r.application, veh); });
+    if (!rows.length) rows = m.airConditioning || [];   // never hide the whole card
+    var inner = rows.map(function (r) {
       var name = String(r.component || "").replace(/\s*\(R\s?1234yf\)|\s*\(R\s?134a\)/ig, "").trim();
       return '<div class="row"><div class="lab">' + esc(name) +
         (r.refrigerant ? '<span class="tag">' + esc(r.refrigerant) + "</span>" : "") +
@@ -2276,7 +2288,7 @@
     } else {
       var m = pickFluidModel(yd.models || [], veh);
       if (!m) body = '<div class="err">No fluid entry found for <b>' + esc(veh.model || "this model") + "</b> in the " + esc(veh.year) + " tables.</div>";
-      else body = fluidOilHTML(m, veh) + fluidCoolHTML(m, veh) + fluidAcHTML(m) + fluidDriveHTML(m, veh);
+      else body = fluidOilHTML(m, veh) + fluidCoolHTML(m, veh) + fluidAcHTML(m, veh) + fluidDriveHTML(m, veh);
     }
     var vehGrid = [["Model Year", veh.year], ["Model", veh.model], ["Engine Code", veh.engine], ["Trans Type", veh.trans + (veh.awd ? " · AWD" : "")]]
       .map(function (p) { return '<span class="k">' + esc(p[0]) + '</span><span class="v">' + esc(p[1] || "—") + "</span>"; }).join("");

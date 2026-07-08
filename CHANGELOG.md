@@ -9,6 +9,17 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.18.4-alpha — in progress
+
+### Fixed
+- **A/C now hides specs for the wrong engine.** On years where the A/C charge depends on the engine (e.g. a
+  2000–2005 Passat has one spec for the 4.0L W8 and another for everything else), Hahns was showing both.
+  It now shows only the row that matches your vehicle's engine size — a 2.8L V6 sees the "except with 4.0 L"
+  spec (600 g), a 4.0L W8 sees the "with 4.0 L" spec (500 g). A/C rows that aren't engine-specific (like the
+  Eurovan's 1- vs 2-evaporator options) still show all choices.
+
+---
+
 ## v0.3.18.3-alpha — in progress
 
 ### Fixed

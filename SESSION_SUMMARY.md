@@ -5,6 +5,22 @@ permanent project reference.
 
 ---
 
+## 2026-07-06 — v0.3.18.4-alpha: filter A/C rows to the vehicle's engine size
+
+**Owner: why show the 4.0L A/C spec when the vehicle isn't a 4.0L?** `fluidAcHTML` rendered every
+A/C row with no vehicle filter, so a 2.8L Passat saw both "except with 4.0 L" (600 g) and "with 4.0 L"
+(500 g). Added `acAppliesTo(app, veh)`: if the qualifier names an engine size ("with N.N L" / "except
+with N.N L"), keep the row only when it matches the vehicle's `veh.liters` (nearest ≤0.3 L; "except"
+inverts). Rows with no size qualifier (Eurovan "1/2 Evaporator", brand names, blank) always show.
+Gated to `isDispYear` (2000–2010) so modern A/C is untouched; safety fallback shows all if the filter
+would empty the card. **Render-time only — no parser change, no version bump.**
+
+**Verified (real 2003 PDF, `fluidVeh → pickFluidModel → fluidAcHTML`):** 2.8 V6 → only "except with 4.0 L"
+(600 g / 250 cc); 4.0 W8 → only "with 4.0 L" (500 g / 200 cc); Eurovan 2.8 → all evaporator options.
+Deploy: v0.3.18.4 → `main` (admin). Re-drag needed (takes effect on render; no reparse).
+
+---
+
 ## 2026-07-06 — v0.3.18.3-alpha: 2000–2005 A/C label wrapping fixed
 
 **Owner: the 2000–2005 A/C rows are cut off** — the Passat 4.0L-engine exception showed only "except"
