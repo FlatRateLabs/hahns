@@ -9,6 +9,14 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.18.6-alpha — in progress
+
+### Changed
+- **Minimized SCAN moved left of the gear.** The compact green SCAN in the minimized title bar now sits to
+  the left of the settings gear (was left of the minimize button).
+
+---
+
 ## v0.3.18.5-alpha — in progress
 
 ### Changed

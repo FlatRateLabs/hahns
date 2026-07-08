@@ -3555,10 +3555,10 @@
     var html = "" +
       '<div class="wrap' + (embed ? " embed" : "") + (mini ? " min" : "") + '"><div class="hd"><img class="brand" src="' + HAHNS_ICON + '" alt="Hahns">' +
         '<b title="Hardware, Advisories, Highlights, &amp; Navigation Specialist">H.A.H.N.S</b>' +
-        (embed ? "" : '<button data-act="settings" class="hbtn" title="Settings — shop tool list &amp; fluid tables">' + svg(GEAR) + "</button>") +
         // SCAN shown in the header only when minimized (green text, no button box) —
-        // left of the minimize icon, so the collapsed bar stays as small as possible.
+        // left of the gear icon, so the collapsed bar stays as small as possible.
         (embed ? "" : '<button data-act="rescan" class="hdscan" title="Read this page and add its specs to the job">SCAN</button>') +
+        (embed ? "" : '<button data-act="settings" class="hbtn" title="Settings — shop tool list &amp; fluid tables">' + svg(GEAR) + "</button>") +
         (embed ? "" : '<button data-act="min" class="hbtn" title="' + (mini ? "Expand" : "Minimize") + '">' + svg(mini ? "M7 7h10v10H7z" : "M6 12h12") + "</button>") +
         '<button data-act="close" title="Close">&#10005;</button></div>' +
       // version stamp — pinned to the very top, directly under the title bar
