@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.18.6-alpha — in progress
+## v0.3.18.6-alpha — 2026-07-08
 
 ### Changed
 - **Minimized SCAN moved left of the gear.** The compact green SCAN in the minimized title bar now sits to
@@ -17,7 +17,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.18.5-alpha — in progress
+## v0.3.18.5-alpha — 2026-07-08
 
 ### Changed
 - **Smaller minimized bar.** When you minimize Hahns, SCAN now sits up in the title bar as compact green
@@ -26,7 +26,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.18.4-alpha — in progress
+## v0.3.18.4-alpha — 2026-07-08
 
 ### Fixed
 - **A/C now hides specs for the wrong engine.** On years where the A/C charge depends on the engine (e.g. a
@@ -37,7 +37,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.18.3-alpha — in progress
+## v0.3.18.3-alpha — 2026-07-08
 
 ### Fixed
 - **2000–2005 A/C rows no longer cut off.** On these older tables the A/C notes (e.g. the 4.0L-engine
@@ -48,7 +48,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.18.2-alpha — in progress
+## v0.3.18.2-alpha — 2026-07-08
 
 ### Fixed
 - **Older vehicles (2000–2010) now pick the right engine instead of showing every option.** The vehicle
@@ -59,7 +59,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.18.1-alpha — in progress
+## v0.3.18.1-alpha — 2026-07-07
 
 ### Fixed
 - **2000–2005 vehicles now actually update, and the "Updating…" status clears.** After the v0.3.18 update,
@@ -70,7 +70,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.3.18-alpha — in progress
+## v0.3.18-alpha — 2026-07-07
 
 ### Added
 - **Fluids & Capacities now works on 2000–2010 vehicles (issue #43).**

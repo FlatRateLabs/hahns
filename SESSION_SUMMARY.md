@@ -5,6 +5,30 @@ permanent project reference.
 
 ---
 
+## Session close (2026-07-08) — v0.3.18 → v0.3.18.6 all LIVE
+
+Full day: **issue #43 (fluids for 2000–2010) is closed** and shipped, plus a run of owner bay-driven
+fixes. Sequence, all merged to `main` (admin squash) and live-confirmed:
+- **v0.3.18** — parser rename (Parser 00-05 / 06-10 / 11-26) + Parser 06-10 (displacement + fuel match,
+  fixed the no-"(qt)" Touareg capacity loss) + Parser 00-05 (new two-column-layout parser).
+- **v0.3.18.1** — fixed stuck "Updating" / legacy years not re-parsing (`needsReparse` keys off
+  `familyForYear(year)`, not the version string that collided).
+- **v0.3.18.2** — `extractVehicle` now keeps the engine **size** (`ATQ - 2771 ccm`); without it the
+  displacement match was blind and showed all engines.
+- **v0.3.18.3** — stitched the wrapped 2000–2005 A/C labels ("Refrigerant, except with 4.0 L").
+- **v0.3.18.4** — A/C rows filtered to the vehicle's engine size (a 2.8L no longer sees the 4.0L spec).
+- **v0.3.18.5 / .6** — minimized bar: SCAN moved into the header as compact green text; .6 put it left of
+  the gear (owner preference).
+
+**Changelog headings dated** (were "in progress"): v0.3.18/.1 = 2026-07-07, .2–.6 = 2026-07-08.
+
+**Open follow-ups:** owner still bay-testing 2000–2010 — 2000–2005 A/C is best-effort (the Eurovan
+2-evaporator PAG-oil "135 + 105 cc = 240" sum is still imperfect; niche van). Grab a diagnostic dump if a
+capacity looks off. Reminder discipline: bump the owning `PARSER_*_VER` when a fluid parser changes (see
+[[fluids-reparse-trigger-gotcha]]).
+
+---
+
 ## 2026-07-06 — v0.3.18.5-alpha: compact minimized bar (SCAN moved into the header)
 
 Owner UI ask: when minimized, move SCAN into the title bar (left of the minimize icon) as plain green
