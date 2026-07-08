@@ -996,7 +996,7 @@
   // on the next load (the other ranges are untouched). See familyForYear below.
   var PARSER_1126_VER = "1.3.4";   // Parser 11-26 — engine-code layout (1.3.4: range capacities, e.g. ID.Buzz 0MJ 0.88-0.93 L)
   var PARSER_0610_VER = "2.0.0";   // Parser 06-10 — same layout, engines keyed by DISPLACEMENT ("2.0L") + nearest-cc match
-  var PARSER_0005_VER = "1.0.0";   // Parser 00-05 — old two-column layout (Component/System | Capacity)
+  var PARSER_0005_VER = "1.1.0";   // Parser 00-05 — old two-column layout (1.1.0: stitch wrapped A/C labels)
   var FLUID_YEAR_MIN = 2000, FLUID_YEAR_MAX = 2026;  // span for "Years installed: N/M"
   var fluidsData = null;      // sync projection: null=unread, false=none, obj={updated,count,years:{Y:{models,file}}}
   var appDB = null;        // open IDBDatabase (null until boot resolves / on failure)
@@ -2004,7 +2004,7 @@
     for (var s = 0; s < secs.length; s++) {
       var start = secs[s].at, end = (s + 1 < secs.length) ? secs[s + 1].at : lines.length;
       var model = { model: secs[s].name, modelCode: secs[s].code, engineOil: [], engineCoolant: [], airConditioning: [], drivetrain: [] };
-      var kind = null, gname = "", drive = null, disps = [], codes = [], fuel = "";
+      var kind = null, gname = "", drive = null, curAc = null, acPrevLabel = "", disps = [], codes = [], fuel = "";
       for (var j = start + 1; j < end; j++) {
         var ln = normHyphens(lines[j]);
         if (!ln.trim() || /Component\/System|^\s*Capacity\s*$/i.test(ln)) continue;
@@ -2015,9 +2015,46 @@
         // Must contain a letter — a bare left-margin page number ("3") is NOT a
         // group (it would otherwise reset the group and swallow the next row).
         if (col >= 0 && col < 24 && /[A-Za-z]/.test(ln)) {
-          gname = ln.trim(); kind = groupKind0005(gname);
+          gname = ln.trim(); kind = groupKind0005(gname); curAc = null; acPrevLabel = "";
           disps = disp0005(gname); codes = engCodes0005(gname); fuel = fuelOf(gname);
           if (kind === "trans") { drive = { component: "Transmission", application: gname, fills: [] }; model.drivetrain.push(drive); }
+          continue;
+        }
+        // A/C is handled from the RAW line: the label ("Refrigerant, except with
+        // 4.0 L") wraps across lines, with the charge and the imperial "(… oz.)"
+        // conversion landing on separate lines, so splitCap can't see it whole.
+        if (kind === "ac") {
+          var chargeM = ln.match(/\d[\d.]*(?:\s*\+\/-\s*[\d.]+)?\s*(?:g|cc|ml)\b/);   // metric charge (grams/cc)
+          if (chargeM) {
+            var lab = ln.slice(0, chargeM.index).replace(/\([^)]*(?:oz|fl|qt)[^)]*\)/gi, " ").replace(/\s+/g, " ").trim();
+            // the fluid-type label sometimes sits on the line ABOVE its charge
+            // ("PAG Oil, 1 Evapora-" then "tor  135 cc"): stitch a hyphenated
+            // carry-over, or adopt the previous label when this line has none.
+            if (acPrevLabel && /-$/.test(acPrevLabel) && /^[a-z]/i.test(lab)) lab = acPrevLabel.replace(/-$/, "") + lab;
+            else if (acPrevLabel && !lab && /refrigerant|pag|oil|evapora/i.test(acPrevLabel)) lab = acPrevLabel;
+            acPrevLabel = "";
+            var isOil = /pag|oil/i.test(lab);
+            curAc = {
+              component: isOil ? "Refrigerant Compressor Oil" : "A/C System Refrigerant",
+              application: lab.replace(/^refrigerant\b[,:]?/i, "").replace(/^pag oil\b[,:]?/i, "").trim(),
+              fills: [{ label: "", value: fixDecimals(tidyRange(chargeM[0].replace(/\s+/g, " ").trim())) }],
+              refrigerant: isOil ? undefined : "R134a"
+            };
+            model.airConditioning.push(curAc);
+          } else {
+            var cont = ln.replace(/\([^)]*(?:oz|fl|qt)[^)]*\)/gi, " ").replace(/\s+/g, " ").trim();
+            if (curAc && /-$/.test(curAc.application) && /^[a-z][a-z\/]*$/i.test(cont)) {
+              // a hyphenated word-wrap ("1 Evapo-" + "rators/LWB" → "1 Evaporators/LWB")
+              curAc.application = curAc.application.replace(/-$/, "") + cont;
+            } else if (curAc && cont && !/refrigerant|pag|oil/i.test(cont) &&
+                /^(with\b|and\b|except\b|or\b|only\b|for\b|w\/|L\b|\d\.\d\s*L\b)/i.test(cont)) {
+              // a wrapped qualifier continuation ("with 4.0 L", "L") → join it onto
+              // the row's application; accept only clear qualifier fragments so a
+              // stray bare number / imperial-only line isn't swallowed.
+              curAc.application = (curAc.application ? curAc.application + " " : "") + cont;
+            }
+            if (cont) acPrevLabel = cont;   // remember for a charge that lands on the next line
+          }
           continue;
         }
         var sc = splitCap0005(ln);
@@ -2028,16 +2065,6 @@
           else if (/coolant/i.test(label)) model.engineCoolant.push({ application: gname + (/\bexchang|heater/i.test(label) ? " · " + label : ""), fills: [{ label: "", value: value }] });
         } else if (kind === "trans" && drive) {
           drive.fills.push({ label: label.replace(/^-$/, "").trim(), value: value });
-        } else if (kind === "ac") {
-          if (!/\b(?:g|cc|ml)\b/.test(value)) continue;     // A/C charges are grams/cc, never litres — skip "4.0 L" qualifier fragments
-          var isOil = /pag|oil/i.test(label);
-          var rt = /R\s?1234yf|R\s?134a/i.exec(gname + " " + label);
-          model.airConditioning.push({
-            component: isOil ? "Refrigerant Compressor Oil" : "A/C System Refrigerant",
-            application: label.replace(/^refrigerant\b[,:]?/i, "").replace(/^pag oil\b[,:]?/i, "").trim(),
-            fills: [{ label: "", value: value }],
-            refrigerant: isOil ? undefined : (rt ? rt[0].replace(/\s+/g, "") : "R134a")
-          });
         }
       }
       models.push(model);

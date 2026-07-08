@@ -9,6 +9,17 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.18.3-alpha — in progress
+
+### Fixed
+- **2000–2005 A/C rows no longer cut off.** On these older tables the A/C notes (e.g. the 4.0L-engine
+  exception on the Passat) wrap across several lines, so a row that should read "Refrigerant, except with
+  4.0 L" was showing only "except." Hahns now stitches the wrapped text back together — the Passat shows
+  "except with 4.0 L" / "with 4.0 L" for both refrigerant and compressor oil, and the Eurovan reads
+  "1 Evaporator" / "2 Evaporators" instead of a broken fragment.
+
+---
+
 ## v0.3.18.2-alpha — in progress
 
 ### Fixed

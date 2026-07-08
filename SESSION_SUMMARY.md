@@ -5,6 +5,30 @@ permanent project reference.
 
 ---
 
+## 2026-07-06 — v0.3.18.3-alpha: 2000–2005 A/C label wrapping fixed
+
+**Owner: the 2000–2005 A/C rows are cut off** — the Passat 4.0L-engine exception showed only "except"
+instead of "Refrigerant, except with 4.0 L". Root cause: in the old two-column layout the A/C label wraps
+across lines and the charge + the imperial "(… oz.)" land on separate lines, so `parseFluidModels0005`
+(which read one line via `splitCap0005`) only caught the first fragment.
+
+**Fix (`parseFluidModels0005` A/C branch, reworked to read the RAW line):** find the metric charge
+(`g`/`cc`/`ml`) on the line; everything before it (imperial parens stripped) is the label. Wrapped
+continuations are stitched onto the current row three ways: a qualifier fragment ("with 4.0 L", "L"), a
+hyphenated word-wrap ("1 Evapo-" + "rators/LWB" → "1 Evaporators/LWB"), and a label that landed on the line
+ABOVE its charge (`acPrevLabel`, e.g. "PAG Oil, 1 Evapora-" then "tor 135 cc"). Guards keep it from grabbing
+a stray page-number ("3") or bare number — the adopt-previous-label path requires an A/C keyword
+(`refrigerant|pag|oil|evapora`).
+
+**Verified against all six real PDFs:** Passat → "· except with 4.0 L / · with 4.0 L" for both refrigerant
+and compressor oil (all years); Eurovan → "1 Evaporator / 2 Evaporators / 2 Evaporators/LWB / Compressor
+Oil · 1 Evaporator"; **zero stray/broken A/C labels across 2000–2005**; oil/coolant/drivetrain unchanged
+(0 flags). Isolated to the p0005 parser — 2006+ A/C (parseCAC) untouched.
+
+**Deploy:** v0.3.18.3 → `main` (admin). Re-drag needed; saved 2000–2005 PDFs auto-reparse (p0005 family).
+
+---
+
 ## 2026-07-06 — v0.3.18.2-alpha: vehicle reader now keeps engine SIZE (displacement match was blind)
 
 **Owner bay report: 2000–2010 fluids loaded but showed ALL engines, not the right one — "the vehicle info
