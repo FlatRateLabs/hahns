@@ -2738,6 +2738,14 @@
     v.year   = vehField(lines, VEH_LABELS.year, /\b((?:19|20)\d{2})\b/);
     v.model  = vehField(lines, VEH_LABELS.model, null);
     v.engine = vehField(lines, VEH_LABELS.engine, ENG_VAL);
+    // ELSA's Engine Code cell reads "ATQ - 2771 ccm, 147 kW, …" but ENG_VAL keeps
+    // only the bare code. Append the engine SIZE (displacement) so the fluids
+    // lookup can match the 2000–2010 tables by litres — and so the tech sees it.
+    // Code stays first, so engine-code matching + the vehicle bar are unchanged.
+    if (v.engine) {
+      var ccm = vehField(lines, VEH_LABELS.engine, null).match(/(\d{3,5})\s*ccm/i);
+      if (ccm) v.engine += " - " + ccm[1] + " ccm";
+    }
     v.trans  = vehField(lines, VEH_LABELS.trans, null);
     // EV summaries have no single Engine Code / Trans Type — collect the Front/Rear
     // motor + transaxle codes instead (joined "FRONT / REAR" for display + lookup).

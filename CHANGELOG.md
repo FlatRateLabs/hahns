@@ -9,6 +9,17 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.3.18.2-alpha — in progress
+
+### Fixed
+- **Older vehicles (2000–2010) now pick the right engine instead of showing every option.** The vehicle
+  reader was only keeping the engine **code** (e.g. "ATQ") and dropping the engine **size** ("2771 ccm")
+  next to it — and the older fluid tables are matched by size. Hahns now keeps the size, so it lands on the
+  correct engine oil and coolant automatically (e.g. a 2003 Passat V6 → 6.2 L oil / 9.0 L coolant, a 2006
+  GTI 2.0T → 4.6 L). The engine size now also shows in the green vehicle bar.
+
+---
+
 ## v0.3.18.1-alpha — in progress
 
 ### Fixed

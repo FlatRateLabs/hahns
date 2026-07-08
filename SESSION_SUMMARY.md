@@ -5,6 +5,33 @@ permanent project reference.
 
 ---
 
+## 2026-07-06 — v0.3.18.2-alpha: vehicle reader now keeps engine SIZE (displacement match was blind)
+
+**Owner bay report: 2000–2010 fluids loaded but showed ALL engines, not the right one — "the vehicle info
+is not populating the engine size."** Exactly right. Root cause in `extractVehicle`: `ENG_VAL`
+(`/^([A-Za-z]{2,5}\d{0,2}[A-Za-z]?)\b/`) captured only the bare engine CODE from ELSA's "Engine Code" cell
+("ATQ - 2771 ccm, 142 kW, Motronic SRE" → just "ATQ"), dropping the `#### ccm`. So `fluidVeh` had no
+displacement → `veh.liters = 0` → the 2000–2010 displacement match couldn't fire → fell back to "all
+engines shown." My earlier Node tests had FED the full "ATQ - 2771 ccm" string, so they passed while the
+real app (bare "ATQ") failed — the gap that let v0.3.18 through.
+
+**Fix:** after grabbing the code, append the engine size from the same cell —
+`if (v.engine) { var ccm = vehField(lines, VEH_LABELS.engine, null).match(/(\d{3,5})\s*ccm/i); if (ccm)
+v.engine += " - " + ccm[1] + " ccm"; }`. Code stays first (engine-code matching + `veh.engineCode` +
+display unchanged); the ccm rides along for `veh.liters`. Also shows the size in the green vehicle bar,
+which the owner wanted.
+
+**Verified via the REAL functions on the actual dump segments** (`extractVehicle` → `fluidVeh` →
+`pickFluidModel` → card): 2003 Passat V6 "ATQ - 2771 ccm" → liters 2.771 → oil **6.2 L** / coolant **9.0 L**
+(single match); 2006 GTI "BPY - 1984 ccm" → 1.984 → **4.6 L / 7.6 L**. **Modern regression clean:**
+"DKRA - 1998 ccm" → `engineCode` "DKRA" still code-matches its row (5.7 L), not both.
+
+**Lesson:** test the extractor with the RAW field value the app actually captures, not a hand-built ideal
+string. Deploy: v0.3.18.2 → `main` (admin). Re-drag needed; the vehicle must be re-scanned (Vehicle Summary)
+so the engine field re-populates with the size.
+
+---
+
 ## 2026-07-06 — v0.3.18.1-alpha: fix stuck "Updating" / legacy years not re-parsing
 
 **Owner bay report right after v0.3.18 shipped: 2006 GTI and 2003 Passat both still showed nothing, and
