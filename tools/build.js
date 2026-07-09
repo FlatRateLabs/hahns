@@ -15,7 +15,14 @@ const root = path.join(__dirname, "..");
 // ---- version ----
 // Bump this when you ship. While testing, keep the "-alpha" tag.
 //   tiny fix -> 0.1.1   new feature -> 0.2.0   stable release -> 1.0.0
-const VERSION = "0.3.18.6-alpha";
+const VERSION = "0.4.0-alpha";
+
+// ---- self-updating loader (POC) ----
+// Where the hosted app.js / update.html live. The loader trusts ONLY messages
+// from PAGES_ORIGIN. Set to the fork for testing; flip to the production Pages
+// origin (https://flatratelabs.github.io) before shipping to main.
+const PAGES_BASE = "https://flatratelabs.github.io/hahns";
+const PAGES_ORIGIN = "https://flatratelabs.github.io";
 
 // shown in the panel + setup page: "v0.1.0-alpha · 2026-06-20 21:53 UTC"
 const date = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
@@ -99,11 +106,19 @@ const payload = "(function(){" + lighten(helper) +
 
 const bookmarklet = "javascript:" + encodeURIComponent(payload);
 
+// the tiny self-updating loader the tech drags (points at PAGES_BASE/ORIGIN).
+// This is what the setup page now hands out via __LOADER__.
+const loaderSrc = fs.readFileSync(path.join(root, "src/loader.js"), "utf8")
+  .replace(/__PAGES_BASE__/g, PAGES_BASE)
+  .replace(/__PAGES_ORIGIN__/g, PAGES_ORIGIN);
+const loader = "javascript:" + encodeURIComponent(lighten(loaderSrc));
+
 const distDir = path.join(root, "dist");
 fs.mkdirSync(distDir, { recursive: true });
 fs.writeFileSync(path.join(distDir, "bookmarklet.txt"), bookmarklet);
 
 const html = template
+  .replace(/__LOADER__/g, loader.replace(/"/g, "&quot;"))
   .replace("__BOOKMARKLET__", bookmarklet.replace(/"/g, "&quot;"))
   .replace("__HELPER__", helper);
 
@@ -123,6 +138,20 @@ fs.writeFileSync(path.join(docsDir, "bookmarklet.txt"), bookmarklet);
 fs.writeFileSync(path.join(docsDir, "version.json"), versionJson);
 // stop Pages' Jekyll from touching our files
 fs.writeFileSync(path.join(docsDir, ".nojekyll"), "");
+
+// ---- self-updating loader artifacts ----
+// app.js = the exact same code the classic bookmarklet runs, but hosted so the
+// update window can hand it to ELSA via postMessage + inline-<script> injection.
+const appJs = payload;
+// update.html = the popup that checks version.json, then fetches app.js on demand.
+const updateHtml = fs.readFileSync(path.join(root, "src/update.html"), "utf8");
+// (loader.txt written below is the same `loader` string handed out on the setup page)
+
+[distDir, docsDir].forEach(function (d) {
+  fs.writeFileSync(path.join(d, "app.js"), appJs);
+  fs.writeFileSync(path.join(d, "update.html"), updateHtml);
+  fs.writeFileSync(path.join(d, "loader.txt"), loader);
+});
 
 // served mascot assets (Hahns full body for the page hero + the favicon/apple icon).
 // Copied verbatim into both docs/ (Pages) and dist/ (local preview).

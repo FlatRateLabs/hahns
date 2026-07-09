@@ -56,19 +56,20 @@
   <div class="card">
     <h2><span class="n">1</span>Add Hahns to your bookmarks bar</h2>
     <p>Make sure your bookmarks bar is showing (<code>Ctrl</code>+<code>Shift</code>+<code>B</code> in Chrome/Edge), then drag this button up onto it:</p>
-    <p class="warn" style="margin-top:0"><b>Already have H.A.H.N.S and updating?</b> Hard-refresh this page first — press <b>Cmd&nbsp;+&nbsp;Shift&nbsp;+&nbsp;R</b> (Mac) or <b>Ctrl&nbsp;+&nbsp;Shift&nbsp;+&nbsp;R</b> (Windows) — then delete your old bookmark and drag the new one below. Skip this and you may just re-save the old version.</p>
-    <a class="drag" href="__BOOKMARKLET__" onclick="return false;">
+    <p class="priv" style="margin-top:0">&#10024; <b>This version keeps itself up to date.</b> Install it once and Hahns quietly checks for a newer version about once a day and <b>asks before updating</b> — so you normally never drag this again.</p>
+    <p class="warn" style="margin-top:0"><b>Already have the old H.A.H.N.S bookmark?</b> Delete it and drag this new one on once — this is the one-time switch to the self-updating version. (Hard-refresh this page first with <b>Cmd/Ctrl&nbsp;+&nbsp;Shift&nbsp;+&nbsp;R</b> so you grab the latest.)</p>
+    <a class="drag" href="__LOADER__" onclick="return false;">
       <img src="favicon.png" alt="">
       H.A.H.N.S
     </a>
-    <p class="hint">Dragging it = saving a bookmark. Nothing installs on your computer.</p>
+    <p class="hint">Dragging it = saving a bookmark. Nothing installs on your computer. The first click needs internet to set up; after that it works offline.</p>
 
     <details>
       <summary>Can't drag it? Add it by hand instead</summary>
       <ol>
         <li>Right-click the bookmarks bar &rarr; <b>Add page…</b></li>
         <li>Name it <code>H.A.H.N.S</code></li>
-        <li>In the URL/Address box, paste the code from the file <code>bookmarklet.txt</code> (in this folder), then Save.</li>
+        <li>In the URL/Address box, paste the code from the file <code>loader.txt</code> (in this folder), then Save.</li>
       </ol>
     </details>
   </div>
@@ -76,7 +77,7 @@
   <div style="background:#eef4fb;border:1px solid #cfe0f0;border-radius:12px;padding:14px 18px;margin:16px 0">
     <div style="font-size:13px;font-weight:600;color:#185fa5;text-transform:uppercase;letter-spacing:.05em">Current version</div>
     <div style="font-size:22px;font-weight:600;color:#001e50;margin-top:3px">__BUILD__</div>
-    <div style="font-size:13px;color:#5a6b8c;margin-top:8px">If the version shown in your H.A.H.N.S panel doesn't match this, re-drag the bookmark below to update.</div>
+    <div style="font-size:13px;color:#5a6b8c;margin-top:8px">Hahns updates itself — when a newer version is out it asks you right in the panel. You only ever re-drag the bookmark if this page announces the installer itself changed.</div>
     <details class="cl-details">
       <summary>What's new — version history</summary>
       <p class="hint" style="margin:8px 0 0">Every change to H.A.H.N.S, newest first. The version at the top matches the stamp above.</p>
@@ -85,7 +86,7 @@
   </div>
 
   <div class="priv">
-    <b>Your data stays put.</b> This tool runs entirely inside your own browser. It only reads text that ELSA has already shown you, it never saves a file, and it never sends anything over the internet. Close the panel and it's gone.
+    <b>Your data stays put.</b> This tool runs entirely inside your own browser. It only reads text that ELSA has already shown you, it never saves a file, and it <b>never sends your job or repair data anywhere</b>. Close the panel and it's gone. <span style="color:#3a6b50">(About once a day it checks this site for a Hahns update — that only pulls Hahns's own code in; nothing about your work goes out.)</span>
   </div>
 
   <div class="card">

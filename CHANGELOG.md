@@ -9,6 +9,26 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.4.0-alpha — in progress
+
+### Added
+- **H.A.H.N.S now updates itself.** The bookmark you drag is a small "loader" that keeps a copy of Hahns on
+  your computer and runs it instantly (even offline). About once a day it quietly checks this site for a newer
+  version, and **if there's an update it asks you first** — a little window shows your installed version vs the
+  latest, with **Update now** / **Not now**. Say yes and it updates on the spot; say no and it keeps your
+  current version. The upshot: after this one-time switch, you normally **never re-drag the bookmark again** —
+  new fluids, tools, and fixes just show up.
+- Brand-new installs are silent (it just sets Hahns up); only *updates* ask you.
+
+### Changed
+- **The setup page now hands out the new self-updating bookmark.** Existing users: delete your old H.A.H.N.S
+  bookmark and drag this new one on once — that's the switch. First click needs internet to set up; after that
+  it works offline.
+- Your repair data still never leaves your browser. The only new network use is the once-a-day update check,
+  which pulls **Hahns's own code** in — nothing about your job goes out.
+
+---
+
 ## v0.3.18.6-alpha — 2026-07-08
 
 ### Changed
