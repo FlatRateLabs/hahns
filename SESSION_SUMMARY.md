@@ -5,6 +5,62 @@ permanent project reference.
 
 ---
 
+## Session close (2026-07-09) — v0.4.0-alpha self-updating loader LIVE
+
+**The big one: the dragged bookmark is no longer a frozen snapshot.** v0.4.0 ships a tiny
+(~3 KB) **loader** as the drag-to-install bookmarklet; the full app is delivered/updated over a
+GitHub Pages popup channel that works inside ELSA's CSP. Built + owner-verified on real ELSA,
+merged to `main` (PR #92, `840a330` → merge `7a0f58d`), and **live-confirmed** — `version.json`
+= `v0.4.0-alpha · 2026-07-09 04:28 UTC` on flatratelabs.github.io. Owner did the merge himself
+after verifying it works.
+
+### How the self-update channel beats ELSA's CSP (the key insight)
+ELSA's CSP blocks every **in-page** external-code path (`script-src`/`connect-src`/`frame-src`
+all `'self'`), which is why the old v0.2.x in-page `fetch` phone-home was impossible. The open
+channel, governed by none of those: `window.open()` a GitHub Pages popup (a new browsing
+context, not a subresource) → the popup fetches freely on **its own** origin → `postMessage`s the
+code back to `window.opener` (ELSA sets no COOP) → ELSA runs it as a **dynamically-created inline
+`<script>`** (`.textContent` + append), allowed by `script-src 'unsafe-inline'`. **Not**
+`eval`/`new Function` (need `'unsafe-eval'`, which is absent). See
+[[self-update-channel-works-on-elsa]].
+
+### What shipped
+- **`src/loader.js`** — the ~3 KB bookmarklet the tech drags. On click: injects the
+  localStorage-cached app (`hahns_code`) instantly (offline-safe); at most once/day
+  (`hahns_upd_ts` throttle) opens `update.html` passing its cached version (`hahns_ver`) via
+  `?v=`; on the origin-pinned reply caches + injects new code, or records up-to-date/dismissed.
+  Build fills `__PAGES_BASE__`/`__PAGES_ORIGIN__`.
+- **`src/update.html`** — the popup page (built to `docs/update.html`), on GitHub Pages' own
+  origin so it CAN fetch. Fetches the tiny `version.json` first; **first install = silent
+  deliver; already-current = brief flash + close; newer = PROMPTS** (installed vs latest +
+  Update now / Not now), fetching `app.js` only on accept, then `postMessage`s it back and
+  self-closes. Owner chose the prompt over silent auto-update.
+- **`tools/build.js`** — now emits the loader trio **`app.js`** (hosted payload = the classic
+  bookmarklet's inner code), **`update.html`**, **`loader.txt`** into `dist/` + `docs/`; holds
+  `PAGES_BASE`/`PAGES_ORIGIN`.
+- **`src/template.html`** — the drag-to-install button now hands out **`__LOADER__`** (the
+  classic self-contained `__BOOKMARKLET__` is still built but no longer offered on the page).
+
+### Privacy posture — deliberate, documented reversal (NOT a regression)
+The job promise holds: nothing about the repair job ever leaves; the popup pulls **only Hahns's
+own code** in, and the request originates from the popup's GitHub origin, not the ELSA document.
+But it IS a documented reversal of the old "zero network, no exceptions" *architectural* stance —
+the GitHub account is now a trust anchor for code that runs in ELSA's authenticated session. The
+v0.3.0 network-free Wednesday reminder remains as a fallback nudge. **Do NOT re-add an in-page
+`fetch`/XHR/`<img>` phone-home from the ELSA document — that path is still genuinely blocked.**
+
+### Re-drag: the last one (for app updates)
+Existing techs delete the old bookmark and drag the loader **once** — that's the switch. After
+this, **app changes (fluids/tools/fixes) no longer need a re-drag.** Only the loader itself
+changing (hosting URL / update protocol / storage keys / throttle) would need another.
+
+### This session (docs wrap-up)
+- Synced local `main` from **FlatRateLabs** (`origin`; the fork `senditbro/hahns` is `fork`, left
+  alone). Dated the CHANGELOG `v0.4.0-alpha` heading (was "in progress") → 2026-07-09 and added
+  this entry. Docs-only commit.
+
+---
+
 ## Session close (2026-07-08) — v0.3.18 → v0.3.18.6 all LIVE
 
 Full day: **issue #43 (fluids for 2000–2010) is closed** and shipped, plus a run of owner bay-driven

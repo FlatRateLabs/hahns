@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.0-alpha — in progress
+## v0.4.0-alpha — 2026-07-09
 
 ### Added
 - **H.A.H.N.S now updates itself.** The bookmark you drag is a small "loader" that keeps a copy of Hahns on
