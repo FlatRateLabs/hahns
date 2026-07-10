@@ -9,6 +9,9 @@
  *      exists it ASKS the tech (Update now / Not now) and only hands the code back
  *      if they accept; we cache it and apply it right away.
  *   3. First run on a machine (no cache): the window installs the app silently.
+ *   4. Manual check: the app's Settings "Check for updates" button calls
+ *      window.hahnsCheckForUpdate(), which forces the same window open NOW,
+ *      ignoring the once-a-day throttle.
  *
  * The app code is delivered via popup + postMessage + inline-<script> injection
  * because ELSA's CSP blocks fetch()/external <script>/iframe to our domain but
@@ -32,27 +35,19 @@
     } catch (e) { /* ignore */ }
   }
 
-  var code = null, ver = "";
-  try { code = localStorage.getItem(LS_CODE); } catch (e) { }
-  try { ver = localStorage.getItem(LS_VER) || ""; } catch (e) { }
-
-  // 1) run the cached app right now (instant, works with no network)
-  if (code) inject(code);
-
-  // 2) throttle the background update check to once a day (unless we have no app yet)
-  var last = 0;
-  try { last = +localStorage.getItem(LS_TS) || 0; } catch (e) { }
-  if (code && (Date.now() - last) < DAY) return;
-
-  // 3) open the update window; it will postMessage the newest code back
-  try {
+  // Listen for the update window's reply. Registered at most once per page so a
+  // repeat bookmark click (or a manual check) never stacks duplicate handlers.
+  // Only messages from our Pages origin are trusted.
+  function listen() {
+    if (window.__hahnsListening) return;
+    window.__hahnsListening = true;
     window.addEventListener("message", function (e) {
       if (e.origin !== ORIGIN) return;                       // only trust our Pages origin
       var d = e.data;
       if (!d || d.source !== "hahns-updater") return;
       if (d.upToDate || d.dismissed) {                       // current, or the tech chose "Not now"
         try { localStorage.setItem(LS_TS, String(Date.now())); } catch (_) { }
-        return;                                              // don't check again until the next day
+        return;                                              // don't auto-check again until the next day
       }
       if (typeof d.code !== "string") return;
       try {
@@ -62,13 +57,50 @@
       } catch (_) { }
       inject(d.code);   // install (first run) or apply an accepted update now; run() replaces any open panel
     }, false);
+  }
 
-    // pass the version we already have so the window can skip the big download when current
-    var w = window.open(
-      BASE + "/update.html?v=" + encodeURIComponent(ver) + "&cb=" + Date.now(),
-      "hahns_upd", "popup=1,width=400,height=280");
-    if (!w && !code) {
-      alert("Hahns: allow pop-ups for this site once so it can install, then click the bookmark again.");
-    }
-  } catch (e) { /* offline / blocked: the cached app (if any) already ran */ }
+  // Open the GitHub Pages update window; it postMessages the newest code back.
+  // force=true is a manual check (Settings button): it bypasses the once-a-day
+  // throttle and tells the window to confirm even when already up to date.
+  function openUpdate(force) {
+    var ver = "";
+    try { ver = localStorage.getItem(LS_VER) || ""; } catch (e) { }
+    try {
+      listen();
+      var w = window.open(
+        BASE + "/update.html?v=" + encodeURIComponent(ver) +
+          (force ? "&force=1" : "") + "&cb=" + Date.now(),
+        "hahns_upd", "popup=1,width=400,height=280");
+      if (!w) {
+        var haveCode = false;
+        try { haveCode = !!localStorage.getItem(LS_CODE); } catch (_) { }
+        // only nag about pop-ups when it actually matters: a first install, or a
+        // deliberate manual check. A blocked *background* check stays silent.
+        if (force || !haveCode) {
+          alert("Hahns: allow pop-ups for this site once so it can check for updates, then try again.");
+        }
+        return false;
+      }
+      return true;
+    } catch (e) { return false; }
+  }
+
+  // Manual "check now" hook for the app's Settings button. Present only when the
+  // app was delivered by this loader; the classic self-contained bookmarklet has
+  // no loader, so the app falls back to opening the setup page instead.
+  try { window.hahnsCheckForUpdate = function () { return openUpdate(true); }; } catch (e) { }
+
+  var code = null;
+  try { code = localStorage.getItem(LS_CODE); } catch (e) { }
+
+  // 1) run the cached app right now (instant, works with no network)
+  if (code) inject(code);
+
+  // 2) throttle the AUTOMATIC update check to once a day (unless we have no app yet)
+  var last = 0;
+  try { last = +localStorage.getItem(LS_TS) || 0; } catch (e) { }
+  if (code && (Date.now() - last) < DAY) return;
+
+  // 3) automatic background check
+  openUpdate(false);
 })();

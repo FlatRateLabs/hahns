@@ -50,8 +50,12 @@
 
   if (!opener) { msg.textContent = "Opened directly — nothing to do."; setTimeout(done, 1200); return; }
 
-  var have = "";
-  try { have = new URLSearchParams(location.search).get("v") || ""; } catch (e) { }
+  var have = "", force = false;
+  try {
+    var qs = new URLSearchParams(location.search);
+    have = qs.get("v") || "";
+    force = qs.get("force") === "1";   // manual check from the app's Settings button
+  } catch (e) { }
   var cb = "?cb=" + Date.now();
 
   // download the full app and hand it to the loader, then close
@@ -77,7 +81,20 @@
       if (have && latest && latest === have) {
         post({ source: "hahns-updater", upToDate: true, version: latest });
         msg.textContent = "H.A.H.N.S is up to date ✓";
-        setTimeout(done, 600);
+        if (force) {
+          // manual check: the tech clicked "Check for updates", so actually SHOW
+          // the result (installed version + a Close button) instead of flashing shut
+          cur.textContent = "v" + have;
+          latestEl.textContent = "v" + latest;
+          vers.style.display = "block";
+          var y = document.getElementById("yes"), n = document.getElementById("no");
+          y.style.display = "none";
+          n.textContent = "Close";
+          n.onclick = done;
+          btns.style.display = "flex";
+        } else {
+          setTimeout(done, 600);
+        }
         return;
       }
 

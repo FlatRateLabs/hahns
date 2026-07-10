@@ -7,3 +7,8 @@ node_modules/
 # stay off the repo too.
 tools/fluids-review/
 *.pdf
+
+# Service Xpress dev scratch (parser prototype)
+sx-parser.js
+sx-review.txt
+sx-review.html

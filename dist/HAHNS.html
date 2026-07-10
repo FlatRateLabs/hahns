@@ -58,7 +58,7 @@
     <p>Make sure your bookmarks bar is showing (<code>Ctrl</code>+<code>Shift</code>+<code>B</code> in Chrome/Edge), then drag this button up onto it:</p>
     <p class="priv" style="margin-top:0">&#10024; <b>This version keeps itself up to date.</b> Install it once and Hahns quietly checks for a newer version about once a day and <b>asks before updating</b> — so you normally never drag this again.</p>
     <p class="warn" style="margin-top:0"><b>Already have the old H.A.H.N.S bookmark?</b> Delete it and drag this new one on once — this is the one-time switch to the self-updating version. (Hard-refresh this page first with <b>Cmd/Ctrl&nbsp;+&nbsp;Shift&nbsp;+&nbsp;R</b> so you grab the latest.)</p>
-    <a class="drag" href="javascript:(function%20()%20%7B%0Avar%20BASE%20%3D%20%22https%3A%2F%2Fflatratelabs.github.io%2Fhahns%22%3B%20%20%20%20%20%20%20%20%2F%2F%20e.g.%20https%3A%2F%2Fflatratelabs.github.io%2Fhahns%0Avar%20ORIGIN%20%3D%20%22https%3A%2F%2Fflatratelabs.github.io%22%3B%20%20%20%20%2F%2F%20e.g.%20https%3A%2F%2Fflatratelabs.github.io%20%20(trusted%20sender)%0Avar%20DAY%20%3D%2086400000%3B%0Avar%20LS_CODE%20%3D%20%22hahns_code%22%2C%20LS_VER%20%3D%20%22hahns_ver%22%2C%20LS_TS%20%3D%20%22hahns_upd_ts%22%3B%0Afunction%20inject(src)%20%7B%0Atry%20%7B%0Avar%20s%20%3D%20document.createElement(%22script%22)%3B%0As.textContent%20%3D%20src%3B%0A(document.head%20%7C%7C%20document.documentElement).appendChild(s)%3B%0As.remove()%3B%0A%7D%20catch%20(e)%20%7B%20%20%7D%0A%7D%0Avar%20code%20%3D%20null%2C%20ver%20%3D%20%22%22%3B%0Atry%20%7B%20code%20%3D%20localStorage.getItem(LS_CODE)%3B%20%7D%20catch%20(e)%20%7B%20%7D%0Atry%20%7B%20ver%20%3D%20localStorage.getItem(LS_VER)%20%7C%7C%20%22%22%3B%20%7D%20catch%20(e)%20%7B%20%7D%0A%2F%2F%201)%20run%20the%20cached%20app%20right%20now%20(instant%2C%20works%20with%20no%20network)%0Aif%20(code)%20inject(code)%3B%0A%2F%2F%202)%20throttle%20the%20background%20update%20check%20to%20once%20a%20day%20(unless%20we%20have%20no%20app%20yet)%0Avar%20last%20%3D%200%3B%0Atry%20%7B%20last%20%3D%20%2BlocalStorage.getItem(LS_TS)%20%7C%7C%200%3B%20%7D%20catch%20(e)%20%7B%20%7D%0Aif%20(code%20%26%26%20(Date.now()%20-%20last)%20%3C%20DAY)%20return%3B%0A%2F%2F%203)%20open%20the%20update%20window%3B%20it%20will%20postMessage%20the%20newest%20code%20back%0Atry%20%7B%0Awindow.addEventListener(%22message%22%2C%20function%20(e)%20%7B%0Aif%20(e.origin%20!%3D%3D%20ORIGIN)%20return%3B%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%2F%2F%20only%20trust%20our%20Pages%20origin%0Avar%20d%20%3D%20e.data%3B%0Aif%20(!d%20%7C%7C%20d.source%20!%3D%3D%20%22hahns-updater%22)%20return%3B%0Aif%20(d.upToDate%20%7C%7C%20d.dismissed)%20%7B%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%2F%2F%20current%2C%20or%20the%20tech%20chose%20%22Not%20now%22%0Atry%20%7B%20localStorage.setItem(LS_TS%2C%20String(Date.now()))%3B%20%7D%20catch%20(_)%20%7B%20%7D%0Areturn%3B%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%2F%2F%20don't%20check%20again%20until%20the%20next%20day%0A%7D%0Aif%20(typeof%20d.code%20!%3D%3D%20%22string%22)%20return%3B%0Atry%20%7B%0AlocalStorage.setItem(LS_CODE%2C%20d.code)%3B%0AlocalStorage.setItem(LS_VER%2C%20d.version%20%7C%7C%20%22%22)%3B%0AlocalStorage.setItem(LS_TS%2C%20String(Date.now()))%3B%0A%7D%20catch%20(_)%20%7B%20%7D%0Ainject(d.code)%3B%20%20%20%2F%2F%20install%20(first%20run)%20or%20apply%20an%20accepted%20update%20now%3B%20run()%20replaces%20any%20open%20panel%0A%7D%2C%20false)%3B%0A%2F%2F%20pass%20the%20version%20we%20already%20have%20so%20the%20window%20can%20skip%20the%20big%20download%20when%20current%0Avar%20w%20%3D%20window.open(%0ABASE%20%2B%20%22%2Fupdate.html%3Fv%3D%22%20%2B%20encodeURIComponent(ver)%20%2B%20%22%26cb%3D%22%20%2B%20Date.now()%2C%0A%22hahns_upd%22%2C%20%22popup%3D1%2Cwidth%3D400%2Cheight%3D280%22)%3B%0Aif%20(!w%20%26%26%20!code)%20%7B%0Aalert(%22Hahns%3A%20allow%20pop-ups%20for%20this%20site%20once%20so%20it%20can%20install%2C%20then%20click%20the%20bookmark%20again.%22)%3B%0A%7D%0A%7D%20catch%20(e)%20%7B%20%20%7D%0A%7D)()%3B" onclick="return false;">
+    <a class="drag" href="javascript:(function%20()%20%7B%0Avar%20BASE%20%3D%20%22https%3A%2F%2Fflatratelabs.github.io%2Fhahns%22%3B%20%20%20%20%20%20%20%20%2F%2F%20e.g.%20https%3A%2F%2Fflatratelabs.github.io%2Fhahns%0Avar%20ORIGIN%20%3D%20%22https%3A%2F%2Fflatratelabs.github.io%22%3B%20%20%20%20%2F%2F%20e.g.%20https%3A%2F%2Fflatratelabs.github.io%20%20(trusted%20sender)%0Avar%20DAY%20%3D%2086400000%3B%0Avar%20LS_CODE%20%3D%20%22hahns_code%22%2C%20LS_VER%20%3D%20%22hahns_ver%22%2C%20LS_TS%20%3D%20%22hahns_upd_ts%22%3B%0Afunction%20inject(src)%20%7B%0Atry%20%7B%0Avar%20s%20%3D%20document.createElement(%22script%22)%3B%0As.textContent%20%3D%20src%3B%0A(document.head%20%7C%7C%20document.documentElement).appendChild(s)%3B%0As.remove()%3B%0A%7D%20catch%20(e)%20%7B%20%20%7D%0A%7D%0A%2F%2F%20Listen%20for%20the%20update%20window's%20reply.%20Registered%20at%20most%20once%20per%20page%20so%20a%0A%2F%2F%20repeat%20bookmark%20click%20(or%20a%20manual%20check)%20never%20stacks%20duplicate%20handlers.%0A%2F%2F%20Only%20messages%20from%20our%20Pages%20origin%20are%20trusted.%0Afunction%20listen()%20%7B%0Aif%20(window.__hahnsListening)%20return%3B%0Awindow.__hahnsListening%20%3D%20true%3B%0Awindow.addEventListener(%22message%22%2C%20function%20(e)%20%7B%0Aif%20(e.origin%20!%3D%3D%20ORIGIN)%20return%3B%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%2F%2F%20only%20trust%20our%20Pages%20origin%0Avar%20d%20%3D%20e.data%3B%0Aif%20(!d%20%7C%7C%20d.source%20!%3D%3D%20%22hahns-updater%22)%20return%3B%0Aif%20(d.upToDate%20%7C%7C%20d.dismissed)%20%7B%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%2F%2F%20current%2C%20or%20the%20tech%20chose%20%22Not%20now%22%0Atry%20%7B%20localStorage.setItem(LS_TS%2C%20String(Date.now()))%3B%20%7D%20catch%20(_)%20%7B%20%7D%0Areturn%3B%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%2F%2F%20don't%20auto-check%20again%20until%20the%20next%20day%0A%7D%0Aif%20(typeof%20d.code%20!%3D%3D%20%22string%22)%20return%3B%0Atry%20%7B%0AlocalStorage.setItem(LS_CODE%2C%20d.code)%3B%0AlocalStorage.setItem(LS_VER%2C%20d.version%20%7C%7C%20%22%22)%3B%0AlocalStorage.setItem(LS_TS%2C%20String(Date.now()))%3B%0A%7D%20catch%20(_)%20%7B%20%7D%0Ainject(d.code)%3B%20%20%20%2F%2F%20install%20(first%20run)%20or%20apply%20an%20accepted%20update%20now%3B%20run()%20replaces%20any%20open%20panel%0A%7D%2C%20false)%3B%0A%7D%0A%2F%2F%20Open%20the%20GitHub%20Pages%20update%20window%3B%20it%20postMessages%20the%20newest%20code%20back.%0A%2F%2F%20force%3Dtrue%20is%20a%20manual%20check%20(Settings%20button)%3A%20it%20bypasses%20the%20once-a-day%0A%2F%2F%20throttle%20and%20tells%20the%20window%20to%20confirm%20even%20when%20already%20up%20to%20date.%0Afunction%20openUpdate(force)%20%7B%0Avar%20ver%20%3D%20%22%22%3B%0Atry%20%7B%20ver%20%3D%20localStorage.getItem(LS_VER)%20%7C%7C%20%22%22%3B%20%7D%20catch%20(e)%20%7B%20%7D%0Atry%20%7B%0Alisten()%3B%0Avar%20w%20%3D%20window.open(%0ABASE%20%2B%20%22%2Fupdate.html%3Fv%3D%22%20%2B%20encodeURIComponent(ver)%20%2B%0A(force%20%3F%20%22%26force%3D1%22%20%3A%20%22%22)%20%2B%20%22%26cb%3D%22%20%2B%20Date.now()%2C%0A%22hahns_upd%22%2C%20%22popup%3D1%2Cwidth%3D400%2Cheight%3D280%22)%3B%0Aif%20(!w)%20%7B%0Avar%20haveCode%20%3D%20false%3B%0Atry%20%7B%20haveCode%20%3D%20!!localStorage.getItem(LS_CODE)%3B%20%7D%20catch%20(_)%20%7B%20%7D%0A%2F%2F%20only%20nag%20about%20pop-ups%20when%20it%20actually%20matters%3A%20a%20first%20install%2C%20or%20a%0A%2F%2F%20deliberate%20manual%20check.%20A%20blocked%20*background*%20check%20stays%20silent.%0Aif%20(force%20%7C%7C%20!haveCode)%20%7B%0Aalert(%22Hahns%3A%20allow%20pop-ups%20for%20this%20site%20once%20so%20it%20can%20check%20for%20updates%2C%20then%20try%20again.%22)%3B%0A%7D%0Areturn%20false%3B%0A%7D%0Areturn%20true%3B%0A%7D%20catch%20(e)%20%7B%20return%20false%3B%20%7D%0A%7D%0A%2F%2F%20Manual%20%22check%20now%22%20hook%20for%20the%20app's%20Settings%20button.%20Present%20only%20when%20the%0A%2F%2F%20app%20was%20delivered%20by%20this%20loader%3B%20the%20classic%20self-contained%20bookmarklet%20has%0A%2F%2F%20no%20loader%2C%20so%20the%20app%20falls%20back%20to%20opening%20the%20setup%20page%20instead.%0Atry%20%7B%20window.hahnsCheckForUpdate%20%3D%20function%20()%20%7B%20return%20openUpdate(true)%3B%20%7D%3B%20%7D%20catch%20(e)%20%7B%20%7D%0Avar%20code%20%3D%20null%3B%0Atry%20%7B%20code%20%3D%20localStorage.getItem(LS_CODE)%3B%20%7D%20catch%20(e)%20%7B%20%7D%0A%2F%2F%201)%20run%20the%20cached%20app%20right%20now%20(instant%2C%20works%20with%20no%20network)%0Aif%20(code)%20inject(code)%3B%0A%2F%2F%202)%20throttle%20the%20AUTOMATIC%20update%20check%20to%20once%20a%20day%20(unless%20we%20have%20no%20app%20yet)%0Avar%20last%20%3D%200%3B%0Atry%20%7B%20last%20%3D%20%2BlocalStorage.getItem(LS_TS)%20%7C%7C%200%3B%20%7D%20catch%20(e)%20%7B%20%7D%0Aif%20(code%20%26%26%20(Date.now()%20-%20last)%20%3C%20DAY)%20return%3B%0A%2F%2F%203)%20automatic%20background%20check%0AopenUpdate(false)%3B%0A%7D)()%3B" onclick="return false;">
       <img src="favicon.png" alt="">
       H.A.H.N.S
     </a>
@@ -76,12 +76,12 @@
 
   <div style="background:#eef4fb;border:1px solid #cfe0f0;border-radius:12px;padding:14px 18px;margin:16px 0">
     <div style="font-size:13px;font-weight:600;color:#185fa5;text-transform:uppercase;letter-spacing:.05em">Current version</div>
-    <div style="font-size:22px;font-weight:600;color:#001e50;margin-top:3px">v0.4.0-alpha · 2026-07-10 00:35 UTC</div>
+    <div style="font-size:22px;font-weight:600;color:#001e50;margin-top:3px">v0.4.1-alpha · 2026-07-10 04:03 UTC</div>
     <div style="font-size:13px;color:#5a6b8c;margin-top:8px">Hahns updates itself — when a newer version is out it asks you right in the panel. You only ever re-drag the bookmark if this page announces the installer itself changed.</div>
     <details class="cl-details">
       <summary>What's new — version history</summary>
       <p class="hint" style="margin:8px 0 0">Every change to H.A.H.N.S, newest first. The version at the top matches the stamp above.</p>
-      <div class="cl"><div class="cl-ver"><h3>v0.4.0-alpha <span class="cl-status">— 2026-07-09</span></h3><h4>Added</h4><ul><li><strong>H.A.H.N.S now updates itself.</strong> The bookmark you drag is a small "loader" that keeps a copy of Hahns on your computer and runs it instantly (even offline). About once a day it quietly checks this site for a newer version, and <strong>if there's an update it asks you first</strong> — a little window shows your installed version vs the latest, with <strong>Update now</strong> / <strong>Not now</strong>. Say yes and it updates on the spot; say no and it keeps your current version. The upshot: after this one-time switch, you normally <strong>never re-drag the bookmark again</strong> — new fluids, tools, and fixes just show up.</li><li>Brand-new installs are silent (it just sets Hahns up); only *updates* ask you.</li></ul><h4>Changed</h4><ul><li><strong>The setup page now hands out the new self-updating bookmark.</strong> Existing users: delete your old H.A.H.N.S bookmark and drag this new one on once — that's the switch. First click needs internet to set up; after that it works offline.</li><li>Your repair data still never leaves your browser. The only new network use is the once-a-day update check, which pulls <strong>Hahns's own code</strong> in — nothing about your job goes out.</li></ul></div><div class="cl-ver"><h3>v0.3.18.6-alpha <span class="cl-status">— 2026-07-08</span></h3><h4>Changed</h4><ul><li><strong>Minimized SCAN moved left of the gear.</strong> The compact green SCAN in the minimized title bar now sits to the left of the settings gear (was left of the minimize button).</li></ul></div><div class="cl-ver"><h3>v0.3.18.5-alpha <span class="cl-status">— 2026-07-08</span></h3><h4>Changed</h4><ul><li><strong>Smaller minimized bar.</strong> When you minimize Hahns, SCAN now sits up in the title bar as compact green text (just left of the minimize button) instead of a full green button below it — so the collapsed panel takes up as little room as possible. Expanded, the big green SCAN button is unchanged.</li></ul></div><div class="cl-ver"><h3>v0.3.18.4-alpha <span class="cl-status">— 2026-07-08</span></h3><h4>Fixed</h4><ul><li><strong>A/C now hides specs for the wrong engine.</strong> On years where the A/C charge depends on the engine (e.g. a 2000–2005 Passat has one spec for the 4.0L W8 and another for everything else), Hahns was showing both. It now shows only the row that matches your vehicle's engine size — a 2.8L V6 sees the "except with 4.0 L" spec (600 g), a 4.0L W8 sees the "with 4.0 L" spec (500 g). A/C rows that aren't engine-specific (like the Eurovan's 1- vs 2-evaporator options) still show all choices.</li></ul></div><div class="cl-ver"><h3>v0.3.18.3-alpha <span class="cl-status">— 2026-07-08</span></h3><h4>Fixed</h4><ul><li><strong>2000–2005 A/C rows no longer cut off.</strong> On these older tables the A/C notes (e.g. the 4.0L-engine exception on the Passat) wrap across several lines, so a row that should read "Refrigerant, except with 4.0 L" was showing only "except." Hahns now stitches the wrapped text back together — the Passat shows "except with 4.0 L" / "with 4.0 L" for both refrigerant and compressor oil, and the Eurovan reads "1 Evaporator" / "2 Evaporators" instead of a broken fragment.</li></ul></div><div class="cl-ver"><h3>v0.3.18.2-alpha <span class="cl-status">— 2026-07-08</span></h3><h4>Fixed</h4><ul><li><strong>Older vehicles (2000–2010) now pick the right engine instead of showing every option.</strong> The vehicle reader was only keeping the engine <strong>code</strong> (e.g. "ATQ") and dropping the engine <strong>size</strong> ("2771 ccm") next to it — and the older fluid tables are matched by size. Hahns now keeps the size, so it lands on the correct engine oil and coolant automatically (e.g. a 2003 Passat V6 → 6.2 L oil / 9.0 L coolant, a 2006 GTI 2.0T → 4.6 L). The engine size now also shows in the green vehicle bar.</li></ul></div><div class="cl-ver"><h3>v0.3.18.1-alpha <span class="cl-status">— 2026-07-07</span></h3><h4>Fixed</h4><ul><li><strong>2000–2005 vehicles now actually update, and the "Updating…" status clears.</strong> After the v0.3.18 update, the older fluid tables saved on your computer weren't re-reading themselves with the new parser (so a 2003 still showed nothing), and the Fluid database status could stay stuck on "Updating." Both are fixed — every saved year now correctly refreshes itself once with the right parser on this update. (If a year was loaded on a very old version that didn't keep the PDF, it'll ask you to re-load that one PDF.)</li></ul></div><div class="cl-ver"><h3>v0.3.18-alpha <span class="cl-status">— 2026-07-07</span></h3><h4>Added</h4><ul><li><strong>Fluids &amp; Capacities now works on 2000–2010 vehicles (issue #43).</strong></li><li><strong>2006–2010:</strong> those tables list engines by their size (like "2.0L") instead of the letter engine code newer years use, so Hahns couldn't pin down the right row before. It now reads your vehicle's engine size and picks the matching engine oil and coolant automatically. It also tells apart a gas and a diesel of the <strong>same</strong> size (e.g. 2.0L TSI vs 2.0L TDI get different oil and capacity) and handles the V10 TDI ("5.0L").</li><li><strong>2000–2005:</strong> these use a completely different older page layout (one combined table per model). Hahns now reads it too — engine oil, coolant, and transmission/final-drive capacities, matched to your vehicle by engine size, engine code (e.g. the two different 2.0L Beetles, AZG vs BDC), and fuel type. Air-conditioning charges are shown best-effort for these years.</li><li>Load each year's PDF in ⚙ Settings the same as always. Verified against the real 2000–2010 tables.</li></ul><h4>Changed</h4><ul><li><strong>The three fluid readers are now named by the years they cover: Parser 00-05, Parser 06-10, Parser 11-26.</strong> This is an under-the-hood cleanup that makes each one easy to maintain and improve on its own. The Settings "Fluid database" panel shows all three. (Parser 00-05 covers 2000–2005 and isn't built yet.)</li></ul><h4>Fixed</h4><ul><li><strong>A rare capacity could go missing on 2006–2010 tables.</strong> When an engine's oil capacity was printed without the "(quarts)" conversion next to it (e.g. the 2006 Touareg 4.2L/5.0L), that number was being dropped. It's now read correctly.</li></ul></div><div class="cl-ver"><h3>v0.3.17.1-alpha <span class="cl-status">— 2026-07-05</span></h3><h4>Fixed</h4><ul><li><strong>The magnifier no longer triggers ELSA's Print button (bad v0.3.17 bug).</strong> Clicking the magnifying glass could fire ELSA's print command multiple times. The magnifier now has a hard rule that it will <strong>never</strong> click print/save/close/etc. controls, and it clicks a section's opener only once.</li><li><strong>When it opens a tool dropdown, it now waits a moment and jumps to the tool</strong> (ELSA opens these sections a split-second after the click). If a section still can't be opened, it lands on the dropdown's header so you can open it with one click — and records a more detailed diagnostic.</li></ul></div><div class="cl-ver"><h3>v0.3.17-alpha <span class="cl-status">— 2026-07-05</span></h3><h4>Changed</h4><ul><li><strong>The magnifier now tries much harder to open a collapsed "special tools" dropdown before jumping to it (issue #47).</strong> It walks up from the tool to whatever is hiding it, handles more kinds of collapsed sections (not just standard ones), and clicks the section's header/expander the same way a person would. <strong>If it still can't open the section, it now highlights the dropdown's header text</strong> so you're taken to the right spot and can open it with one click.</li></ul><h4>Added</h4><ul><li><strong>Magnifier diagnostics.</strong> If a section won't open, Hahns prints a plain report to the browser console (and into the diagnostic dump) — what it was looking for, which element hid it, what it tried, and where it landed — so a stubborn ELSA layout can be pinned down exactly.</li></ul></div><div class="cl-ver"><h3>v0.3.16.2-alpha <span class="cl-status">— 2026-07-05</span></h3><h4>Fixed</h4><ul><li><strong>Tool numbers written in spaced groups (e.g. <code>VAS 294 025</code>) are now read in full.</strong> The scan used to stop at the first space and grab only <code>VAS 294</code>. It now keeps the whole number (up to three space-separated groups), without grabbing an unrelated trailing number. (Issue #78)</li></ul></div><div class="cl-ver"><h3>v0.3.16.1-alpha <span class="cl-status">— 2026-07-05</span></h3><h4>Added</h4><ul><li><strong>Added special tool 3259 to the built-in scan list.</strong> It now gets picked up when a page writes it as a tool callout (<code>-3259-</code>).</li></ul></div><div class="cl-ver"><h3>v0.3.16-alpha <span class="cl-status">— 2026-07-05</span></h3><h4>Added</h4><ul><li><strong>Tool descriptions in the "Find these tools" pop-up and the printout.</strong> Each tool now shows what it *is* (from your shop list, or what the scan read off the page) next to its number and drawer location — so a number you don't recognize still tells you the tool. (Your shop list's descriptions appear after you re-upload the list once on this version.)</li><li><strong>A built-in VW special-tool list baked into the page scan (~1,000 tools).</strong> The scanner now recognizes these tools even before you load a shop list, and catches number formats it used to miss. Plain-number tools (like 1833) are only picked up when the page writes them as a tool callout (e.g. <code>-1833-</code>), so ordinary numbers in the text aren't mistaken for tools.</li></ul><h4>Changed</h4><ul><li><strong>The shop special-tool list now lives in the browser database (IndexedDB), same as the fluid tables.</strong> It used to be kept in the browser's older "local storage." Your existing list moves over automatically the first time you open this version — nothing to re-upload. Everything is still saved only on this computer, never uploaded, and still isn't cleared by Exit / New Vehicle / Clear info (only by Settings → "Remove list"). No change to how you use it.</li><li><strong>The app's browser database is now named <code>hahns_db</code></strong> (it holds more than fluids). The very short-lived <code>hahns_fluids</code> database from the day before is simply removed on first open. If you had loaded fluid PDFs on that one-day-old version, re-load them once in ⚙ Settings — your tool list carries over automatically.</li></ul></div><div class="cl-ver"><h3>v0.3.15.4-alpha <span class="cl-status">— 2026-07-04</span></h3><h4>Fixed</h4><ul><li><strong>Range capacities were half-shown.</strong> When a fluid capacity is a range — e.g. the 2025/2026 ID.Buzz / ID.4 / ID.7 "Single Speed 0MJ" transmission <code>0.88 - 0.93 L</code>, and the older DSG <code>6.9 - 7.2 L</code> — only the high end was picked up in bold and the low end got left behind in the grey label. The full range now shows as the value. (Verified against the archived 2011–2026 data: 47 range cells corrected, no other values touched.) Modern fluid reader → <strong>1.3.4</strong>; saved PDFs re-read automatically on this update.</li></ul></div><div class="cl-ver"><h3>v0.3.15.3-alpha <span class="cl-status">— 2026-07-04</span></h3><h4>Changed</h4><ul><li><strong>A/C capacities now show grams only (imperial ounces dropped).</strong> VW works in grams, so the redundant <code>(… oz.)</code> / <code>(… fl. oz.)</code> conversions are removed from the Air Conditioning card — cleaner, one unit.</li></ul><h4>Fixed</h4><ul><li><strong>e-Golf (2015–2018) and 2017 Tiguan A/C capacities were still wrong.</strong> On those years the ounces conversion was wedged into the middle of the metric value, so the charge got stranded and only the tolerance showed (e.g. <code>15 g</code> instead of <code>500 +/- 15 g</code>). Removing the imperial conversion fixes those cells: e-Golf reads <code>500 / 950 / 850 / 450 +/- 15 g</code>, the 2017 Tiguan <code>460 +/- 15 g</code>, etc. (Verified against the full archived 2011–2026 A/C data — all correct, no other years affected.) Modern fluid reader → <strong>1.3.3</strong>; saved PDFs re-read automatically on this update.</li></ul></div><div class="cl-ver"><h3>v0.3.15.2-alpha <span class="cl-status">— 2026-07-04</span></h3><h4>Fixed</h4><ul><li><strong>A/C capacity fix, take two — now handles the 2018 Golf R's tolerance format.</strong> The v0.3.15.1 fix only caught tolerances written as <code>±</code> / <code>+/-</code>. On some years (e.g. the 2018 Golf R) the "plus-or-minus" prints as three spaced characters — <code>+ / -</code> — which slipped through, so the A/C charge (500 g) still showed in the small grey label with the tolerance (15 g) bolded. The reader now normalizes that spaced form too, so A/C and A/C compressor oil read correctly as <strong>500 +/- 15 g</strong>. (Modern fluid reader → <strong>1.3.2</strong>; saved PDFs re-read automatically.)</li></ul></div><div class="cl-ver"><h3>v0.3.15.1-alpha <span class="cl-status">— 2026-07-04</span></h3><h4>Fixed</h4><ul><li><strong>Air-conditioning (and A/C compressor oil) capacities on some years showed the wrong number in bold.</strong> On years like the 2018 Golf R the charge printed as *"Initial 500 +/- Fill / Refill <strong>15 g</strong>"* — the real capacity (500 g) was buried in the small grey text and the ± tolerance (15 g) was shown as the big number. Now it reads correctly as <strong>500 +/- 15 g</strong> (and the compressor oils likewise), matching how other years already displayed. This was a table-layout quirk where the "Initial Fill / Refill" label words landed between the number and its tolerance.</li><li>Because of this fix the <strong>modern fluid reader version ticks to 1.3.1</strong>, so any fluid PDFs you have saved are re-read automatically in the background on this update — no re-upload needed.</li></ul></div><div class="cl-ver"><h3>v0.3.15-alpha <span class="cl-status">— 2026-07-04</span></h3><h4>Changed</h4><ul><li><strong>Your fluid PDFs are now kept safely in this browser, and improvements apply by themselves.</strong> Before, Hahns converted a fluid PDF and threw the PDF away — so whenever the fluid reader was improved (a page-break fix, a corrected oil grade, etc.), the only way to get the fix was to clear your browser data and re-upload every PDF. Now the original PDFs are stored on this computer (in the browser's own database, still <strong>never uploaded anywhere</strong>). When you re-drag an updated Hahns, it quietly re-reads your saved PDFs with the newer reader in the background — no re-uploading, no clearing anything.</li><li><strong>New "Fluid database" panel in ⚙ Settings.</strong> Shows where the data is stored, the current fluid-reader versions, how many model years you have installed, how much space the PDFs use, when the last background update ran, and an overall health check.</li></ul><h4>Fixed</h4><ul><li>Fluid tables that were loaded on an older version keep working after this update; re-upload those years once to also get automatic reader updates for them going forward.</li></ul></div><div class="cl-ver"><h3>v0.3.14-alpha <span class="cl-status">— 2026-07-03</span></h3><h4>Added</h4><ul><li><strong>The page scan now uses your uploaded tool list to catch oddly-named tools.</strong> Special tools that don't look like the usual <code>T…</code>, <code>VAS…</code> or <code>VAG…</code> numbers — for example <code>VW 771</code> or <code>VW 771/37</code> — used to be skipped by the scan. Now, if a tool is on the list you loaded in ⚙ Settings, Hahns will spot it on the repair page even when its name is unusual, show it under Special Tools, and give it a drawer location in <strong>Find these tools</strong>. (Tools that are only numbers with no letters are still skipped on purpose, so a bare number can't be confused with a torque value or part number.)</li></ul><h4>Fixed</h4><ul><li><strong>The 2018 Golf R engine oil now lists <code>VW 504 00 (0W-30)</code>.</strong> Because that oil line is squeezed in the PDF, the <code>(0W-30)</code> wrapped to the next line and was being dropped — it's now kept with its spec. (Checked every year 2011–2026: this was the only entry affected.)</li><li><strong>Windows no longer close on their own.</strong> If you opened Settings (or the Fluids/tools window) right after scanning a vehicle, it would vanish a few seconds later when the green vehicle bar auto-minimized. The bar still minimizes, but the window you're using stays open.</li><li><strong>The "find on page" magnifier now opens collapsed sections first.</strong> If a special tool lived inside a dropdown/expandable section on the ELSA page, clicking the magnifier appeared to do nothing (there was nothing on screen to jump to). It now opens that section, then scrolls to and highlights the tool.</li></ul><h4>Changed</h4><ul><li><strong>Every pop-up window now has a standard ✕ in the top-right corner to close it</strong>, instead of a "Close"/"Cancel" button that was easy to miss.</li></ul><h4>Note</h4><ul><li><strong>Re-drag to get all of this</strong> (hard-refresh the setup page, then drag the button up again). Your loaded tool list and fluid tables are kept.</li></ul></div><div class="cl-ver"><h3>v0.3.13-alpha <span class="cl-status">— 2026-07-02</span></h3><h4>Changed</h4><ul><li><strong>Fluids &amp; Capacities now runs entirely from your own computer.</strong> Load the yearly <strong>"VW Fluid Capacity Tables" PDFs</strong> once through the ⚙ Settings gear (you can pick all the years at once) — Hahns converts each PDF <strong>right in the browser</strong> into a small lookup table it keeps on that computer, shows you a preview of the years and models it found before saving, and the PDFs themselves aren't kept. The Fluids &amp; capacities button then opens the same vehicle-matched lookup as before (now with its own <strong>Print</strong> button), built locally with <strong>zero network calls</strong> — the fluid data is no longer fetched from the Hahns website at all. Like the shop tool list, the loaded tables stay on that computer and are <strong>not</strong> cleared by Exit / New Vehicle / Clear All Info — only by Settings → Remove tables. <strong>Re-drag to get this</strong>, then load your PDFs once per shop computer.</li></ul><h4>Removed</h4><ul><li>The hosted fluid-lookup page (<code>fluids.html</code>) and the published per-year fluid data files were removed from the website — the lookup lives inside the app now. If you're on an older version, the fluids link will stop working until you re-drag.</li></ul></div><div class="cl-ver"><h3>v0.3.12.1-alpha <span class="cl-status">— 2026-07-01</span></h3><h4>Changed</h4><ul><li><strong>Settings now shows which tool list is loaded.</strong> Instead of just the upload date, it now shows the <strong>file name</strong>, its <strong>format</strong> (CSV or Excel .xlsx), and the <strong>date</strong> — so you can tell at a glance exactly which list Hahns is using. <strong>Re-drag to get this.</strong></li></ul></div><div class="cl-ver"><h3>v0.3.12-alpha <span class="cl-status">— 2026-07-01</span></h3><h4>Added</h4><ul><li><strong>Upload your tool list as Excel (.xlsx) — no more "save as CSV" step.</strong> When you pick a native Excel file in Settings, Hahns now reads it right in the browser and converts it for you (first sheet). CSV still works exactly as before. This all happens <strong>on your computer</strong> — nothing is uploaded, still <strong>zero network calls</strong> on ELSA. (Old-style <code>.xls</code> files and Apple Numbers aren't supported — save those as CSV or <code>.xlsx</code> first.) <strong>Re-drag to get this.</strong></li></ul></div><div class="cl-ver"><h3>v0.3.11.1-alpha <span class="cl-status">— 2026-07-01</span></h3><h4>Changed</h4><ul><li><strong>Tidied the no-vehicle view.</strong> Removed the extra "Scanning a repair page works right away…" note — it repeated what the greyed-out <strong>Fluids &amp; capacities</strong> row already says ("scan Vehicle Summary to enable"). One less thing on screen. <strong>Re-drag to get this.</strong></li></ul></div><div class="cl-ver"><h3>v0.3.11-alpha <span class="cl-status">— 2026-07-01</span></h3><h4>Changed</h4><ul><li><strong>SCAN now works without loading a vehicle first.</strong> If you're already in a repair procedure, just click <strong>SCAN</strong> — Hahns collects the specs right away. You no longer have to go back to the Vehicle Summary page first. <strong>Re-drag to get this.</strong></li><li><strong>Loading the vehicle is now only needed for Fluids &amp; Capacities.</strong> Scan ELSA's <strong>Vehicle Summary</strong> page once to turn that feature on. Until you do, the Fluids &amp; Capacities row shows as greyed-out with a note telling you how to enable it — so you know the feature is there.</li></ul></div><div class="cl-ver"><h3>v0.3.10.1-alpha <span class="cl-status">— 2026-06-30</span></h3><h4>Changed</h4><ul><li><strong>When you minimize Hahns, it now shows the SCAN button</strong> instead of the New Vehicle button — so you can collapse the panel and still scan a page in one click. (New Vehicle is tucked away until you expand again.) <strong>Re-drag to get this.</strong></li></ul></div><div class="cl-ver"><h3>v0.3.10-alpha <span class="cl-status">— 2026-06-30</span></h3><h4>Added</h4><ul><li><strong>Your shop's tool list — "Find these tools."</strong> You can now load your shop's special-tool list (a CSV file), and a <strong>"Find these tools"</strong> button (under Special Tools) opens a <strong>separate, printable window</strong> — a tidy <strong>tick-off list</strong> with the <strong>tool number on the left, its drawer/location on the right, and a check box</strong> so you can cross each one off as you grab it (ticking it strikes the line through). It's sorted by drawer so same-drawer tools sit together (one-trip grab), and has its own <strong>Print</strong> button (clean, easy-to-read, just like the main Hahns print).</li><li><strong>Load it from the new ⚙ gear (top-right).</strong> Pick your spreadsheet (saved as <strong>CSV</strong> — File → Save As → CSV), then tell Hahns which column is the <strong>tool number</strong>, the <strong>drawer</strong>, and (optionally) the <strong>description</strong>. It handles different layouts — your 3-column list or VW's 4-column minimum-index sheet — and guesses the columns for you.</li><li><strong>Flags problem tools.</strong> If your list notes a tool as <strong>MISSING</strong>, <strong>CHECK PART NUMBER</strong>, broken, etc., Hahns shows that warning right in the tool list AND in the Find-these-tools window. If a tool <strong>isn't on your list at all</strong>, it's flagged <strong>"not in list"</strong> — a sign to order it or update your list.</li><li><strong>Keeps the main panel uncluttered.</strong> The drawer locations live in the pop-up window, not the main list — the main list just shows the tools (with a warning on any that need attention).</li><li><strong>Stays on your computer.</strong> The list is saved <strong>only on that shop computer</strong> (never uploaded, never on GitHub) and the window is built locally too — the bookmark still makes <strong>zero network calls</strong> on ELSA. Each computer loads its list once; re-upload to update. <strong>This is a code change, so hard-refresh the setup page and re-drag.</strong></li></ul></div><div class="cl-ver"><h3>v0.3.9-alpha <span class="cl-status">— 2026-06-29</span></h3><h4>Added</h4><ul><li><strong>Meet Hahns!</strong> The plain wrench icon is replaced everywhere by the <strong>Hahns mascot</strong> — in the panel header inside ELSA, on the setup page (full-body), on the Fluids &amp; Capacities page, and as the <strong>browser tab/bookmark icon</strong> (favicon). The mascot in the panel is built right into the bookmark, so it still makes <strong>no network calls</strong> and keeps nothing — same privacy promise as before. <strong>This is a code change, so hard-refresh the setup page and re-drag your bookmark to get Hahns.</strong></li></ul></div><div class="cl-ver"><h3>v0.3.8-alpha <span class="cl-status">— 2026-06-29</span></h3><h4>Added</h4><ul><li><strong>Fluid &amp; capacity data for 2011, 2012 and 2013.</strong> The lookup now covers <strong>2011 through 2026</strong>. (Older years 2006–2010 list engines by size only — no engine code — and 2000–2005 use a different table format; those need more work and will come later.)</li></ul><h4>Fixed</h4><ul><li><strong>More accurate A/C refrigerant amounts (2014–2017).</strong> Those years' air-conditioning charges were showing the *tolerance* (e.g. "25 g") instead of the actual amount; they now read correctly (e.g. "525 ± 25 g"). New fluid years are served data, so you do <strong>not</strong> need to re-drag the bookmark for any of this.</li></ul></div><div class="cl-ver"><h3>v0.3.7.2-alpha <span class="cl-status">— 2026-06-29</span></h3><h4>Changed</h4><ul><li><strong>Clearer buttons, less confusion.</strong> The <strong>New job</strong> button is renamed <strong>New Vehicle</strong> (it wipes the loaded vehicle *and* all collected info) and moved to the <strong>top</strong>, right under the version line, so the "start over" action is easy to find. <strong>Clear info</strong> is renamed <strong>Clear All Info</strong> (it clears collected info but keeps the vehicle) and stays next to the job title.</li><li><strong>Faster hover hints.</strong> The little explanations that pop up when you hover a button now appear quickly instead of after the usual long browser delay.</li></ul></div><div class="cl-ver"><h3>v0.3.7.1-alpha <span class="cl-status">— 2026-06-28</span></h3><h4>Added</h4><ul><li><strong>"Clear info" button.</strong> A new button under <strong>New job</strong> wipes everything Hahns has collected — torque, replace, special tools, warnings and diagrams — <strong>but keeps the loaded vehicle</strong>, so you can start a fresh procedure on the same car without re-scanning the Vehicle Summary. (New job still clears the vehicle too.)</li><li><strong>Per-group Clear.</strong> Each section (Torque, Replace, Special Tools, Critical Warnings, Diagram) now has its own small <strong>Clear</strong> button in its header to empty just that group. Both kinds of clear ask "Clear all?" first so a stray tap can't wipe your work.</li></ul></div><div class="cl-ver"><h3>v0.3.7-alpha <span class="cl-status">— 2026-06-28</span></h3><h4>Changed</h4><ul><li><strong>The green "Vehicle loaded" box now collapses to save space.</strong> A few seconds after it appears it tucks itself away to a single "✓ Vehicle loaded" line, giving the rest of the panel more room. Click the little arrow on the right to open it back up and edit any field, and click again to collapse it. If any fields are still blank, the collapsed line shows a small "N to add" tag so you don't miss them.</li></ul></div><div class="cl-ver"><h3>v0.3.6-alpha <span class="cl-status">— 2026-06-28</span></h3><h4>Added</h4><ul><li><strong>Find-on-page magnifier.</strong> Every spec, part, tool, and warning that Hahns collected now has a small magnifying-glass icon on its left. Click it and Hahns scrolls the ELSA page to exactly where it found that item and flashes it yellow so you can eyeball it in context. The highlight fades on its own and changes nothing on the page.</li><li>Items collected from an <strong>earlier page</strong> of a multi-page job show the magnifier <strong>greyed out</strong> (with a tooltip) — the browser throws that page away when you navigate, so there's nothing left to jump to until you go back to it. Hand-added rows and the Fluids link have no magnifier (they didn't come from a spot on the page).</li></ul></div><div class="cl-ver"><h3>v0.3.5.12-alpha <span class="cl-status">— 2026-06-27</span></h3><h4>Fixed</h4><ul><li><strong>Sequence diagram now shows on the first scan.</strong> A diagram lower on the page (like the tightening-sequence figure) sometimes only appeared after pressing SCAN a second time. Hahns now waits for any still-loading images and grabs them automatically, so one scan is enough.</li></ul><h4>Changed</h4><ul><li><strong>The tightening sequence gets its own labeled section.</strong> The sequence steps and its diagram are now grouped under their own heading (the table/figure title, e.g. "Cylinder Head – Tightening Specifications and Sequence"), separated from the regular bolt torques — like a freshly scanned page — so the list stays organized.</li></ul></div><div class="cl-ver"><h3>v0.3.5.11-alpha <span class="cl-status">— 2026-06-27</span></h3><h4>Fixed</h4><ul><li><strong>Tightening-sequence tables now read correctly.</strong> When a page has a "Step / Bolts / Tightening Specification" table (e.g. cylinder-head bolts), Hahns now lists each step in order with its bolts and spec — including the angle-only steps (90°) that were being dropped. Before, the step numbers were mistaken for part callouts, which scrambled the list and stuck the table header onto the previous part.</li></ul></div><div class="cl-ver"><h3>v0.3.5.10-alpha <span class="cl-status">— 2026-06-27</span></h3><h4>Fixed</h4><ul><li><strong>Tightening sequences now show up.</strong> On a page like *Overview – Cylinder Head*, the cylinder-head bolt's "Tightening Specifications and Sequence — refer to figure" note is now captured under Torque (so the bolt clearly needs the sequence), and the <strong>sequence diagram itself is now kept</strong> alongside the main overview diagram instead of being dropped.</li><li><strong>A dropped second image can no longer scramble bolt numbers.</strong> Following up on the multiple-diagram support: only the main assembly diagram(s) start a new "Fig", so a smaller secondary image on the page won't restart or split the numbering.</li></ul></div><div class="cl-ver"><h3>v0.3.5.9-alpha <span class="cl-status">— 2026-06-27</span></h3><h4>Fixed</h4><ul><li><strong>Replace-after-removal now catches a plain "Replace" note.</strong> When ELSA marks a part for one-time use with just the word <strong>Replace</strong> (or <strong>Renew</strong>) next to it, it was being skipped. Those parts now show up in the Replace-after-removal section, labeled with their component number like everything else.</li><li><strong>More special tools are recognized.</strong> Tool numbers like <strong>10-222 A</strong> (and its sub-parts <strong>10-222 A/1, /2, …</strong>) are now picked up, and the <strong>VAG 1331A / V.A.G 1332A torque wrenches</strong> are listed under Special Tools instead of being mistaken for a torque spec. Works whether or not the number is written with periods (VAG or V.A.G).</li><li><strong>Print now waits for the diagrams.</strong> Diagrams sometimes came out blank on the print preview and only showed up on a second try. Print now holds until the diagram images have finished loading before opening the preview, so they show up the first time.</li><li><strong>Pages with more than one diagram now keep them separate.</strong> When a page shows two assembly diagrams, each with its own numbered bolts and torque specs, Hahns now splits them into "Fig 1" / "Fig 2" groups — each diagram's bolt numbers start at 1 again and match that diagram, and an identical spec that appears on both is no longer dropped. Pages with a single diagram look exactly as before.</li></ul></div><div class="cl-ver"><h3>v0.3.5.8-alpha <span class="cl-status">— 2026-06-27</span></h3><h4>Fixed</h4><ul><li><strong>Fluids &amp; Capacities now always opens the latest version.</strong> GitHub caches the page for ~10 minutes, so after an update you could briefly see the old look/data. The fluids link now forces a fresh load every time, so what you see is always current.</li></ul></div><div class="cl-ver"><h3>v0.3.5.7-alpha <span class="cl-status">— 2026-06-27</span></h3><h4>Changed</h4><ul><li><strong>Fluids &amp; Capacities page now matches the new look</strong> — its header is the same dark graphite with green accent and green wrench as the main panel, instead of VW blue. (This is the served lookup page, so you don’t need to re-drag the bookmark for it.)</li></ul></div><div class="cl-ver"><h3>v0.3.5.6-alpha <span class="cl-status">— 2026-06-27</span></h3><h4>Changed</h4><ul><li><strong>Fluids &amp; Capacities now opens in a small pop-up window</strong> instead of a full new tab. It’s sized to fit the data with no side-scrolling (just scroll up/down) and centered on screen, so it reads as a quick reference you can glance at and close — no hunting for a stray tab. Opening it again reuses the same pop-up. (If your browser blocks pop-ups, it falls back to opening a tab.)</li></ul></div><div class="cl-ver"><h3>v0.3.5.5-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">A fresh look so H.A.H.N.S stands out from ELSA.</p><h4>Changed</h4><ul><li><strong>New header color.</strong> The top bar is now dark graphite with a green accent (and a green wrench) instead of VW blue, so the panel no longer blends into ELSA2Go.</li><li><strong>The SCAN button moved and got bigger.</strong> It’s no longer tucked in the header — it’s now a large green button (renamed from “Scan page” to <strong>SCAN</strong>) sitting right above the job title, so it’s easy to hit at the bay.</li><li><strong>Version line moved to the very top</strong>, directly under the H.A.H.N.S title bar.</li><li><strong>Buttons look consistent now.</strong> A long-standing styling bug left most buttons (New job, + add, Copy list, Print, etc.) thinner than intended; they’re now uniformly bold so the whole panel looks tied together.</li></ul></div><div class="cl-ver"><h3>v0.3.5.4-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">More model years for Fluids &amp; Capacities.</p><h4>Added</h4><ul><li><strong>Fluid &amp; capacity data for model years 2014–2018.</strong> The lookup now covers <strong>2014 through 2026</strong>. Older years (2006–2013 and 2000–2005) use a different VW table format and will come in a later update. New fluid years are served data, so you do <strong>not</strong> need to re-drag the bookmark to get them.</li></ul></div><div class="cl-ver"><h3>v0.3.5.3-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">EV drivetrain detail + a recovered 2019 spec.</p><h4>Fixed</h4><ul><li><strong>ID.Buzz / ID.4 / ID.7 “0MP” single-speed gearbox now reads clearly.</strong> It used to show one mangled line. It now shows the two real service cases: *Refilling transmission that had residue removed* → <strong>3.18 L (3.36 qt)</strong>, and *Transmission fluid drained, residue not removed* → *fill up to the lower edge of the fill/check hole*.</li><li><strong>2019 Golf SportWagen / Alltrack — AWD Clutch capacity restored.</strong> The <strong>655 ml</strong> AWD-clutch fill was being dropped (the original parser didn’t read “ml”). It now appears.</li></ul></div><div class="cl-ver"><h3>v0.3.5.2-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">Electric-vehicle fixes for the Fluids &amp; Capacities lookup.</p><h4>Fixed</h4><ul><li><strong>Electric vehicles now find their fluids.</strong> Clicking Fluids &amp; Capacities for an EV (e.g. *ID. Buzz 1st Edition AWD*, *ID.4 AWD PRO S*) used to say “No fluid entry found.” The lookup now matches the vehicle to the right table even when the model name carries trim/options (and regardless of spacing or punctuation like the dot in “ID.4”). This also fixes a related gap where <strong>2023–2026 Atlas</strong> (“Atlas Family”) and <strong>GTI / Golf R</strong> (under “Golf Family”) weren’t matching.</li><li><strong>EV engine &amp; transmission codes are read from the Vehicle Summary.</strong> EV summaries don’t have a single “Engine Code” / “Trans Type” — they list <strong>Front/Rear</strong> motor and transaxle codes. H.A.H.N.S now reads those (shown as “FRONT / REAR”), so the green vehicle bar fills in and the drivetrain lookup can match the EV’s single-speed reduction gear.</li></ul></div><div class="cl-ver"><h3>v0.3.5.1-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">More fluid years.</p><h4>Added</h4><ul><li><strong>2020 through 2026 fluid data.</strong> The Fluids &amp; Capacities lookup now covers <strong>2020</strong> (Jetta/GLI, Golf/GTI, Golf R, e-Golf, Passat, Arteon, Tiguan, Atlas/Atlas Cross Sport), <strong>2021</strong> (adds <strong>Taos</strong> and <strong>ID.4</strong>), <strong>2022</strong> (Jetta/GLI, GTI/Golf R, Passat, Arteon, Taos, Tiguan, Atlas/Atlas Cross Sport, ID.4), <strong>2023</strong> (Arteon, Atlas Family, Golf Family, ID.4, Jetta, Taos, Tiguan), <strong>2024</strong> (same lineup as 2023), <strong>2025</strong> (Atlas Family, Golf Family, <strong>ID.Buzz</strong>, ID.4, <strong>ID.7</strong>, Jetta, Taos, Tiguan), and <strong>2026</strong> (Atlas Family, Golf Family, ID.Buzz, ID.4, Jetta, Taos, Tiguan) in addition to 2019. No need to re-drag the bookmark — new years are served automatically.</li></ul></div><div class="cl-ver"><h3>v0.3.5-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">Fluids polish.</p><h4>Changed</h4><ul><li><strong>Fluids &amp; Capacities link moved up.</strong> It now sits right under the green vehicle box (above the version line), so it's the first thing you reach once a vehicle is loaded.</li><li><strong>Clearer system icons</strong> on the lookup page — an oil can, a thermometer, a snowflake, and a gear for Engine Oil / Coolant / A/C / Drivetrain.</li></ul></div><div class="cl-ver"><h3>v0.3.4-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">Fluids &amp; Capacities is now a vehicle-matched lookup.</p><h4>Added</h4><ul><li><strong>Fluids &amp; Capacities opens a matched lookup page.</strong> Instead of scanning fluids from the repair manual (they're rarely there — they live in a separate per-year PDF), the <strong>Fluids &amp; Capacities</strong> section is now a button. With a vehicle loaded, it opens a new window showing <strong>Engine Oil, Engine Coolant, Air Conditioning, and Drivetrain</strong> for *your* vehicle — capacities and fluid specs matched to your Engine Code, Transmission, Model, and Model Year. No digging through the PDF.</li><li>The A/C section shows the <strong>refrigerant type</strong> (R1234yf / R134a) next to each charge, and Drivetrain shows all the sub-fills (transmission, bevel box, AWD clutch, final drive), with AWD-only parts hidden on front-wheel-drive vehicles.</li></ul><h4>Changed</h4><ul><li><strong>Fluids are no longer scanned</strong> from procedure pages. The button needs a vehicle loaded (scan the Vehicle Summary first), same as the rest of the job.</li></ul><h4>Notes</h4><ul><li>Fluid data is published per model year and only the <strong>2019</strong> tables are loaded so far. Other years show "no data published yet" until their PDF is processed.</li></ul></div><div class="cl-ver"><h3>v0.3.3-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">Vehicle loading is now locked to the Vehicle Summary page.</p><h4>Fixed</h4><ul><li><strong>Only the Vehicle Summary page loads a vehicle now.</strong> ELSA shows the selected VIN in its header on *every* page, so scanning a repair-manual page used to load a half-wrong vehicle (right VIN, but garbage Model Name / Trans Type). H.A.H.N.S now checks for the summary's own layout (the <strong>Vehicle Data</strong> section with its Model Name / Engine Code / Model Year / Trans Type fields) before loading anything — scan any other page first and it just says that isn't the summary.</li><li><strong>Tighter field reading.</strong> The five fields are now read straight from their ELSA labels, so values like Engine Code (<strong>CDVC</strong>) and Trans Type (<strong>09PA – AQ450-8A</strong>) come through exactly.</li></ul></div><div class="cl-ver"><h3>v0.3.2-alpha <span class="cl-status">— folded into v0.3.3</span></h3><p class="cl-intro">Start every job by loading the vehicle.</p><h4>Added</h4><ul><li><strong>Load the vehicle first.</strong> Open ELSA's <strong>Vehicle Summary</strong> page and click <strong>Scan page</strong> — H.A.H.N.S reads the <strong>VIN, Model Year, Model Name, Engine Code, and Trans Type</strong> and pins them in a green "Vehicle loaded" strip at the top of the panel, so you can see at a glance that it got a good grab. The vehicle stays loaded for the whole job and clears when you Exit or start a New job.</li><li><strong>Fill in anything it missed.</strong> If a field comes up blank, it's flagged and you can click it to type the value by hand. The vehicle also prints and copies at the top of the job sheet.</li></ul><h4>Changed</h4><ul><li><strong>A vehicle is required before collecting specs.</strong> If you click <strong>Scan page</strong> on a repair procedure before loading a vehicle, H.A.H.N.S asks you to scan the Vehicle Summary page first instead of collecting anything.</li></ul></div><div class="cl-ver"><h3>v0.3.1-alpha <span class="cl-status">— 2026-06-25</span></h3><p class="cl-intro">Bug fixes for how safety banners are read and shown.</p><h4>Fixed</h4><ul><li><strong>NOTE banners are now captured.</strong> ELSA flags safety text with four banners — <strong>DANGER</strong>, <strong>WARNING</strong>, <strong>CAUTION</strong>, and <strong>NOTE</strong>. The <strong>NOTE</strong> banner's text was being skipped (it has no warning word of its own), so important "could result in vehicle damage" notes never made it into Critical warnings. They're now collected like the other three.</li><li><strong>Special tools with a "/N" sub-part are read in full.</strong> Tool numbers that end in a slash and a number — like <strong>T1000/1</strong> or <strong>VAS 6234/2</strong> — were being cut off (or missed). They now come through complete.</li><li><strong>Each special tool is listed once.</strong> A tool mentioned several times in a procedure used to appear as a repeated row in the list. It's now listed a single time (the blue chip at the top stays for the quick glance).</li></ul><h4>Added</h4><ul><li><strong>Warnings are colour-coded to match ELSA.</strong> Each item in Critical warnings now shows its banner type and matching colour — <strong>DANGER</strong> red, <strong>WARNING</strong> orange, <strong>CAUTION</strong> yellow, <strong>NOTE</strong> light blue — the same colours ELSA uses, so they're easy to tell apart at a glance. The Copy/Print output labels each one too (e.g. "NOTE: …").</li><li><strong>Special tools now show a name.</strong> When the procedure gives the tool a name (e.g. "Caliper Piston Tool - T10145/1 -"), the list shows the number <strong>and</strong> the name. If there's no name, it just shows the number.</li><li><strong>You can remove a tool chip.</strong> Each blue tool chip now has a small ✕ to delete it (which also removes it from the list below) — handy when a tool isn't one you need.</li></ul></div><div class="cl-ver"><h3>v0.3.0-alpha <span class="cl-status">— 2026-06-25</span></h3><p class="cl-intro">Replaces the automatic update check (which simply can't work inside ELSA) with a</p><p class="cl-intro">simple weekly reminder, and tidies up the panel.</p><h4>Added</h4><ul><li><strong>Weekly "check for updates" reminder.</strong> On <strong>Wednesdays</strong> — and only once that day — a yellow bar appears at the top of the panel: *"App may be out of date. <strong>Check for update?</strong>"* The link opens the H.A.H.N.S setup page so you can compare your version to the latest; <strong>Dismiss</strong> clears it. Kept deliberately low-key: it shows once a week and nothing more, because there's no way to know for sure whether your copy is actually out of date. Needs no internet — it's just a calendar reminder, so it works the same inside ELSA as anywhere else.</li></ul><h4>Changed</h4><ul><li><strong>The setup page now leads with the bookmark button.</strong> The drag-the-wrench button moved to the top of the page, so updating is faster to find.</li><li><strong>"What's new" starts collapsed</strong> on the setup page — click it open when you want the full history.</li></ul><h4>Removed</h4><ul><li><strong>The automatic, over-the-internet update check</strong> (from v0.2.0–v0.2.4). ELSA blocks it completely, so it never worked there — the weekly reminder above replaces it. H.A.H.N.S is now back to making <strong>zero network calls</strong>, ever.</li><li><strong>The "What's new" pop-up inside the panel.</strong> The full history lives on the setup page (the only place you can actually update from), so the app no longer carries its own copy — which also makes the bookmark smaller.</li></ul></div><div class="cl-ver"><h3>v0.2.4-alpha <span class="cl-status">— 2026-06-25</span></h3><h4>Fixed</h4><ul><li><strong>Clearer "how to check for updates" note.</strong> The note inside ELSA now points you straight at the <strong>check for latest ↗</strong> link (which opens the H.A.H.N.S page even from inside ELSA), instead of telling you to open the bookmark on another web page — which didn't work from a blank tab.</li></ul></div><div class="cl-ver"><h3>v0.2.3-alpha <span class="cl-status">— 2026-06-25</span></h3><p class="cl-intro">Settles how the update check behaves on ELSA, after testing proved ELSA blocks</p><p class="cl-intro">every kind of background check.</p><h4>Changed</h4><ul><li><strong>The update check now runs only outside ELSA, and tells you so.</strong> Testing confirmed (by the browser itself) that ELSA blocks H.A.H.N.S from reaching the internet at all while it's open — so the check no longer even tries while you're in ELSA (keeping the "nothing leaves your browser on ELSA" promise intact). Instead, the panel shows a short note: *"Update checks can't run inside ELSA — open H.A.H.N.S on a normal web page before opening ELSA (or after closing it)."* When you do open it off ELSA, it checks and shows the exact new version if one exists.</li></ul><h4>Removed</h4><ul><li>The marker-image trick from v0.2.2 (ELSA blocks images from us too, so it couldn't work).</li></ul></div><div class="cl-ver"><h3>v0.2.2-alpha <span class="cl-status">— 2026-06-25</span></h3><p class="cl-intro">Attempted to make the update check work inside ELSA via a marker image. Testing</p><p class="cl-intro">showed ELSA blocks that too — superseded by v0.2.3.</p></div><div class="cl-ver"><h3>v0.2.1-alpha <span class="cl-status">— 2026-06-25</span></h3><p class="cl-intro">Reworks the update check from v0.2.0.</p><h4>Changed</h4><ul><li><strong>Update check now runs at most once a day</strong> (in the background, after the panel is already on screen — it never slows the panel down), instead of once per browser session.</li><li><strong>Clearer update banner</strong>: shows the version you have, the new version, a <strong>Get Update</strong> button, and a <strong>Dismiss</strong> button.</li></ul><h4>Added</h4><ul><li><strong>Better self-diagnosis.</strong> If the check can't reach the internet, the panel still works silently — but the diagnostic dump (click the version stamp) now records exactly what happened: whether it was attempted, the HTTP status, the error, and whether the browser actually reported a security-policy block. No more guessing why an update didn't show.</li></ul></div><div class="cl-ver"><h3>v0.2.0-alpha <span class="cl-status">— 2026-06-24</span></h3><p class="cl-intro">New feature release.</p><h4>Added</h4><ul><li><strong>Automatic update check.</strong> The first time you open the panel each browser session, H.A.H.N.S quietly checks whether a newer version has been published. If so, a small banner appears: "Update available — hard-refresh the setup page &amp; re-drag the bookmark," with a link to open it. This is the tool's <strong>only</strong> network use: it requests a single public version file and sends no job or ELSA data. If your shop browser blocks the check, nothing breaks — the panel works exactly as before and the manual "check for latest" link still works.</li></ul></div><div class="cl-ver"><h3>v0.1.1-alpha <span class="cl-status">— 2026-06-24</span></h3><p class="cl-intro">Bug-fix and polish cycle.</p><h4>Added</h4><ul><li><strong>Exit confirmation.</strong> Clicking the panel's <strong>✕</strong> now asks "Are you sure you want to exit? All collected job info will be lost." with <strong>Exit</strong> / <strong>Cancel</strong>, so an accidental click no longer wipes the job.</li><li><strong>"What's new" changelog.</strong> This list now appears on the setup page (under "Current version"), and after an update the panel shows it once automatically so you can see what changed.</li></ul><h4>Fixed</h4><ul><li><strong>Closing now actually clears the job.</strong> Before, closing only hid the panel — the job stayed in memory and came back when you re-opened the bookmark. <strong>Exit</strong> now clears everything (job, saved panel position, minimized state) so the next open starts fresh. <strong>Cancel</strong> leaves your job untouched.</li></ul></div><div class="cl-ver"><h3>v0.1.0-alpha <span class="cl-status">— 2026-06-21</span></h3><p class="cl-intro">First public release.</p><h4>Added</h4><ul><li>One-click <strong>Scan page</strong>: pulls torque specs, replace-after-removal parts, fluids/capacities, special tools, and critical warnings into one panel.</li><li><strong>Auto component numbering</strong> so each spec maps to the diagram callout.</li><li>Editable part labels, manual add rows, per-item delete.</li><li><strong>Job title</strong> bar, <strong>multi-page accumulation</strong> grouped by page.</li><li><strong>Diagram capture</strong> (numbered-overview pages), <strong>Print</strong> to a clean job sheet, <strong>Copy list</strong>.</li><li><strong>Draggable</strong> panel, <strong>Minimize</strong>, <strong>New job</strong> with confirmation.</li><li>Version stamp + diagnostic dump; paste-box fallback on the setup page.</li><li>Published to GitHub Pages; works in Chrome, Edge, Safari (not Firefox).</li></ul></div></div>
+      <div class="cl"><div class="cl-ver"><h3>v0.4.1-alpha <span class="cl-status">— 2026-07-10</span></h3><h4>Added</h4><ul><li><strong>Torque specs — oil drain plug &amp; wheel bolt (Service Xpress).</strong> Load the yearly <strong>VW Service Xpress</strong> charts (PDF) in ⚙ Settings, and the <strong>Fluids &amp; Capacities</strong> window now shows the <strong>oil drain plug</strong> and <strong>wheel bolt</strong> torque for the loaded vehicle — in its own <strong>Torque</strong> card at the top, right next to the Vehicle box — no digging through the chart. It's smart about the tricky cases: <strong>wheel torque that differs by drivetrain</strong> (e.g. Tiguan FWD 120 / AWD 140 N·m) shows the right one for your vehicle; <strong>one-piece vs two-piece wheel bolts</strong> (some Atlas) and <strong>M14 vs M24 drain plugs</strong> (older years) show both, labeled, since the car can't tell us which; EVs correctly show no drain plug. Covers <strong>2008–2026</strong> (2007 and earlier never had these charts). Everything else in the chart (oil spec, capacities, etc.) is ignored — that comes from the Fluid Capacity tables. Charts are read and kept <strong>only on this computer</strong>, never uploaded, and re-read automatically when the reader is improved — same as the fluid tables.</li><li><strong>A "Check for Update" button in Settings (⚙).</strong> Open Settings and click it to check right away — the same little update window that normally runs about once a day opens on the spot. If there's a newer version it asks before installing; if you're already current, it tells you so.</li></ul><h4>Changed</h4><ul><li><strong>Settings is tidier.</strong> Each part (shop tool list, fluid tables, fluid database) is now a collapsible section — click a heading to expand it. Each heading shows its status at a glance (e.g. how many tools or years are loaded), so you don't have to open a section to check.</li><li><strong>Uploading no longer closes Settings.</strong> After you load a tool list or fluid PDFs, Settings stays open (and updates to show what you just loaded) so you can keep working — instead of closing and making you reopen it.</li></ul><h4>Removed</h4><ul><li><strong>The weekly "App may be out of date" reminder is gone.</strong> Now that Hahns updates itself (the self-updating loader added in v0.4.0), the old once-a-week Wednesday nudge to go re-check the setup page is no longer needed.</li><li><strong>The "check for latest" link in the panel header is gone too</strong> — Hahns updates itself now, so there's nothing to check by hand. (If you ever want to check on demand, use the new <strong>Check for Update</strong> button in Settings.) The version stamp stays where it was, and clicking it still copies a diagnostic.</li></ul></div><div class="cl-ver"><h3>v0.4.0-alpha <span class="cl-status">— 2026-07-09</span></h3><h4>Added</h4><ul><li><strong>H.A.H.N.S now updates itself.</strong> The bookmark you drag is a small "loader" that keeps a copy of Hahns on your computer and runs it instantly (even offline). About once a day it quietly checks this site for a newer version, and <strong>if there's an update it asks you first</strong> — a little window shows your installed version vs the latest, with <strong>Update now</strong> / <strong>Not now</strong>. Say yes and it updates on the spot; say no and it keeps your current version. The upshot: after this one-time switch, you normally <strong>never re-drag the bookmark again</strong> — new fluids, tools, and fixes just show up.</li><li>Brand-new installs are silent (it just sets Hahns up); only *updates* ask you.</li></ul><h4>Changed</h4><ul><li><strong>The setup page now hands out the new self-updating bookmark.</strong> Existing users: delete your old H.A.H.N.S bookmark and drag this new one on once — that's the switch. First click needs internet to set up; after that it works offline.</li><li>Your repair data still never leaves your browser. The only new network use is the once-a-day update check, which pulls <strong>Hahns's own code</strong> in — nothing about your job goes out.</li></ul></div><div class="cl-ver"><h3>v0.3.18.6-alpha <span class="cl-status">— 2026-07-08</span></h3><h4>Changed</h4><ul><li><strong>Minimized SCAN moved left of the gear.</strong> The compact green SCAN in the minimized title bar now sits to the left of the settings gear (was left of the minimize button).</li></ul></div><div class="cl-ver"><h3>v0.3.18.5-alpha <span class="cl-status">— 2026-07-08</span></h3><h4>Changed</h4><ul><li><strong>Smaller minimized bar.</strong> When you minimize Hahns, SCAN now sits up in the title bar as compact green text (just left of the minimize button) instead of a full green button below it — so the collapsed panel takes up as little room as possible. Expanded, the big green SCAN button is unchanged.</li></ul></div><div class="cl-ver"><h3>v0.3.18.4-alpha <span class="cl-status">— 2026-07-08</span></h3><h4>Fixed</h4><ul><li><strong>A/C now hides specs for the wrong engine.</strong> On years where the A/C charge depends on the engine (e.g. a 2000–2005 Passat has one spec for the 4.0L W8 and another for everything else), Hahns was showing both. It now shows only the row that matches your vehicle's engine size — a 2.8L V6 sees the "except with 4.0 L" spec (600 g), a 4.0L W8 sees the "with 4.0 L" spec (500 g). A/C rows that aren't engine-specific (like the Eurovan's 1- vs 2-evaporator options) still show all choices.</li></ul></div><div class="cl-ver"><h3>v0.3.18.3-alpha <span class="cl-status">— 2026-07-08</span></h3><h4>Fixed</h4><ul><li><strong>2000–2005 A/C rows no longer cut off.</strong> On these older tables the A/C notes (e.g. the 4.0L-engine exception on the Passat) wrap across several lines, so a row that should read "Refrigerant, except with 4.0 L" was showing only "except." Hahns now stitches the wrapped text back together — the Passat shows "except with 4.0 L" / "with 4.0 L" for both refrigerant and compressor oil, and the Eurovan reads "1 Evaporator" / "2 Evaporators" instead of a broken fragment.</li></ul></div><div class="cl-ver"><h3>v0.3.18.2-alpha <span class="cl-status">— 2026-07-08</span></h3><h4>Fixed</h4><ul><li><strong>Older vehicles (2000–2010) now pick the right engine instead of showing every option.</strong> The vehicle reader was only keeping the engine <strong>code</strong> (e.g. "ATQ") and dropping the engine <strong>size</strong> ("2771 ccm") next to it — and the older fluid tables are matched by size. Hahns now keeps the size, so it lands on the correct engine oil and coolant automatically (e.g. a 2003 Passat V6 → 6.2 L oil / 9.0 L coolant, a 2006 GTI 2.0T → 4.6 L). The engine size now also shows in the green vehicle bar.</li></ul></div><div class="cl-ver"><h3>v0.3.18.1-alpha <span class="cl-status">— 2026-07-07</span></h3><h4>Fixed</h4><ul><li><strong>2000–2005 vehicles now actually update, and the "Updating…" status clears.</strong> After the v0.3.18 update, the older fluid tables saved on your computer weren't re-reading themselves with the new parser (so a 2003 still showed nothing), and the Fluid database status could stay stuck on "Updating." Both are fixed — every saved year now correctly refreshes itself once with the right parser on this update. (If a year was loaded on a very old version that didn't keep the PDF, it'll ask you to re-load that one PDF.)</li></ul></div><div class="cl-ver"><h3>v0.3.18-alpha <span class="cl-status">— 2026-07-07</span></h3><h4>Added</h4><ul><li><strong>Fluids &amp; Capacities now works on 2000–2010 vehicles (issue #43).</strong></li><li><strong>2006–2010:</strong> those tables list engines by their size (like "2.0L") instead of the letter engine code newer years use, so Hahns couldn't pin down the right row before. It now reads your vehicle's engine size and picks the matching engine oil and coolant automatically. It also tells apart a gas and a diesel of the <strong>same</strong> size (e.g. 2.0L TSI vs 2.0L TDI get different oil and capacity) and handles the V10 TDI ("5.0L").</li><li><strong>2000–2005:</strong> these use a completely different older page layout (one combined table per model). Hahns now reads it too — engine oil, coolant, and transmission/final-drive capacities, matched to your vehicle by engine size, engine code (e.g. the two different 2.0L Beetles, AZG vs BDC), and fuel type. Air-conditioning charges are shown best-effort for these years.</li><li>Load each year's PDF in ⚙ Settings the same as always. Verified against the real 2000–2010 tables.</li></ul><h4>Changed</h4><ul><li><strong>The three fluid readers are now named by the years they cover: Parser 00-05, Parser 06-10, Parser 11-26.</strong> This is an under-the-hood cleanup that makes each one easy to maintain and improve on its own. The Settings "Fluid database" panel shows all three. (Parser 00-05 covers 2000–2005 and isn't built yet.)</li></ul><h4>Fixed</h4><ul><li><strong>A rare capacity could go missing on 2006–2010 tables.</strong> When an engine's oil capacity was printed without the "(quarts)" conversion next to it (e.g. the 2006 Touareg 4.2L/5.0L), that number was being dropped. It's now read correctly.</li></ul></div><div class="cl-ver"><h3>v0.3.17.1-alpha <span class="cl-status">— 2026-07-05</span></h3><h4>Fixed</h4><ul><li><strong>The magnifier no longer triggers ELSA's Print button (bad v0.3.17 bug).</strong> Clicking the magnifying glass could fire ELSA's print command multiple times. The magnifier now has a hard rule that it will <strong>never</strong> click print/save/close/etc. controls, and it clicks a section's opener only once.</li><li><strong>When it opens a tool dropdown, it now waits a moment and jumps to the tool</strong> (ELSA opens these sections a split-second after the click). If a section still can't be opened, it lands on the dropdown's header so you can open it with one click — and records a more detailed diagnostic.</li></ul></div><div class="cl-ver"><h3>v0.3.17-alpha <span class="cl-status">— 2026-07-05</span></h3><h4>Changed</h4><ul><li><strong>The magnifier now tries much harder to open a collapsed "special tools" dropdown before jumping to it (issue #47).</strong> It walks up from the tool to whatever is hiding it, handles more kinds of collapsed sections (not just standard ones), and clicks the section's header/expander the same way a person would. <strong>If it still can't open the section, it now highlights the dropdown's header text</strong> so you're taken to the right spot and can open it with one click.</li></ul><h4>Added</h4><ul><li><strong>Magnifier diagnostics.</strong> If a section won't open, Hahns prints a plain report to the browser console (and into the diagnostic dump) — what it was looking for, which element hid it, what it tried, and where it landed — so a stubborn ELSA layout can be pinned down exactly.</li></ul></div><div class="cl-ver"><h3>v0.3.16.2-alpha <span class="cl-status">— 2026-07-05</span></h3><h4>Fixed</h4><ul><li><strong>Tool numbers written in spaced groups (e.g. <code>VAS 294 025</code>) are now read in full.</strong> The scan used to stop at the first space and grab only <code>VAS 294</code>. It now keeps the whole number (up to three space-separated groups), without grabbing an unrelated trailing number. (Issue #78)</li></ul></div><div class="cl-ver"><h3>v0.3.16.1-alpha <span class="cl-status">— 2026-07-05</span></h3><h4>Added</h4><ul><li><strong>Added special tool 3259 to the built-in scan list.</strong> It now gets picked up when a page writes it as a tool callout (<code>-3259-</code>).</li></ul></div><div class="cl-ver"><h3>v0.3.16-alpha <span class="cl-status">— 2026-07-05</span></h3><h4>Added</h4><ul><li><strong>Tool descriptions in the "Find these tools" pop-up and the printout.</strong> Each tool now shows what it *is* (from your shop list, or what the scan read off the page) next to its number and drawer location — so a number you don't recognize still tells you the tool. (Your shop list's descriptions appear after you re-upload the list once on this version.)</li><li><strong>A built-in VW special-tool list baked into the page scan (~1,000 tools).</strong> The scanner now recognizes these tools even before you load a shop list, and catches number formats it used to miss. Plain-number tools (like 1833) are only picked up when the page writes them as a tool callout (e.g. <code>-1833-</code>), so ordinary numbers in the text aren't mistaken for tools.</li></ul><h4>Changed</h4><ul><li><strong>The shop special-tool list now lives in the browser database (IndexedDB), same as the fluid tables.</strong> It used to be kept in the browser's older "local storage." Your existing list moves over automatically the first time you open this version — nothing to re-upload. Everything is still saved only on this computer, never uploaded, and still isn't cleared by Exit / New Vehicle / Clear info (only by Settings → "Remove list"). No change to how you use it.</li><li><strong>The app's browser database is now named <code>hahns_db</code></strong> (it holds more than fluids). The very short-lived <code>hahns_fluids</code> database from the day before is simply removed on first open. If you had loaded fluid PDFs on that one-day-old version, re-load them once in ⚙ Settings — your tool list carries over automatically.</li></ul></div><div class="cl-ver"><h3>v0.3.15.4-alpha <span class="cl-status">— 2026-07-04</span></h3><h4>Fixed</h4><ul><li><strong>Range capacities were half-shown.</strong> When a fluid capacity is a range — e.g. the 2025/2026 ID.Buzz / ID.4 / ID.7 "Single Speed 0MJ" transmission <code>0.88 - 0.93 L</code>, and the older DSG <code>6.9 - 7.2 L</code> — only the high end was picked up in bold and the low end got left behind in the grey label. The full range now shows as the value. (Verified against the archived 2011–2026 data: 47 range cells corrected, no other values touched.) Modern fluid reader → <strong>1.3.4</strong>; saved PDFs re-read automatically on this update.</li></ul></div><div class="cl-ver"><h3>v0.3.15.3-alpha <span class="cl-status">— 2026-07-04</span></h3><h4>Changed</h4><ul><li><strong>A/C capacities now show grams only (imperial ounces dropped).</strong> VW works in grams, so the redundant <code>(… oz.)</code> / <code>(… fl. oz.)</code> conversions are removed from the Air Conditioning card — cleaner, one unit.</li></ul><h4>Fixed</h4><ul><li><strong>e-Golf (2015–2018) and 2017 Tiguan A/C capacities were still wrong.</strong> On those years the ounces conversion was wedged into the middle of the metric value, so the charge got stranded and only the tolerance showed (e.g. <code>15 g</code> instead of <code>500 +/- 15 g</code>). Removing the imperial conversion fixes those cells: e-Golf reads <code>500 / 950 / 850 / 450 +/- 15 g</code>, the 2017 Tiguan <code>460 +/- 15 g</code>, etc. (Verified against the full archived 2011–2026 A/C data — all correct, no other years affected.) Modern fluid reader → <strong>1.3.3</strong>; saved PDFs re-read automatically on this update.</li></ul></div><div class="cl-ver"><h3>v0.3.15.2-alpha <span class="cl-status">— 2026-07-04</span></h3><h4>Fixed</h4><ul><li><strong>A/C capacity fix, take two — now handles the 2018 Golf R's tolerance format.</strong> The v0.3.15.1 fix only caught tolerances written as <code>±</code> / <code>+/-</code>. On some years (e.g. the 2018 Golf R) the "plus-or-minus" prints as three spaced characters — <code>+ / -</code> — which slipped through, so the A/C charge (500 g) still showed in the small grey label with the tolerance (15 g) bolded. The reader now normalizes that spaced form too, so A/C and A/C compressor oil read correctly as <strong>500 +/- 15 g</strong>. (Modern fluid reader → <strong>1.3.2</strong>; saved PDFs re-read automatically.)</li></ul></div><div class="cl-ver"><h3>v0.3.15.1-alpha <span class="cl-status">— 2026-07-04</span></h3><h4>Fixed</h4><ul><li><strong>Air-conditioning (and A/C compressor oil) capacities on some years showed the wrong number in bold.</strong> On years like the 2018 Golf R the charge printed as *"Initial 500 +/- Fill / Refill <strong>15 g</strong>"* — the real capacity (500 g) was buried in the small grey text and the ± tolerance (15 g) was shown as the big number. Now it reads correctly as <strong>500 +/- 15 g</strong> (and the compressor oils likewise), matching how other years already displayed. This was a table-layout quirk where the "Initial Fill / Refill" label words landed between the number and its tolerance.</li><li>Because of this fix the <strong>modern fluid reader version ticks to 1.3.1</strong>, so any fluid PDFs you have saved are re-read automatically in the background on this update — no re-upload needed.</li></ul></div><div class="cl-ver"><h3>v0.3.15-alpha <span class="cl-status">— 2026-07-04</span></h3><h4>Changed</h4><ul><li><strong>Your fluid PDFs are now kept safely in this browser, and improvements apply by themselves.</strong> Before, Hahns converted a fluid PDF and threw the PDF away — so whenever the fluid reader was improved (a page-break fix, a corrected oil grade, etc.), the only way to get the fix was to clear your browser data and re-upload every PDF. Now the original PDFs are stored on this computer (in the browser's own database, still <strong>never uploaded anywhere</strong>). When you re-drag an updated Hahns, it quietly re-reads your saved PDFs with the newer reader in the background — no re-uploading, no clearing anything.</li><li><strong>New "Fluid database" panel in ⚙ Settings.</strong> Shows where the data is stored, the current fluid-reader versions, how many model years you have installed, how much space the PDFs use, when the last background update ran, and an overall health check.</li></ul><h4>Fixed</h4><ul><li>Fluid tables that were loaded on an older version keep working after this update; re-upload those years once to also get automatic reader updates for them going forward.</li></ul></div><div class="cl-ver"><h3>v0.3.14-alpha <span class="cl-status">— 2026-07-03</span></h3><h4>Added</h4><ul><li><strong>The page scan now uses your uploaded tool list to catch oddly-named tools.</strong> Special tools that don't look like the usual <code>T…</code>, <code>VAS…</code> or <code>VAG…</code> numbers — for example <code>VW 771</code> or <code>VW 771/37</code> — used to be skipped by the scan. Now, if a tool is on the list you loaded in ⚙ Settings, Hahns will spot it on the repair page even when its name is unusual, show it under Special Tools, and give it a drawer location in <strong>Find these tools</strong>. (Tools that are only numbers with no letters are still skipped on purpose, so a bare number can't be confused with a torque value or part number.)</li></ul><h4>Fixed</h4><ul><li><strong>The 2018 Golf R engine oil now lists <code>VW 504 00 (0W-30)</code>.</strong> Because that oil line is squeezed in the PDF, the <code>(0W-30)</code> wrapped to the next line and was being dropped — it's now kept with its spec. (Checked every year 2011–2026: this was the only entry affected.)</li><li><strong>Windows no longer close on their own.</strong> If you opened Settings (or the Fluids/tools window) right after scanning a vehicle, it would vanish a few seconds later when the green vehicle bar auto-minimized. The bar still minimizes, but the window you're using stays open.</li><li><strong>The "find on page" magnifier now opens collapsed sections first.</strong> If a special tool lived inside a dropdown/expandable section on the ELSA page, clicking the magnifier appeared to do nothing (there was nothing on screen to jump to). It now opens that section, then scrolls to and highlights the tool.</li></ul><h4>Changed</h4><ul><li><strong>Every pop-up window now has a standard ✕ in the top-right corner to close it</strong>, instead of a "Close"/"Cancel" button that was easy to miss.</li></ul><h4>Note</h4><ul><li><strong>Re-drag to get all of this</strong> (hard-refresh the setup page, then drag the button up again). Your loaded tool list and fluid tables are kept.</li></ul></div><div class="cl-ver"><h3>v0.3.13-alpha <span class="cl-status">— 2026-07-02</span></h3><h4>Changed</h4><ul><li><strong>Fluids &amp; Capacities now runs entirely from your own computer.</strong> Load the yearly <strong>"VW Fluid Capacity Tables" PDFs</strong> once through the ⚙ Settings gear (you can pick all the years at once) — Hahns converts each PDF <strong>right in the browser</strong> into a small lookup table it keeps on that computer, shows you a preview of the years and models it found before saving, and the PDFs themselves aren't kept. The Fluids &amp; capacities button then opens the same vehicle-matched lookup as before (now with its own <strong>Print</strong> button), built locally with <strong>zero network calls</strong> — the fluid data is no longer fetched from the Hahns website at all. Like the shop tool list, the loaded tables stay on that computer and are <strong>not</strong> cleared by Exit / New Vehicle / Clear All Info — only by Settings → Remove tables. <strong>Re-drag to get this</strong>, then load your PDFs once per shop computer.</li></ul><h4>Removed</h4><ul><li>The hosted fluid-lookup page (<code>fluids.html</code>) and the published per-year fluid data files were removed from the website — the lookup lives inside the app now. If you're on an older version, the fluids link will stop working until you re-drag.</li></ul></div><div class="cl-ver"><h3>v0.3.12.1-alpha <span class="cl-status">— 2026-07-01</span></h3><h4>Changed</h4><ul><li><strong>Settings now shows which tool list is loaded.</strong> Instead of just the upload date, it now shows the <strong>file name</strong>, its <strong>format</strong> (CSV or Excel .xlsx), and the <strong>date</strong> — so you can tell at a glance exactly which list Hahns is using. <strong>Re-drag to get this.</strong></li></ul></div><div class="cl-ver"><h3>v0.3.12-alpha <span class="cl-status">— 2026-07-01</span></h3><h4>Added</h4><ul><li><strong>Upload your tool list as Excel (.xlsx) — no more "save as CSV" step.</strong> When you pick a native Excel file in Settings, Hahns now reads it right in the browser and converts it for you (first sheet). CSV still works exactly as before. This all happens <strong>on your computer</strong> — nothing is uploaded, still <strong>zero network calls</strong> on ELSA. (Old-style <code>.xls</code> files and Apple Numbers aren't supported — save those as CSV or <code>.xlsx</code> first.) <strong>Re-drag to get this.</strong></li></ul></div><div class="cl-ver"><h3>v0.3.11.1-alpha <span class="cl-status">— 2026-07-01</span></h3><h4>Changed</h4><ul><li><strong>Tidied the no-vehicle view.</strong> Removed the extra "Scanning a repair page works right away…" note — it repeated what the greyed-out <strong>Fluids &amp; capacities</strong> row already says ("scan Vehicle Summary to enable"). One less thing on screen. <strong>Re-drag to get this.</strong></li></ul></div><div class="cl-ver"><h3>v0.3.11-alpha <span class="cl-status">— 2026-07-01</span></h3><h4>Changed</h4><ul><li><strong>SCAN now works without loading a vehicle first.</strong> If you're already in a repair procedure, just click <strong>SCAN</strong> — Hahns collects the specs right away. You no longer have to go back to the Vehicle Summary page first. <strong>Re-drag to get this.</strong></li><li><strong>Loading the vehicle is now only needed for Fluids &amp; Capacities.</strong> Scan ELSA's <strong>Vehicle Summary</strong> page once to turn that feature on. Until you do, the Fluids &amp; Capacities row shows as greyed-out with a note telling you how to enable it — so you know the feature is there.</li></ul></div><div class="cl-ver"><h3>v0.3.10.1-alpha <span class="cl-status">— 2026-06-30</span></h3><h4>Changed</h4><ul><li><strong>When you minimize Hahns, it now shows the SCAN button</strong> instead of the New Vehicle button — so you can collapse the panel and still scan a page in one click. (New Vehicle is tucked away until you expand again.) <strong>Re-drag to get this.</strong></li></ul></div><div class="cl-ver"><h3>v0.3.10-alpha <span class="cl-status">— 2026-06-30</span></h3><h4>Added</h4><ul><li><strong>Your shop's tool list — "Find these tools."</strong> You can now load your shop's special-tool list (a CSV file), and a <strong>"Find these tools"</strong> button (under Special Tools) opens a <strong>separate, printable window</strong> — a tidy <strong>tick-off list</strong> with the <strong>tool number on the left, its drawer/location on the right, and a check box</strong> so you can cross each one off as you grab it (ticking it strikes the line through). It's sorted by drawer so same-drawer tools sit together (one-trip grab), and has its own <strong>Print</strong> button (clean, easy-to-read, just like the main Hahns print).</li><li><strong>Load it from the new ⚙ gear (top-right).</strong> Pick your spreadsheet (saved as <strong>CSV</strong> — File → Save As → CSV), then tell Hahns which column is the <strong>tool number</strong>, the <strong>drawer</strong>, and (optionally) the <strong>description</strong>. It handles different layouts — your 3-column list or VW's 4-column minimum-index sheet — and guesses the columns for you.</li><li><strong>Flags problem tools.</strong> If your list notes a tool as <strong>MISSING</strong>, <strong>CHECK PART NUMBER</strong>, broken, etc., Hahns shows that warning right in the tool list AND in the Find-these-tools window. If a tool <strong>isn't on your list at all</strong>, it's flagged <strong>"not in list"</strong> — a sign to order it or update your list.</li><li><strong>Keeps the main panel uncluttered.</strong> The drawer locations live in the pop-up window, not the main list — the main list just shows the tools (with a warning on any that need attention).</li><li><strong>Stays on your computer.</strong> The list is saved <strong>only on that shop computer</strong> (never uploaded, never on GitHub) and the window is built locally too — the bookmark still makes <strong>zero network calls</strong> on ELSA. Each computer loads its list once; re-upload to update. <strong>This is a code change, so hard-refresh the setup page and re-drag.</strong></li></ul></div><div class="cl-ver"><h3>v0.3.9-alpha <span class="cl-status">— 2026-06-29</span></h3><h4>Added</h4><ul><li><strong>Meet Hahns!</strong> The plain wrench icon is replaced everywhere by the <strong>Hahns mascot</strong> — in the panel header inside ELSA, on the setup page (full-body), on the Fluids &amp; Capacities page, and as the <strong>browser tab/bookmark icon</strong> (favicon). The mascot in the panel is built right into the bookmark, so it still makes <strong>no network calls</strong> and keeps nothing — same privacy promise as before. <strong>This is a code change, so hard-refresh the setup page and re-drag your bookmark to get Hahns.</strong></li></ul></div><div class="cl-ver"><h3>v0.3.8-alpha <span class="cl-status">— 2026-06-29</span></h3><h4>Added</h4><ul><li><strong>Fluid &amp; capacity data for 2011, 2012 and 2013.</strong> The lookup now covers <strong>2011 through 2026</strong>. (Older years 2006–2010 list engines by size only — no engine code — and 2000–2005 use a different table format; those need more work and will come later.)</li></ul><h4>Fixed</h4><ul><li><strong>More accurate A/C refrigerant amounts (2014–2017).</strong> Those years' air-conditioning charges were showing the *tolerance* (e.g. "25 g") instead of the actual amount; they now read correctly (e.g. "525 ± 25 g"). New fluid years are served data, so you do <strong>not</strong> need to re-drag the bookmark for any of this.</li></ul></div><div class="cl-ver"><h3>v0.3.7.2-alpha <span class="cl-status">— 2026-06-29</span></h3><h4>Changed</h4><ul><li><strong>Clearer buttons, less confusion.</strong> The <strong>New job</strong> button is renamed <strong>New Vehicle</strong> (it wipes the loaded vehicle *and* all collected info) and moved to the <strong>top</strong>, right under the version line, so the "start over" action is easy to find. <strong>Clear info</strong> is renamed <strong>Clear All Info</strong> (it clears collected info but keeps the vehicle) and stays next to the job title.</li><li><strong>Faster hover hints.</strong> The little explanations that pop up when you hover a button now appear quickly instead of after the usual long browser delay.</li></ul></div><div class="cl-ver"><h3>v0.3.7.1-alpha <span class="cl-status">— 2026-06-28</span></h3><h4>Added</h4><ul><li><strong>"Clear info" button.</strong> A new button under <strong>New job</strong> wipes everything Hahns has collected — torque, replace, special tools, warnings and diagrams — <strong>but keeps the loaded vehicle</strong>, so you can start a fresh procedure on the same car without re-scanning the Vehicle Summary. (New job still clears the vehicle too.)</li><li><strong>Per-group Clear.</strong> Each section (Torque, Replace, Special Tools, Critical Warnings, Diagram) now has its own small <strong>Clear</strong> button in its header to empty just that group. Both kinds of clear ask "Clear all?" first so a stray tap can't wipe your work.</li></ul></div><div class="cl-ver"><h3>v0.3.7-alpha <span class="cl-status">— 2026-06-28</span></h3><h4>Changed</h4><ul><li><strong>The green "Vehicle loaded" box now collapses to save space.</strong> A few seconds after it appears it tucks itself away to a single "✓ Vehicle loaded" line, giving the rest of the panel more room. Click the little arrow on the right to open it back up and edit any field, and click again to collapse it. If any fields are still blank, the collapsed line shows a small "N to add" tag so you don't miss them.</li></ul></div><div class="cl-ver"><h3>v0.3.6-alpha <span class="cl-status">— 2026-06-28</span></h3><h4>Added</h4><ul><li><strong>Find-on-page magnifier.</strong> Every spec, part, tool, and warning that Hahns collected now has a small magnifying-glass icon on its left. Click it and Hahns scrolls the ELSA page to exactly where it found that item and flashes it yellow so you can eyeball it in context. The highlight fades on its own and changes nothing on the page.</li><li>Items collected from an <strong>earlier page</strong> of a multi-page job show the magnifier <strong>greyed out</strong> (with a tooltip) — the browser throws that page away when you navigate, so there's nothing left to jump to until you go back to it. Hand-added rows and the Fluids link have no magnifier (they didn't come from a spot on the page).</li></ul></div><div class="cl-ver"><h3>v0.3.5.12-alpha <span class="cl-status">— 2026-06-27</span></h3><h4>Fixed</h4><ul><li><strong>Sequence diagram now shows on the first scan.</strong> A diagram lower on the page (like the tightening-sequence figure) sometimes only appeared after pressing SCAN a second time. Hahns now waits for any still-loading images and grabs them automatically, so one scan is enough.</li></ul><h4>Changed</h4><ul><li><strong>The tightening sequence gets its own labeled section.</strong> The sequence steps and its diagram are now grouped under their own heading (the table/figure title, e.g. "Cylinder Head – Tightening Specifications and Sequence"), separated from the regular bolt torques — like a freshly scanned page — so the list stays organized.</li></ul></div><div class="cl-ver"><h3>v0.3.5.11-alpha <span class="cl-status">— 2026-06-27</span></h3><h4>Fixed</h4><ul><li><strong>Tightening-sequence tables now read correctly.</strong> When a page has a "Step / Bolts / Tightening Specification" table (e.g. cylinder-head bolts), Hahns now lists each step in order with its bolts and spec — including the angle-only steps (90°) that were being dropped. Before, the step numbers were mistaken for part callouts, which scrambled the list and stuck the table header onto the previous part.</li></ul></div><div class="cl-ver"><h3>v0.3.5.10-alpha <span class="cl-status">— 2026-06-27</span></h3><h4>Fixed</h4><ul><li><strong>Tightening sequences now show up.</strong> On a page like *Overview – Cylinder Head*, the cylinder-head bolt's "Tightening Specifications and Sequence — refer to figure" note is now captured under Torque (so the bolt clearly needs the sequence), and the <strong>sequence diagram itself is now kept</strong> alongside the main overview diagram instead of being dropped.</li><li><strong>A dropped second image can no longer scramble bolt numbers.</strong> Following up on the multiple-diagram support: only the main assembly diagram(s) start a new "Fig", so a smaller secondary image on the page won't restart or split the numbering.</li></ul></div><div class="cl-ver"><h3>v0.3.5.9-alpha <span class="cl-status">— 2026-06-27</span></h3><h4>Fixed</h4><ul><li><strong>Replace-after-removal now catches a plain "Replace" note.</strong> When ELSA marks a part for one-time use with just the word <strong>Replace</strong> (or <strong>Renew</strong>) next to it, it was being skipped. Those parts now show up in the Replace-after-removal section, labeled with their component number like everything else.</li><li><strong>More special tools are recognized.</strong> Tool numbers like <strong>10-222 A</strong> (and its sub-parts <strong>10-222 A/1, /2, …</strong>) are now picked up, and the <strong>VAG 1331A / V.A.G 1332A torque wrenches</strong> are listed under Special Tools instead of being mistaken for a torque spec. Works whether or not the number is written with periods (VAG or V.A.G).</li><li><strong>Print now waits for the diagrams.</strong> Diagrams sometimes came out blank on the print preview and only showed up on a second try. Print now holds until the diagram images have finished loading before opening the preview, so they show up the first time.</li><li><strong>Pages with more than one diagram now keep them separate.</strong> When a page shows two assembly diagrams, each with its own numbered bolts and torque specs, Hahns now splits them into "Fig 1" / "Fig 2" groups — each diagram's bolt numbers start at 1 again and match that diagram, and an identical spec that appears on both is no longer dropped. Pages with a single diagram look exactly as before.</li></ul></div><div class="cl-ver"><h3>v0.3.5.8-alpha <span class="cl-status">— 2026-06-27</span></h3><h4>Fixed</h4><ul><li><strong>Fluids &amp; Capacities now always opens the latest version.</strong> GitHub caches the page for ~10 minutes, so after an update you could briefly see the old look/data. The fluids link now forces a fresh load every time, so what you see is always current.</li></ul></div><div class="cl-ver"><h3>v0.3.5.7-alpha <span class="cl-status">— 2026-06-27</span></h3><h4>Changed</h4><ul><li><strong>Fluids &amp; Capacities page now matches the new look</strong> — its header is the same dark graphite with green accent and green wrench as the main panel, instead of VW blue. (This is the served lookup page, so you don’t need to re-drag the bookmark for it.)</li></ul></div><div class="cl-ver"><h3>v0.3.5.6-alpha <span class="cl-status">— 2026-06-27</span></h3><h4>Changed</h4><ul><li><strong>Fluids &amp; Capacities now opens in a small pop-up window</strong> instead of a full new tab. It’s sized to fit the data with no side-scrolling (just scroll up/down) and centered on screen, so it reads as a quick reference you can glance at and close — no hunting for a stray tab. Opening it again reuses the same pop-up. (If your browser blocks pop-ups, it falls back to opening a tab.)</li></ul></div><div class="cl-ver"><h3>v0.3.5.5-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">A fresh look so H.A.H.N.S stands out from ELSA.</p><h4>Changed</h4><ul><li><strong>New header color.</strong> The top bar is now dark graphite with a green accent (and a green wrench) instead of VW blue, so the panel no longer blends into ELSA2Go.</li><li><strong>The SCAN button moved and got bigger.</strong> It’s no longer tucked in the header — it’s now a large green button (renamed from “Scan page” to <strong>SCAN</strong>) sitting right above the job title, so it’s easy to hit at the bay.</li><li><strong>Version line moved to the very top</strong>, directly under the H.A.H.N.S title bar.</li><li><strong>Buttons look consistent now.</strong> A long-standing styling bug left most buttons (New job, + add, Copy list, Print, etc.) thinner than intended; they’re now uniformly bold so the whole panel looks tied together.</li></ul></div><div class="cl-ver"><h3>v0.3.5.4-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">More model years for Fluids &amp; Capacities.</p><h4>Added</h4><ul><li><strong>Fluid &amp; capacity data for model years 2014–2018.</strong> The lookup now covers <strong>2014 through 2026</strong>. Older years (2006–2013 and 2000–2005) use a different VW table format and will come in a later update. New fluid years are served data, so you do <strong>not</strong> need to re-drag the bookmark to get them.</li></ul></div><div class="cl-ver"><h3>v0.3.5.3-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">EV drivetrain detail + a recovered 2019 spec.</p><h4>Fixed</h4><ul><li><strong>ID.Buzz / ID.4 / ID.7 “0MP” single-speed gearbox now reads clearly.</strong> It used to show one mangled line. It now shows the two real service cases: *Refilling transmission that had residue removed* → <strong>3.18 L (3.36 qt)</strong>, and *Transmission fluid drained, residue not removed* → *fill up to the lower edge of the fill/check hole*.</li><li><strong>2019 Golf SportWagen / Alltrack — AWD Clutch capacity restored.</strong> The <strong>655 ml</strong> AWD-clutch fill was being dropped (the original parser didn’t read “ml”). It now appears.</li></ul></div><div class="cl-ver"><h3>v0.3.5.2-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">Electric-vehicle fixes for the Fluids &amp; Capacities lookup.</p><h4>Fixed</h4><ul><li><strong>Electric vehicles now find their fluids.</strong> Clicking Fluids &amp; Capacities for an EV (e.g. *ID. Buzz 1st Edition AWD*, *ID.4 AWD PRO S*) used to say “No fluid entry found.” The lookup now matches the vehicle to the right table even when the model name carries trim/options (and regardless of spacing or punctuation like the dot in “ID.4”). This also fixes a related gap where <strong>2023–2026 Atlas</strong> (“Atlas Family”) and <strong>GTI / Golf R</strong> (under “Golf Family”) weren’t matching.</li><li><strong>EV engine &amp; transmission codes are read from the Vehicle Summary.</strong> EV summaries don’t have a single “Engine Code” / “Trans Type” — they list <strong>Front/Rear</strong> motor and transaxle codes. H.A.H.N.S now reads those (shown as “FRONT / REAR”), so the green vehicle bar fills in and the drivetrain lookup can match the EV’s single-speed reduction gear.</li></ul></div><div class="cl-ver"><h3>v0.3.5.1-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">More fluid years.</p><h4>Added</h4><ul><li><strong>2020 through 2026 fluid data.</strong> The Fluids &amp; Capacities lookup now covers <strong>2020</strong> (Jetta/GLI, Golf/GTI, Golf R, e-Golf, Passat, Arteon, Tiguan, Atlas/Atlas Cross Sport), <strong>2021</strong> (adds <strong>Taos</strong> and <strong>ID.4</strong>), <strong>2022</strong> (Jetta/GLI, GTI/Golf R, Passat, Arteon, Taos, Tiguan, Atlas/Atlas Cross Sport, ID.4), <strong>2023</strong> (Arteon, Atlas Family, Golf Family, ID.4, Jetta, Taos, Tiguan), <strong>2024</strong> (same lineup as 2023), <strong>2025</strong> (Atlas Family, Golf Family, <strong>ID.Buzz</strong>, ID.4, <strong>ID.7</strong>, Jetta, Taos, Tiguan), and <strong>2026</strong> (Atlas Family, Golf Family, ID.Buzz, ID.4, Jetta, Taos, Tiguan) in addition to 2019. No need to re-drag the bookmark — new years are served automatically.</li></ul></div><div class="cl-ver"><h3>v0.3.5-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">Fluids polish.</p><h4>Changed</h4><ul><li><strong>Fluids &amp; Capacities link moved up.</strong> It now sits right under the green vehicle box (above the version line), so it's the first thing you reach once a vehicle is loaded.</li><li><strong>Clearer system icons</strong> on the lookup page — an oil can, a thermometer, a snowflake, and a gear for Engine Oil / Coolant / A/C / Drivetrain.</li></ul></div><div class="cl-ver"><h3>v0.3.4-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">Fluids &amp; Capacities is now a vehicle-matched lookup.</p><h4>Added</h4><ul><li><strong>Fluids &amp; Capacities opens a matched lookup page.</strong> Instead of scanning fluids from the repair manual (they're rarely there — they live in a separate per-year PDF), the <strong>Fluids &amp; Capacities</strong> section is now a button. With a vehicle loaded, it opens a new window showing <strong>Engine Oil, Engine Coolant, Air Conditioning, and Drivetrain</strong> for *your* vehicle — capacities and fluid specs matched to your Engine Code, Transmission, Model, and Model Year. No digging through the PDF.</li><li>The A/C section shows the <strong>refrigerant type</strong> (R1234yf / R134a) next to each charge, and Drivetrain shows all the sub-fills (transmission, bevel box, AWD clutch, final drive), with AWD-only parts hidden on front-wheel-drive vehicles.</li></ul><h4>Changed</h4><ul><li><strong>Fluids are no longer scanned</strong> from procedure pages. The button needs a vehicle loaded (scan the Vehicle Summary first), same as the rest of the job.</li></ul><h4>Notes</h4><ul><li>Fluid data is published per model year and only the <strong>2019</strong> tables are loaded so far. Other years show "no data published yet" until their PDF is processed.</li></ul></div><div class="cl-ver"><h3>v0.3.3-alpha <span class="cl-status">— 2026-06-27</span></h3><p class="cl-intro">Vehicle loading is now locked to the Vehicle Summary page.</p><h4>Fixed</h4><ul><li><strong>Only the Vehicle Summary page loads a vehicle now.</strong> ELSA shows the selected VIN in its header on *every* page, so scanning a repair-manual page used to load a half-wrong vehicle (right VIN, but garbage Model Name / Trans Type). H.A.H.N.S now checks for the summary's own layout (the <strong>Vehicle Data</strong> section with its Model Name / Engine Code / Model Year / Trans Type fields) before loading anything — scan any other page first and it just says that isn't the summary.</li><li><strong>Tighter field reading.</strong> The five fields are now read straight from their ELSA labels, so values like Engine Code (<strong>CDVC</strong>) and Trans Type (<strong>09PA – AQ450-8A</strong>) come through exactly.</li></ul></div><div class="cl-ver"><h3>v0.3.2-alpha <span class="cl-status">— folded into v0.3.3</span></h3><p class="cl-intro">Start every job by loading the vehicle.</p><h4>Added</h4><ul><li><strong>Load the vehicle first.</strong> Open ELSA's <strong>Vehicle Summary</strong> page and click <strong>Scan page</strong> — H.A.H.N.S reads the <strong>VIN, Model Year, Model Name, Engine Code, and Trans Type</strong> and pins them in a green "Vehicle loaded" strip at the top of the panel, so you can see at a glance that it got a good grab. The vehicle stays loaded for the whole job and clears when you Exit or start a New job.</li><li><strong>Fill in anything it missed.</strong> If a field comes up blank, it's flagged and you can click it to type the value by hand. The vehicle also prints and copies at the top of the job sheet.</li></ul><h4>Changed</h4><ul><li><strong>A vehicle is required before collecting specs.</strong> If you click <strong>Scan page</strong> on a repair procedure before loading a vehicle, H.A.H.N.S asks you to scan the Vehicle Summary page first instead of collecting anything.</li></ul></div><div class="cl-ver"><h3>v0.3.1-alpha <span class="cl-status">— 2026-06-25</span></h3><p class="cl-intro">Bug fixes for how safety banners are read and shown.</p><h4>Fixed</h4><ul><li><strong>NOTE banners are now captured.</strong> ELSA flags safety text with four banners — <strong>DANGER</strong>, <strong>WARNING</strong>, <strong>CAUTION</strong>, and <strong>NOTE</strong>. The <strong>NOTE</strong> banner's text was being skipped (it has no warning word of its own), so important "could result in vehicle damage" notes never made it into Critical warnings. They're now collected like the other three.</li><li><strong>Special tools with a "/N" sub-part are read in full.</strong> Tool numbers that end in a slash and a number — like <strong>T1000/1</strong> or <strong>VAS 6234/2</strong> — were being cut off (or missed). They now come through complete.</li><li><strong>Each special tool is listed once.</strong> A tool mentioned several times in a procedure used to appear as a repeated row in the list. It's now listed a single time (the blue chip at the top stays for the quick glance).</li></ul><h4>Added</h4><ul><li><strong>Warnings are colour-coded to match ELSA.</strong> Each item in Critical warnings now shows its banner type and matching colour — <strong>DANGER</strong> red, <strong>WARNING</strong> orange, <strong>CAUTION</strong> yellow, <strong>NOTE</strong> light blue — the same colours ELSA uses, so they're easy to tell apart at a glance. The Copy/Print output labels each one too (e.g. "NOTE: …").</li><li><strong>Special tools now show a name.</strong> When the procedure gives the tool a name (e.g. "Caliper Piston Tool - T10145/1 -"), the list shows the number <strong>and</strong> the name. If there's no name, it just shows the number.</li><li><strong>You can remove a tool chip.</strong> Each blue tool chip now has a small ✕ to delete it (which also removes it from the list below) — handy when a tool isn't one you need.</li></ul></div><div class="cl-ver"><h3>v0.3.0-alpha <span class="cl-status">— 2026-06-25</span></h3><p class="cl-intro">Replaces the automatic update check (which simply can't work inside ELSA) with a</p><p class="cl-intro">simple weekly reminder, and tidies up the panel.</p><h4>Added</h4><ul><li><strong>Weekly "check for updates" reminder.</strong> On <strong>Wednesdays</strong> — and only once that day — a yellow bar appears at the top of the panel: *"App may be out of date. <strong>Check for update?</strong>"* The link opens the H.A.H.N.S setup page so you can compare your version to the latest; <strong>Dismiss</strong> clears it. Kept deliberately low-key: it shows once a week and nothing more, because there's no way to know for sure whether your copy is actually out of date. Needs no internet — it's just a calendar reminder, so it works the same inside ELSA as anywhere else.</li></ul><h4>Changed</h4><ul><li><strong>The setup page now leads with the bookmark button.</strong> The drag-the-wrench button moved to the top of the page, so updating is faster to find.</li><li><strong>"What's new" starts collapsed</strong> on the setup page — click it open when you want the full history.</li></ul><h4>Removed</h4><ul><li><strong>The automatic, over-the-internet update check</strong> (from v0.2.0–v0.2.4). ELSA blocks it completely, so it never worked there — the weekly reminder above replaces it. H.A.H.N.S is now back to making <strong>zero network calls</strong>, ever.</li><li><strong>The "What's new" pop-up inside the panel.</strong> The full history lives on the setup page (the only place you can actually update from), so the app no longer carries its own copy — which also makes the bookmark smaller.</li></ul></div><div class="cl-ver"><h3>v0.2.4-alpha <span class="cl-status">— 2026-06-25</span></h3><h4>Fixed</h4><ul><li><strong>Clearer "how to check for updates" note.</strong> The note inside ELSA now points you straight at the <strong>check for latest ↗</strong> link (which opens the H.A.H.N.S page even from inside ELSA), instead of telling you to open the bookmark on another web page — which didn't work from a blank tab.</li></ul></div><div class="cl-ver"><h3>v0.2.3-alpha <span class="cl-status">— 2026-06-25</span></h3><p class="cl-intro">Settles how the update check behaves on ELSA, after testing proved ELSA blocks</p><p class="cl-intro">every kind of background check.</p><h4>Changed</h4><ul><li><strong>The update check now runs only outside ELSA, and tells you so.</strong> Testing confirmed (by the browser itself) that ELSA blocks H.A.H.N.S from reaching the internet at all while it's open — so the check no longer even tries while you're in ELSA (keeping the "nothing leaves your browser on ELSA" promise intact). Instead, the panel shows a short note: *"Update checks can't run inside ELSA — open H.A.H.N.S on a normal web page before opening ELSA (or after closing it)."* When you do open it off ELSA, it checks and shows the exact new version if one exists.</li></ul><h4>Removed</h4><ul><li>The marker-image trick from v0.2.2 (ELSA blocks images from us too, so it couldn't work).</li></ul></div><div class="cl-ver"><h3>v0.2.2-alpha <span class="cl-status">— 2026-06-25</span></h3><p class="cl-intro">Attempted to make the update check work inside ELSA via a marker image. Testing</p><p class="cl-intro">showed ELSA blocks that too — superseded by v0.2.3.</p></div><div class="cl-ver"><h3>v0.2.1-alpha <span class="cl-status">— 2026-06-25</span></h3><p class="cl-intro">Reworks the update check from v0.2.0.</p><h4>Changed</h4><ul><li><strong>Update check now runs at most once a day</strong> (in the background, after the panel is already on screen — it never slows the panel down), instead of once per browser session.</li><li><strong>Clearer update banner</strong>: shows the version you have, the new version, a <strong>Get Update</strong> button, and a <strong>Dismiss</strong> button.</li></ul><h4>Added</h4><ul><li><strong>Better self-diagnosis.</strong> If the check can't reach the internet, the panel still works silently — but the diagnostic dump (click the version stamp) now records exactly what happened: whether it was attempted, the HTTP status, the error, and whether the browser actually reported a security-policy block. No more guessing why an update didn't show.</li></ul></div><div class="cl-ver"><h3>v0.2.0-alpha <span class="cl-status">— 2026-06-24</span></h3><p class="cl-intro">New feature release.</p><h4>Added</h4><ul><li><strong>Automatic update check.</strong> The first time you open the panel each browser session, H.A.H.N.S quietly checks whether a newer version has been published. If so, a small banner appears: "Update available — hard-refresh the setup page &amp; re-drag the bookmark," with a link to open it. This is the tool's <strong>only</strong> network use: it requests a single public version file and sends no job or ELSA data. If your shop browser blocks the check, nothing breaks — the panel works exactly as before and the manual "check for latest" link still works.</li></ul></div><div class="cl-ver"><h3>v0.1.1-alpha <span class="cl-status">— 2026-06-24</span></h3><p class="cl-intro">Bug-fix and polish cycle.</p><h4>Added</h4><ul><li><strong>Exit confirmation.</strong> Clicking the panel's <strong>✕</strong> now asks "Are you sure you want to exit? All collected job info will be lost." with <strong>Exit</strong> / <strong>Cancel</strong>, so an accidental click no longer wipes the job.</li><li><strong>"What's new" changelog.</strong> This list now appears on the setup page (under "Current version"), and after an update the panel shows it once automatically so you can see what changed.</li></ul><h4>Fixed</h4><ul><li><strong>Closing now actually clears the job.</strong> Before, closing only hid the panel — the job stayed in memory and came back when you re-opened the bookmark. <strong>Exit</strong> now clears everything (job, saved panel position, minimized state) so the next open starts fresh. <strong>Cancel</strong> leaves your job untouched.</li></ul></div><div class="cl-ver"><h3>v0.1.0-alpha <span class="cl-status">— 2026-06-21</span></h3><p class="cl-intro">First public release.</p><h4>Added</h4><ul><li>One-click <strong>Scan page</strong>: pulls torque specs, replace-after-removal parts, fluids/capacities, special tools, and critical warnings into one panel.</li><li><strong>Auto component numbering</strong> so each spec maps to the diagram callout.</li><li>Editable part labels, manual add rows, per-item delete.</li><li><strong>Job title</strong> bar, <strong>multi-page accumulation</strong> grouped by page.</li><li><strong>Diagram capture</strong> (numbered-overview pages), <strong>Print</strong> to a clean job sheet, <strong>Copy list</strong>.</li><li><strong>Draggable</strong> panel, <strong>Minimize</strong>, <strong>New job</strong> with confirmation.</li><li>Version stamp + diagnostic dump; paste-box fallback on the setup page.</li><li>Published to GitHub Pages; works in Chrome, Edge, Safari (not Firefox).</li></ul></div></div>
     </details>
   </div>
 
@@ -182,19 +182,10 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
   "use strict";
 
   // build id, stamped in by tools/build.js so you can confirm which version is live
-  var BUILD = "v0.4.0-alpha · 2026-07-10 00:35 UTC";
-  // where techs re-grab the latest (used by the "check for latest" link and the
-  // weekly update-check reminder)
+  var BUILD = "v0.4.1-alpha · 2026-07-10 04:03 UTC";
+  // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
+  // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
   var SITE_URL = "https://flatratelabs.github.io/hahns/";
-  // ---- weekly "check for updates" reminder (no network — pure local date) ----
-  // Auto-update can't work on ELSA: its CSP blocks every request to our domain
-  // (confirmed by the browser for connect-src AND img-src), so the app makes
-  // ZERO network calls. Instead we nudge the tech once a week — anchored to
-  // Wednesday — to open the setup page and compare versions. We persist ONLY a
-  // date string (the Wednesday we last reminded for), never job/ELSA content, so
-  // the no-network / retain-nothing posture stays fully intact.
-  var REMIND_KEY = "vwjb_upd_reminder_v1";  // localStorage: Wednesday-marker last acknowledged
-  var remindDue = false;                     // show the weekly update-check banner
   // transient one-line note for the vehicle bar (e.g. a blocked procedure scan
   // before a vehicle is loaded). Cleared once shown — never persisted.
   var vehNotice = "";
@@ -1156,7 +1147,7 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
   // (shop tool list), created fresh at v1. (The short-lived v0.3.15 `hahns_fluids`
   // DB is intentionally NOT migrated — it shipped one day earlier and had almost
   // no real-world uptake; on update the tech re-loads their fluid PDFs once.)
-  var APP_DB = "hahns_db", APP_DB_VER = 1;
+  var APP_DB = "hahns_db", APP_DB_VER = 2;   // v2 (v0.4.1): + Service Xpress torque stores
   // Three parsers, named by the model-year range each one owns. Bump a range's
   // version string in ONE place → every stored PDF of that range auto-re-parses
   // on the next load (the other ranges are untouched). See familyForYear below.
@@ -1203,6 +1194,11 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
         if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta", { keyPath: "year" });
         if (!db.objectStoreNames.contains("kv")) db.createObjectStore("kv", { keyPath: "k" });
         if (!db.objectStoreNames.contains("tools")) db.createObjectStore("tools", { keyPath: "k" });
+        // Service Xpress torque (v0.4.1) — keyed by source FILE (one Service Xpress
+        // PDF can carry several model years), unlike the fluid stores (keyed by year)
+        if (!db.objectStoreNames.contains("sx_pdfs")) db.createObjectStore("sx_pdfs", { keyPath: "key" });
+        if (!db.objectStoreNames.contains("sx_parsed")) db.createObjectStore("sx_parsed", { keyPath: "key" });
+        if (!db.objectStoreNames.contains("sx_meta")) db.createObjectStore("sx_meta", { keyPath: "key" });
       };
       rq.onsuccess = function () {
         var db = rq.result;
@@ -1261,7 +1257,7 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
     }).then(function () {
       return migrateLegacyTools();   // v0.3.16: one-time localStorage → IDB for the tool list
     }).then(function () {
-      return Promise.all([idbGetAll("parsed"), idbGetAll("meta"), idbGet("kv", "lastBgUpdate"), hydrateShopTools()]);
+      return Promise.all([idbGetAll("parsed"), idbGetAll("meta"), idbGet("kv", "lastBgUpdate"), hydrateShopTools(), hydrateSx()]);
     }).then(function (out) {
       buildProjection(out[0]);
       fluidsMetaList = out[1] || [];
@@ -1269,11 +1265,13 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
       fluidsReady = true;
       if (onReady) onReady();
       reconcileFluids();   // background, non-blocking
+      reconcileSx();       // Service Xpress auto-reparse (background)
     }).catch(function () {
       // IDB unavailable → legacy sync read so the feature still works
       appIdbOk = false; appDB = null;
       try { var raw = localStorage.getItem(FLUIDS_KEY); fluidsData = raw ? JSON.parse(raw) : false; } catch (e) { fluidsData = false; }
       fluidsReady = true;
+      hydrateSx();   // reads the Service Xpress localStorage fallback
       if (onReady) onReady();
     });
   }
@@ -2259,6 +2257,260 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
     });
   }
 
+  /* ================================================================== *
+   * SERVICE XPRESS TORQUE (v0.4.1) — oil drain plug + wheel bolt torque
+   * from the yearly "VW Service Xpress" charts. Same local-only, keep-the-
+   * PDF, auto-reparse posture as fluids, but keyed by SOURCE FILE (one chart
+   * bundles several model years). Everything except the two torques is ignored.
+   * ================================================================== */
+  var SX_PARSER_VER = "1.0.0";               // bump → stored Service Xpress PDFs auto-re-parse
+  var SX_YEAR_MIN = 2008, SX_YEAR_MAX = 2026;   // 2007 and earlier never had these charts
+  var SX_KEY = "vwjb_sx_v1";                 // localStorage fallback (IDB-unavailable) — projection only, no blobs
+  var sxData = null;      // sync projection: null=unread, false=none, obj={byYear,files,years,count,updated}
+  var sxMetaList = [];    // sync mirror of sx_meta (info panel + reconcile)
+  var sxReady = false;    // projection hydrated
+
+  // ---- parser: layout text → [{year, model, platform, isEV, codes, drain, wheel}]
+  // Values are classified by MAGNITUDE (drain <=85 N·m, wheel >=100 N·m — a gap
+  // verified across every 2008-2026 chart), so the scrambled old-file layout is
+  // moot. Qualifier labels are captured: drain M14/M24 (plug thread), wheel
+  // FWD/AWD (drivetrain), wheel 1PC/2PC (wheel-bolt design).
+  function parseServiceXpress(text) {
+    var lines = String(text || "").split(/\r?\n/);
+    var SEC = /^\s*\d+\.\d+\s+(.+?)\s*\(([^()]*)\)\s*$/;       // "1.1  Jetta / GLI (BU4)"
+    var THDR = /^\s*(20\d\d)\b[^\n]*Torque Spec/i;            // torque-table header + its printed year
+    var END = /Resetting the service|service reminder can be reset|service interval display/i;
+    var CODE = /\b([A-Z]{3,4}[0-9]?)\b/g;
+    var STOP = { TDI:1,TSI:1,FSI:1,USA:1,GLI:1,GTI:1,SEL:1,AWD:1,FWD:1,DSG:1,PHEV:1,VR6:1,SAE:1,VW:1,ETKA:1,DIN:1,PR:1,ABS:1,LWB:1,SWB:1,NM:1,ONLY:1,SET:1,REQ:1,AMP:1,CA:1,CMC:1,MCE:1,USB:1,OFF:1,OIL:1,RUN:1,VIN:1,OK:1,PSI:1,TPMS:1 };
+    function drainQ(ln) { return /\bM14\b/i.test(ln) ? "M14" : /\bM24\b/i.test(ln) ? "M24" : null; }
+    function wheelQ(ln) {
+      if (/\bAWD\b|4\s?MOTION|4-?MOT\b/i.test(ln)) return "AWD";
+      if (/\bFWD\b/i.test(ln)) return "FWD";
+      if (/(single|one)[\s-]*piece|\(\s*single|\(\s*one/i.test(ln)) return "1PC";
+      if (/(two|2)[\s-]*piece|\(\s*two/i.test(ln)) return "2PC";
+      return null;
+    }
+    var out = [], cur = null, model = "", platform = "";
+    function flush() { if (cur && cur.year) out.push(cur); cur = null; }
+    function newEntry() { return { year: null, model: model, platform: platform, isEV: false, drain: [], wheel: [], codes: {}, inTable: false, pendD: null, pendW: null }; }
+    for (var i = 0; i < lines.length; i++) {
+      var ln = lines[i];
+      var ms = ln.match(SEC);
+      if (ms) { flush(); model = ms[1].replace(/\s+/g, " ").trim(); platform = ms[2].trim(); cur = newEntry(); continue; }
+      if (!cur) continue;
+      var th = ln.match(THDR);
+      if (th) {
+        if (!cur.year) cur.year = th[1];
+        if (/Torque Spec/i.test(ln) && !/Engine Code/i.test(ln)) cur.isEV = true;   // EV table: no Engine Code column
+        cur.inTable = true; continue;
+      }
+      if (!cur.inTable) continue;                 // skip the parts tables above the torque table
+      if (END.test(ln)) { flush(); continue; }
+      var qd = drainQ(ln), qw = wheelQ(ln), vm, re = /(\d{2,3})\s*N[m]/gi, hadVal = false;
+      while ((vm = re.exec(ln))) {
+        var v = +vm[1]; hadVal = true;
+        if (v <= 85) cur.drain.push({ v: v, q: qd || cur.pendD || null });
+        else if (v >= 100) cur.wheel.push({ v: v, q: qw || cur.pendW || null });
+      }
+      if (hadVal) { cur.pendD = null; cur.pendW = null; }
+      else { if (qd) cur.pendD = qd; if (qw) cur.pendW = qw; }
+      var cm;
+      while ((cm = CODE.exec(ln))) { var c = cm[1]; if (!STOP[c] && !/^\d/.test(c) && !/^(N|L|V)$/.test(c) && /^[A-Z]{3,4}[0-9]?$/.test(c)) cur.codes[c] = 1; }
+    }
+    flush();
+    return out.map(function (e) {
+      return { year: e.year, model: e.model, platform: e.platform, isEV: e.isEV,
+               codes: Object.keys(e.codes).sort(), drain: sxReduce(e.drain, "drain"), wheel: sxReduce(e.wheel, "wheel") };
+    });
+  }
+  // collapse a raw {v,q} list → compact shape:
+  //  {single:N} | {m14,m24} | {fwd,awd} | {onePiece,twoPiece} | {multi:[..]} | null
+  function sxReduce(arr, kind) {
+    if (!arr.length) return null;
+    function firstWith(q) { for (var i = 0; i < arr.length; i++) if (arr[i].q === q) return arr[i].v; return null; }
+    var qs = {}; arr.forEach(function (x) { if (x.q) qs[x.q] = 1; });
+    if (kind === "drain") { if (qs.M14 || qs.M24) return sxTrim({ m14: firstWith("M14"), m24: firstWith("M24") }); }
+    else {
+      if (qs.FWD || qs.AWD) return sxTrim({ fwd: firstWith("FWD"), awd: firstWith("AWD") });
+      if (qs["1PC"] || qs["2PC"]) return sxTrim({ onePiece: firstWith("1PC"), twoPiece: firstWith("2PC") });
+    }
+    var d = {}; arr.forEach(function (x) { d[x.v] = 1; });
+    var distinct = Object.keys(d).map(Number).sort(function (a, b) { return a - b; });
+    return distinct.length === 1 ? { single: distinct[0] } : { multi: distinct };
+  }
+  function sxTrim(o) { Object.keys(o).forEach(function (k) { if (o[k] == null) delete o[k]; }); return o; }
+
+  // read one Service Xpress PDF → { fileName, entries, years } (via our reader)
+  function sxFromPdf(buf, name) {
+    return pdfTextLines(buf).then(function (text) {
+      var entries = parseServiceXpress(text);
+      if (!entries.length) throw new Error("no Service Xpress torque tables found — is this a VW Service Xpress chart?");
+      var ys = {}; entries.forEach(function (e) { if (e.year) ys[e.year] = 1; });
+      return { fileName: name, entries: entries, years: Object.keys(ys).sort() };
+    });
+  }
+
+  // ---- projection: merge all stored files' entries, keyed by year, deduped by
+  // (year|model|platform); prefer the entry from the file whose NAME year matches
+  // the entry's printed year (the authoritative source for that model year).
+  function buildSxProjection(parsedRecs) {
+    var pick = {}, files = [], latest = "";
+    (parsedRecs || []).forEach(function (p) {
+      var fileYear = (String(p.fileName || "").match(/20\d\d/) || [])[0] || "";
+      files.push({ key: p.key, fileName: p.fileName || "", parserVersion: p.parserVersion || "", years: p.years || [], count: (p.entries || []).length });
+      if (p.parsedDate && p.parsedDate > latest) latest = p.parsedDate;
+      (p.entries || []).forEach(function (e) {
+        if (!e || !e.year) return;
+        var k = e.year + "|" + modelNorm(e.model) + "|" + e.platform;
+        var prefer = fileYear && fileYear === String(e.year);
+        if (!pick[k] || (prefer && !pick[k].prefer)) {
+          var ee = {}; for (var kk in e) if (Object.prototype.hasOwnProperty.call(e, kk)) ee[kk] = e[kk];
+          ee.file = p.fileName || "";
+          pick[k] = { e: ee, prefer: !!prefer };
+        }
+      });
+    });
+    var byYear = {};
+    Object.keys(pick).forEach(function (k) { var e = pick[k].e; (byYear[e.year] = byYear[e.year] || []).push(e); });
+    var yrs = Object.keys(byYear).sort();
+    sxData = yrs.length ? { byYear: byYear, files: files, years: yrs, count: yrs.length, updated: latest || todayISO() } : false;
+  }
+  function loadSx() { return sxData || null; }
+
+  // save newly-uploaded Service Xpress files (Blob + parsed + meta per file). Falls
+  // back to a projection-only localStorage record if IndexedDB is unavailable.
+  function sxSaveFiles(list) {
+    if (!appIdbOk || !appDB) {
+      var st = null; try { st = JSON.parse(localStorage.getItem(SX_KEY) || "null"); } catch (e) {}
+      st = st || { recs: [] };
+      list.forEach(function (o) {
+        st.recs = st.recs.filter(function (rc) { return rc.fileName !== o.name; });
+        st.recs.push({ key: o.name, fileName: o.name, parserVersion: "0", entries: o.entries, years: o.years, parsedDate: todayISO() });
+      });
+      try { localStorage.setItem(SX_KEY, JSON.stringify(st)); } catch (e) { return Promise.reject(e); }
+      buildSxProjection(st.recs);
+      return Promise.resolve();
+    }
+    var chain = Promise.resolve(), now = todayISO();
+    list.forEach(function (o) {
+      chain = chain.then(function () {
+        var blob = new Blob([o.buf], { type: "application/pdf" });
+        return idbPutMany(["sx_pdfs", "sx_parsed", "sx_meta"], [
+          { store: "sx_pdfs", val: { key: o.name, blob: blob, hash: o.hash || "", size: o.size || blob.size, fileName: o.name, importDate: now } },
+          { store: "sx_parsed", val: { key: o.name, parserVersion: SX_PARSER_VER, entries: o.entries, fileName: o.name, years: o.years, parsedDate: now } },
+          { store: "sx_meta", val: { key: o.name, parserVersion: SX_PARSER_VER, hash: o.hash || "", fileName: o.name, size: o.size || blob.size, years: o.years, count: (o.entries || []).length, hasBlob: true, status: "ok", importDate: now, lastParsedDate: now, appBuild: BUILD } }
+        ]);
+      });
+    });
+    return chain.then(function () { return Promise.all([idbGetAll("sx_parsed"), idbGetAll("sx_meta")]); })
+      .then(function (out) { buildSxProjection(out[0]); sxMetaList = out[1] || []; });
+  }
+  function removeSx() {
+    sxData = false; sxMetaList = [];
+    try { localStorage.removeItem(SX_KEY); } catch (e) {}
+    if (appIdbOk && appDB) { try { var tx = appDB.transaction(["sx_pdfs", "sx_parsed", "sx_meta"], "readwrite"); tx.objectStore("sx_pdfs").clear(); tx.objectStore("sx_parsed").clear(); tx.objectStore("sx_meta").clear(); } catch (e) {} }
+  }
+
+  // hydrate the sync projection at boot (called from fluidsBoot so the DB opens once)
+  function hydrateSx() {
+    if (!appIdbOk || !appDB) {
+      var st = null; try { st = JSON.parse(localStorage.getItem(SX_KEY) || "null"); } catch (e) {}
+      buildSxProjection(st && st.recs ? st.recs : []); sxReady = true; return Promise.resolve();
+    }
+    return Promise.all([idbGetAll("sx_parsed"), idbGetAll("sx_meta")]).then(function (out) {
+      buildSxProjection(out[0]); sxMetaList = out[1] || []; sxReady = true;
+    }).catch(function () { sxData = false; sxReady = true; });
+  }
+  // background: any stored file whose parser version differs → re-read its Blob and
+  // re-parse. Non-destructive (a failed re-parse keeps the last good data).
+  function reconcileSx() {
+    if (!appIdbOk || !appDB) return;
+    var todo = sxMetaList.filter(function (m) { return m && m.hasBlob && m.parserVersion !== SX_PARSER_VER; }).map(function (m) { return m.key; });
+    if (!todo.length) return;
+    var idle = window.requestIdleCallback || function (f) { return setTimeout(f, 120); };
+    (function next(i) {
+      if (i >= todo.length) { if (fluidsRerender) fluidsRerender(); return; }
+      reparseSxFile(todo[i]).then(function () {}, function () {}).then(function () { if (fluidsRerender) fluidsRerender(); idle(function () { next(i + 1); }); });
+    })(0);
+  }
+  function reparseSxFile(key) {
+    return idbGet("sx_pdfs", key).then(function (pdf) {
+      if (!pdf || !pdf.blob) throw new Error("no source PDF");
+      return pdf.blob.arrayBuffer().then(function (buf) {
+        return sxFromPdf(buf, pdf.fileName || key).then(function (out) {
+          var now = todayISO();
+          return idbPutMany(["sx_parsed", "sx_meta"], [
+            { store: "sx_parsed", val: { key: key, parserVersion: SX_PARSER_VER, entries: out.entries, fileName: pdf.fileName || "", years: out.years, parsedDate: now } },
+            { store: "sx_meta", val: { key: key, parserVersion: SX_PARSER_VER, hash: pdf.hash || "", fileName: pdf.fileName || "", size: pdf.size || 0, years: out.years, count: out.entries.length, hasBlob: true, status: "ok", importDate: pdf.importDate || now, lastParsedDate: now, appBuild: BUILD } }
+          ]).then(function () { return Promise.all([idbGetAll("sx_parsed"), idbGetAll("sx_meta")]); })
+            .then(function (o) { buildSxProjection(o[0]); sxMetaList = o[1] || []; });
+        });
+      });
+    }).catch(function (e) {
+      return idbGet("sx_meta", key).then(function (m) { m = m || { key: key }; m.status = "reparse-error"; m.lastError = (e && e.message) || "parse failed"; return idbPut("sx_meta", m); })
+        .then(function () { return idbGetAll("sx_meta"); }).then(function (l) { sxMetaList = l || []; }).catch(function () {});
+    });
+  }
+
+  // ---- matching: loaded vehicle → the right torque entry for its model year.
+  // Engine code first (exact, from ELSA's Engine Code field), then model name.
+  function sxForVehicle(r) {
+    var st = loadSx(); if (!(st && st.byYear)) return null;
+    var v = fluidVeh(r); if (!v.year) return null;
+    var list = st.byYear[v.year]; if (!list || !list.length) return null;
+    // MODEL NAME is the reliable key — torque is per-model, and engine codes are
+    // SHARED across models (CCTA is in Eos/Golf/Jetta/Tiguan), so a code can only
+    // DISAMBIGUATE among model matches, never pick the model on its own.
+    var vm = modelNorm(v.model); if (/GTI|GOLFR/.test(vm)) vm += "GOLF";
+    var matches = [];
+    list.forEach(function (e) {
+      var best = 0;
+      String(e.model || "").toUpperCase().split("/").forEach(function (tok) {
+        var t = modelNorm(tok);
+        if (t && vm.indexOf(t) >= 0 && t.length > best) best = t.length;
+      });
+      if (best) matches.push({ e: e, score: best });
+    });
+    var hit = null;
+    if (matches.length) {
+      matches.sort(function (a, b) { return b.score - a.score; });
+      if (v.engineCode) {   // among model matches, prefer the one carrying this engine code
+        var ec = matches.filter(function (m) { return m.e.codes && m.e.codes.indexOf(v.engineCode) >= 0; });
+        if (ec.length) hit = ec[0].e;
+      }
+      if (!hit) hit = matches[0].e;
+    } else if (v.engineCode) {
+      // no model match → only trust an engine code that's UNIQUE this year (never
+      // guess off a code shared by several models)
+      var uniq = list.filter(function (e) { return e.codes && e.codes.indexOf(v.engineCode) >= 0; });
+      if (uniq.length === 1) hit = uniq[0];
+    }
+    return hit ? { entry: hit, drain: hit.drain, wheel: hit.wheel, year: v.year, veh: v } : null;
+  }
+
+  // ---- display text for the two specs (N·m). Wheel: if the value splits by
+  // drivetrain AND the vehicle is known-AWD, show that one; otherwise show both
+  // labeled (never guess FWD when the drivetrain is unknown).
+  function sxNm(n) { return n + " N·m"; }
+  function sxDrainText(d) {
+    if (!d) return "not listed";
+    if (d.single != null) return sxNm(d.single);
+    if (d.m14 != null || d.m24 != null) return "M14 " + (d.m14 != null ? d.m14 : "?") + " · M24 " + (d.m24 != null ? d.m24 : "?") + " N·m";
+    if (d.multi) return d.multi.join(" / ") + " N·m";
+    return "not listed";
+  }
+  function sxWheelText(w, veh) {
+    if (!w) return "not listed";
+    if (w.single != null) return sxNm(w.single);
+    if (w.fwd != null || w.awd != null) {
+      if (veh && veh.awd && w.awd != null) return sxNm(w.awd) + " (AWD)";
+      return "FWD " + (w.fwd != null ? w.fwd : "?") + " · AWD " + (w.awd != null ? w.awd : "?") + " N·m";
+    }
+    if (w.onePiece != null || w.twoPiece != null) return "1-pc " + (w.onePiece != null ? w.onePiece : "?") + " · 2-pc " + (w.twoPiece != null ? w.twoPiece : "?") + " N·m";
+    if (w.multi) return w.multi.join(" / ") + " N·m";
+    return "not listed";
+  }
+
   /* ---- 3. vehicle matching (ported from the old lookup page) -------- */
   function fluidVeh(r) {
     var v = (r && r.__vehicle) || {};
@@ -2449,8 +2701,8 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
     var yd = st && st.years && st.years[veh.year];
     var body;
     if (!yd) {
-      body = '<div class="err">No fluid tables are loaded for <b>' + esc(veh.year || "this year") +
-        "</b> on this computer. Open Settings (the ⚙ gear in Hahns) and load that year’s VW Fluid Capacity Tables PDF.</div>";
+      body = '<div class="none" style="padding:14px 2px">No fluid tables loaded for <b>' + esc(veh.year || "this year") +
+        "</b> — open the ⚙ gear in Hahns to add that year’s VW Fluid Capacity Tables PDF.</div>";
     } else {
       var m = pickFluidModel(yd.models || [], veh);
       if (!m) body = '<div class="err">No fluid entry found for <b>' + esc(veh.model || "this model") + "</b> in the " + esc(veh.year) + " tables.</div>";
@@ -2466,7 +2718,10 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
       '<div class="bar"><button id="hb_print" onclick="window.print()">Print</button></div>' +
       "<h1>Fluids &amp; Capacities</h1>" +
       '<div class="meta">from the ' + esc(veh.year || "?") + " tables on this computer" + (yd && yd.file ? " (" + esc(yd.file) + ")" : "") + "</div>" +
-      '<div class="veh"><div class="t">Vehicle</div><div class="grid">' + vehGrid + "</div></div>" +
+      '<div class="topcols">' +
+        '<div class="veh"><div class="t">Vehicle</div><div class="grid">' + vehGrid + "</div></div>" +
+        sxWinHTML(r) +
+      "</div>" +
       body +
       '<div class="foot">Approximate quantities — always confirm against the Repair Manual / Maintenance Procedures.<br>H.A.H.N.S ' + esc(BUILD) + " · matched to your vehicle, nothing saved online.</div>" +
       "</body></html>";
@@ -2580,7 +2835,88 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
       fluidsSaveYears(ok).then(function () {
         close();
         renderInto(host, r, options);
+        // if Settings is still open behind this dialog, refresh it in place so the
+        // newly-saved years show without the tech having to reopen it
+        if (root.querySelector(".setc-settings")) openSettings(host, r, options, root);
         flash(root, "Fluid tables saved: " + ok.map(function (o) { return o.year; }).sort().join(", "));
+      }).catch(function (e) {
+        var err = ov.querySelector(".maperr");
+        err.textContent = "Couldn’t save (" + ((e && e.message) || "storage blocked or full on this machine") + ").";
+        err.style.display = "block"; sv.disabled = false;
+      });
+    });
+  }
+
+  // pick the yearly VW Service Xpress PDFs (multi-select), read them LOCALLY (a
+  // FileReader read — NO network), parse the two torque specs, then preview/confirm.
+  function pickSxFiles(host, r, options, root) {
+    var inp = document.createElement("input");
+    inp.type = "file"; inp.accept = ".pdf,application/pdf"; inp.multiple = true; inp.style.display = "none";
+    inp.addEventListener("change", function () {
+      var files = Array.prototype.slice.call(inp.files || []);
+      try { inp.remove(); } catch (e) {}
+      if (!files.length) return;
+      if (typeof DecompressionStream === "undefined") { flash(root, "This browser can’t read PDFs — use Chrome, Edge or Safari"); return; }
+      flash(root, "Reading " + files.length + " PDF" + (files.length > 1 ? "s" : "") + "…");
+      var results = [], chain = Promise.resolve();
+      files.forEach(function (f) {
+        chain = chain.then(function () {
+          return new Promise(function (res) {
+            var fr = new FileReader();
+            fr.onload = function () {
+              var buf = fr.result;
+              sha256Hex(buf).then(function (hash) {
+                sxFromPdf(buf, f.name).then(function (out) {
+                  results.push({ name: f.name, entries: out.entries, years: out.years, buf: buf, hash: hash, size: (f.size || (buf && buf.byteLength) || 0) }); res();
+                }).catch(function (err) { results.push({ name: f.name, err: (err && err.message) || "could not read that PDF" }); res(); });
+              });
+            };
+            fr.onerror = function () { results.push({ name: f.name, err: "could not read that file" }); res(); };
+            try { fr.readAsArrayBuffer(f); } catch (e) { results.push({ name: f.name, err: "could not read that file" }); res(); }
+          });
+        });
+      });
+      chain.then(function () { openSxConfirm(host, r, options, root, results); });
+    });
+    (root.querySelector(".wrap") || root).appendChild(inp);
+    inp.click();
+  }
+
+  // preview per file: the model years + how many model tables were found (or a
+  // plain error). Save writes them to IndexedDB, keeping the PDF for auto-reparse.
+  function openSxConfirm(host, r, options, root, results) {
+    var ok = results.filter(function (o) { return !o.err; });
+    var rows = results.map(function (o) {
+      if (o.err) return '<div class="flrow bad"><b>' + esc(o.name) + "</b><span>" + esc(o.err) + "</span></div>";
+      var yrs = (o.years || []).join(", ");
+      return '<div class="flrow"><b>' + esc(yrs || "?") + " — " + o.entries.length + " model tables</b><span>" + esc(o.name) + "</span></div>";
+    }).join("");
+    var ov = document.createElement("div");
+    ov.className = "setc";
+    ov.innerHTML = '<div class="setbox">' +
+      '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
+      '<p class="settl">Load Service Xpress charts</p>' +
+      '<p class="setsub">Check the model years below, then save. Read on this computer and kept only in this browser (so future parser fixes apply automatically) — nothing is uploaded.</p>' +
+      rows +
+      '<div class="maperr" style="display:none"></div>' +
+      '<div class="setbtns"><button class="cancel">Cancel</button>' +
+      (ok.length ? '<button class="primary save">Save ' + ok.length + " file" + (ok.length > 1 ? "s" : "") + "</button>" : "") +
+      "</div></div>";
+    root.appendChild(ov);
+    var close = function () { try { ov.remove(); } catch (e) {} };
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    ov.querySelector(".cancel").addEventListener("click", close);
+    ov.querySelector(".xclose").addEventListener("click", close);
+    var sv = ov.querySelector(".save");
+    if (sv) sv.addEventListener("click", function () {
+      sv.disabled = true;
+      sxSaveFiles(ok).then(function () {
+        close();
+        renderInto(host, r, options);
+        // refresh Settings in place if it's still open behind this dialog
+        if (root.querySelector(".setc-settings")) openSettings(host, r, options, root);
+        var allYears = {}; ok.forEach(function (o) { (o.years || []).forEach(function (y) { allYears[y] = 1; }); });
+        flash(root, "Service Xpress saved: " + Object.keys(allYears).sort().join(", "));
       }).catch(function (e) {
         var err = ov.querySelector(".maperr");
         err.textContent = "Couldn’t save (" + ((e && e.message) || "storage blocked or full on this machine") + ").";
@@ -3192,34 +3528,6 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
   var vehCollapseTimer = null;
   function cancelVehAuto() { if (vehCollapseTimer) { clearTimeout(vehCollapseTimer); vehCollapseTimer = null; } }
 
-  // the most recent Wednesday on or before `now`, as YYYY-MM-DD. Used as a
-  // once-a-week marker: it only changes when a new Wednesday passes.
-  function wedMarker(now) {
-    var d = new Date(now);
-    d.setHours(0, 0, 0, 0);
-    var back = (d.getDay() - 3 + 7) % 7;   // 3 = Wednesday; days since the last one
-    d.setDate(d.getDate() - back);
-    var mm = ("0" + (d.getMonth() + 1)).slice(-2), dd = ("0" + d.getDate()).slice(-2);
-    return d.getFullYear() + "-" + mm + "-" + dd;
-  }
-
-  // Is the weekly reminder due right now? Two guards keep it from being annoying:
-  //   1. it only fires on WEDNESDAY (getDay() === 3), and
-  //   2. it shows at most ONCE per Wednesday — we record this Wednesday's marker
-  //      the moment it becomes due, so re-opening the panel later the same day
-  //      won't show it again.
-  // We can't actually tell whether the app is out of date (there's no network
-  // check), so this is a gentle once-a-week nudge to go look — never a real alert.
-  function reminderDue() {
-    try {
-      if (new Date().getDay() !== 3) return false;                  // 3 = Wednesday only
-      var cur = wedMarker(Date.now());
-      if (localStorage.getItem(REMIND_KEY) === cur) return false;   // already shown this Wed
-      localStorage.setItem(REMIND_KEY, cur);                        // show once, then mark seen
-      return true;
-    } catch (e) { return false; }
-  }
-
   /* ------------------------------------------------------------------ *
    * 3. GATHER — walk the live page into ordered { text, bold } segments,
    *    preserving which text is bold (how ELSA marks component callouts).
@@ -3351,7 +3659,7 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
     ".wrap.min{max-height:none}" +
     // minimized = just the header bar (with a compact green SCAN in it). The full
     // scanbar and everything else are hidden so the collapsed bar stays tiny.
-    ".wrap.min .sub,.wrap.min .topbar,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar,.wrap.min .vbar,.wrap.min .fluidbar,.wrap.min .scanbar{display:none}" +
+    ".wrap.min .sub,.wrap.min .topbar,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .vbar,.wrap.min .fluidbar,.wrap.min .scanbar{display:none}" +
     // SCAN in the header: hidden while expanded, shown as plain green text (no
     // button box) only when minimized, sitting just left of the minimize icon.
     ".hdscan{display:none}" +
@@ -3380,15 +3688,6 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
     ".sub{padding:6px 13px;background:#eef1f6;display:flex;align-items:center}" +
     ".bld{font-size:11px;color:#5a6b8c;white-space:nowrap;cursor:pointer}" +
     ".bld:hover{color:#001e50;text-decoration:underline}" +
-    ".upd{margin-left:auto;font-size:11px;color:#185fa5;text-decoration:none;white-space:nowrap}" +
-    ".upd:hover{text-decoration:underline}" +
-    // weekly "App may be out of date" update-check reminder banner (yellow)
-    ".updbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 13px;background:#fff8e6;border-bottom:1px solid #f3e2b3;font-size:12px;color:#6b5300;line-height:1.3}" +
-    ".updmsg2{flex:1;min-width:120px;font-weight:600;color:#5a4300}" +
-    ".updget{flex-shrink:0;appearance:none;-webkit-appearance:none;background:#185fa5;color:#fff;text-decoration:none;font-family:inherit;font-weight:600;font-size:11.5px;padding:6px 11px;border-radius:7px;white-space:nowrap;border:0;cursor:pointer}" +
-    ".updget:hover{background:#134c84}" +
-    ".updx{flex-shrink:0;appearance:none;-webkit-appearance:none;border:1px solid #e0cf9a;background:#fff;color:#6b5300;font-family:inherit;font-weight:600;font-size:11.5px;padding:6px 10px;border-radius:7px;cursor:pointer}" +
-    ".updx:hover{background:#fdf6e3}" +
     // big primary action — its own bar, directly above the job title row
     ".scanbar{padding:11px 13px 4px}" +
     ".scan{width:100%;appearance:none;-webkit-appearance:none;background:#2fb84d;color:#0a0a0a;font-family:inherit;font-size:17px;font-weight:800;letter-spacing:.1em;padding:13px;border:0;border-radius:9px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.18)}" +
@@ -3524,6 +3823,21 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
     ".dbrow .v.dbwait{color:#12508a}" +
     ".dbrow .v.dbnone{color:#7a7a7a}" +
     ".setdiv{border-top:1px solid #e3e6ee;margin:16px 0 12px}" +
+    // top "Check for Update" button — full width, neutral
+    ".setupd{margin:2px 0 14px;padding-right:26px}" +
+    ".setupd button{width:100%;appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:13px;padding:10px 14px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4;background:#fff;color:#001e50}" +
+    ".setupd button:hover{background:#f3f6fb}" +
+    // collapsible section (native <details>) — declutters the panel
+    ".setacc{border:1px solid #dfe4ec;border-radius:9px;margin:0 0 10px;background:#fbfcfe}" +
+    ".setacc>summary{list-style:none;cursor:pointer;padding:11px 13px;font-weight:700;font-size:13px;color:#001e50;display:flex;align-items:center;gap:8px;user-select:none;border-radius:9px}" +
+    ".setacc>summary::-webkit-details-marker{display:none}" +
+    ".setacc>summary::before{content:'\\25B8';font-size:11px;color:#7286a6;transition:transform .12s ease;display:inline-block}" +
+    ".setacc[open]>summary::before{transform:rotate(90deg)}" +
+    ".setacc[open]>summary{border-bottom:1px solid #e7ebf3;border-radius:9px 9px 0 0}" +
+    ".setacc>summary:hover{background:#f2f6fc}" +
+    ".setacc .sccount{margin-left:auto;font-weight:600;font-size:11px;color:#5a6b8c}" +
+    ".setacc .setbody{padding:11px 13px 13px}" +
+    ".setacc .setbody .setsub{margin-bottom:10px}" +
     // fluid-PDF confirm rows (year + models found per picked file)
     ".flrow{background:#eef1f6;border:1px solid #dfe4ee;border-radius:8px;padding:8px 11px;font-size:12px;color:#3a4a63;line-height:1.4;margin-bottom:8px}" +
     ".flrow b{display:block;color:#001e50;font-size:12.5px}" +
@@ -3637,13 +3951,37 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
     // yearly VW Fluid Capacity Tables PDFs). No data for this year yet → point
     // the tech at Settings; otherwise open the locally-built lookup window.
     var st = loadFluids();
-    if (!(st && st.years && st.years[v.year])) {
-      return '<div class="fluidbar"><button class="fluidbtn load" data-act="settings" data-tip="Open Settings (⚙) and load the yearly VW Fluid Capacity Tables PDFs — kept only on this computer">' +
+    var hasFluids = !!(st && st.years && st.years[v.year]);
+    var hasSx = !!sxForVehicle(r);   // torque lives in this same window
+    if (!hasFluids && !hasSx) {
+      return '<div class="fluidbar"><button class="fluidbtn load" data-act="settings" data-tip="Open Settings (⚙) and load the yearly VW Fluid Capacity Tables / Service Xpress PDFs — kept only on this computer">' +
         svg(DROPLET) + (st ? "No " + esc(String(v.year)) + " fluid tables on this computer — add the PDF in Settings"
                            : "Fluids &amp; capacities — load the fluid PDFs in Settings") + "</button></div>";
     }
     return '<div class="fluidbar"><button class="fluidbtn" data-act="fluids">' +
       svg(DROPLET) + "Fluids &amp; capacities for this vehicle<span class=\"arr\">&#8599;</span></button></div>";
+  }
+
+  // Service Xpress torque card for the Fluids & Capacities WINDOW — sits at the top,
+  // to the right of the Vehicle section (same row). Returns "" for pre-2008 vehicles
+  // (no charts ever existed). If the year's chart isn't loaded, or no model matches,
+  // it still shows the card with a short note so the tech knows why.
+  function sxWinHTML(r) {
+    var v = (r && r.__vehicle) || {};
+    var year = +(String(v.year || 0).match(/\d{4}/) || [0])[0];
+    if (year && year < SX_YEAR_MIN) return "";   // 2007 & earlier never had Service Xpress
+    var m = sxForVehicle(r), rows;
+    if (m) {
+      rows = '<div class="sxwrow"><span class="sxwk">Oil drain plug</span><span class="sxwv">' + esc(sxDrainText(m.drain)) + "</span></div>" +
+             '<div class="sxwrow"><span class="sxwk">Wheel bolts</span><span class="sxwv">' + esc(sxWheelText(m.wheel, m.veh)) + "</span></div>";
+    } else {
+      var st = loadSx();
+      var msg = (st && st.byYear && v.year && st.byYear[v.year])
+        ? "No matching model in the " + esc(String(v.year)) + " chart"
+        : "No " + esc(String(v.year || "")) + " Service Xpress loaded — add it in ⚙ Settings";
+      rows = '<div class="sxwrow"><span class="sxwv none">' + msg + "</span></div>";
+    }
+    return '<div class="sxwin"><div class="t">Torque</div>' + rows + "</div>";
   }
 
   // a small ALERT badge shown after a tool in the Special Tools list (only a
@@ -3729,23 +4067,15 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
         '<button data-act="close" title="Close">&#10005;</button></div>' +
       // version stamp — pinned to the very top, directly under the title bar
       '<div class="sub">' +
-        '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span>" +
-        '<a class="upd" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Opens the H.A.H.N.S page so you can compare versions">check for latest &#8599;</a></div>' +
+        '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span></div>" +
       // "New Vehicle" — the start-over action: wipes the loaded vehicle AND all
       // collected info. Pinned at the very top, right under the version bar.
       (embed ? "" : '<div class="topbar"><button class="newveh" data-act="newjob" data-tip="Start over with a NEW vehicle — clears the loaded vehicle and all collected info">' + svg(RESTART) + "New Vehicle</button></div>") +
       // vehicle identity strip (required before any procedure page is collected)
       (embed ? "" : vehicleBar(r)) +
-      // fluids & capacities link — pinned directly under the vehicle bar
+      // fluids & capacities link — pinned directly under the vehicle bar (the
+      // Service Xpress torque specs live INSIDE that window, next to the vehicle)
       (embed ? "" : fluidsBar(r)) +
-      // gentle once-a-week nudge to open the setup page and compare versions —
-      // shown only on Wednesdays, once that day. Network-free (we can't actually
-      // know if the app is stale), so it behaves the same inside and outside ELSA.
-      (!embed && remindDue
-        ? '<div class="updbar"><span class="updmsg2">App may be out of date.</span>' +
-            '<a class="updget" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Open the H.A.H.N.S setup page to compare versions">Check for update?</a>' +
-            '<button class="updx" data-act="reminddismiss" title="Hide this">Dismiss</button></div>'
-        : "") +
       '<div class="scanbar"><button class="scan" data-act="rescan" data-tip="Read this page and add its specs to the job">SCAN</button></div>' +
       '<div class="jobbar">' +
         '<input class="job" type="text" placeholder="Job title — e.g. Rear Brakes" value="' + esc(r.__title || "") + '">' +
@@ -3978,6 +4308,16 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
     ".xclose:hover{background:#f3f6fb;color:#000}" +
     "h1{font-size:21px;margin:0 0 3px;color:#1b232b}" +
     ".meta{color:#555;font-size:12px;margin-bottom:14px;border-bottom:2px solid #2fb84d;padding-bottom:10px}" +
+    // top row: Vehicle (left) + Torque (right), same row
+    ".topcols{display:flex;gap:12px;align-items:stretch;margin:14px 0;flex-wrap:wrap}" +
+    ".topcols .veh{flex:1 1 55%;margin:0}" +
+    ".sxwin{flex:1 1 34%;min-width:150px;background:#f6f3ee;border:1px solid #e4dcc9;border-radius:12px;padding:12px 14px}" +
+    ".sxwin .t{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#8a6d2f;margin-bottom:7px}" +
+    ".sxwrow{padding:7px 0;border-top:1px solid #ece5d5}" +
+    ".sxwrow:first-of-type{border-top:0}" +
+    ".sxwk{display:block;font-size:12px;color:#6b5c3e;font-weight:600}" +
+    ".sxwv{display:block;font-size:16px;font-weight:800;color:#3a2f18;margin-top:1px}" +
+    ".sxwv.none{font-size:12px;font-weight:600;color:#9a8c6e;font-style:italic}" +
     ".veh{background:#fff;border:1px solid #e3e3e3;border-radius:12px;padding:12px 14px;margin:14px 0}" +
     ".veh .t{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#5a6b8c;margin-bottom:7px}" +
     ".veh .grid{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:13px}" +
@@ -4124,8 +4464,6 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
         Object.keys(byU).forEach(function (u) { if (!have[u] && byU[u] >= 45000) displayCount++; });
       }
     } catch (e) {}
-    var remindSeen;
-    try { remindSeen = localStorage.getItem(REMIND_KEY) || "(unset)"; } catch (e) { remindSeen = "(unreadable)"; }
     var toolsLine;
     try {
       var stt = loadShopTools();
@@ -4143,14 +4481,23 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
         " · last bg update " + fmtWhen(fluidsBgUpdate) +
         (errs.length ? " · re-parse errors: " + errs.join(", ") : "");
     } catch (e) { fluidsLine = "(unreadable)"; }
+    var sxLine;
+    try {
+      var sxt = loadSx();
+      var sxys = sxt && sxt.years ? sxt.years : [];
+      var sxerr = sxMetaList.filter(function (m) { return m && m.status === "reparse-error"; }).map(function (m) { return m.fileName || m.key; });
+      sxLine = (appIdbOk ? "IndexedDB" : "localStorage(fallback)") + " · parser " + SX_PARSER_VER +
+        " · " + (sxys.length ? sxys.length + " years (" + sxys.join(", ") + ") from " + (sxt.files ? sxt.files.length : "?") + " files" : "none loaded") +
+        (sxerr.length ? " · re-parse errors: " + sxerr.join(", ") : "");
+    } catch (e) { sxLine = "(unreadable)"; }
     var veh = {}, isSum = false;
     try { veh = extractVehicle(lastSegments) || {}; } catch (e) {}
     try { isSum = isVehicleSummaryPage(lastSegments); } catch (e) {}
     var vehLine = VEH_FIELDS.map(function (f) { return f.label + "=" + (veh[f.k] || "(none)"); }).join(" · ");
     return "H.A.H.N.S diagnostic — version " + BUILD + "\n" +
-      "update reminder — last acknowledged week: " + remindSeen + " · this week: " + wedMarker(Date.now()) + "\n" +
       "shop tool list: " + toolsLine + "\n" +
       "fluid tables (this computer): " + fluidsLine + "\n" +
+      "service xpress torque (this computer): " + sxLine + "\n" +
       "looks like Vehicle Summary page: " + (isSum ? "yes" : "no") + "\n" +
       "vehicle grab (from last scan): " + vehLine + "\n" +
       "flags: B=read as bold, H=recognised as a part heading\n" +
@@ -4254,11 +4601,29 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
     inp.click();
   }
 
-  // the ⚙ settings panel — manage the shop tool list (upload / replace / remove)
-  function openSettings(host, r, options, root) {
+  // the ⚙ settings panel — a "Check for Update" button plus collapsible sections
+  // (shop tool list, fluid tables, fluid database). Rebuilds IN PLACE when already
+  // open (`expand` optionally force-opens one section, e.g. from the fluids "load"
+  // button) so an upload/remove can refresh it without closing — the tech stays in
+  // Settings to keep working.
+  function openSettings(host, r, options, root, expand) {
+    var ov = root.querySelector(".setc-settings");
+    var fresh = !ov;
+    // remember which sections are open so an in-place refresh doesn't collapse them
+    var openState = {};
+    if (!fresh) {
+      Array.prototype.forEach.call(ov.querySelectorAll("details.setacc"), function (d) {
+        openState[d.getAttribute("data-sec")] = d.open;
+      });
+    }
+    if (expand) openState[expand] = true;
+    if (fresh) {
+      ov = document.createElement("div");
+      ov.className = "setc setc-settings";
+      root.appendChild(ov);
+    }
+
     var st = loadShopTools();
-    var ov = document.createElement("div");
-    ov.className = "setc";
     var fmtLabel = st ? (st.fmt === "xlsx" ? "Excel (.xlsx)" : st.fmt === "csv" ? "CSV" : "") : "";
     var meta = st ? [fmtLabel, st.updated ? "uploaded " + st.updated : ""].filter(function (x) { return x; }).join(" · ") : "";
     var status = st
@@ -4274,48 +4639,121 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
           '<div class="setfile">' + esc(flYears.join(", ")) + "</div>" +
           (fl.updated ? '<div class="setmeta">updated ' + esc(fl.updated) + "</div>" : "") + "</div>"
       : '<div class="setstat none">No fluid tables loaded yet. Load the yearly “VW Fluid Capacity Tables” PDFs (you can pick several at once) to enable the Fluids &amp; Capacities lookup.</div>';
+    // one-line status shown right in each section's header so the tech sees state
+    // without expanding
+    var toolCount = st ? String(st.count || 0) + " tool" + ((st.count || 0) === 1 ? "" : "s") : "not loaded";
+    var flCount = flYears.length ? String(flYears.length) + " year" + (flYears.length > 1 ? "s" : "") : "not loaded";
+    // ---- Service Xpress torque status (v0.4.1) ----
+    var sx = loadSx();
+    var sxYears = sx && sx.years ? sx.years : [];
+    var sxCount = sxYears.length ? String(sxYears.length) + " year" + (sxYears.length > 1 ? "s" : "") : "not loaded";
+    var sxStatus = sxYears.length
+      ? '<div class="setstat">Torque charts loaded: <b>' + esc(String(sxYears.length)) + "</b> year" + (sxYears.length > 1 ? "s" : "") +
+          '<div class="setfile">' + esc(sxYears.join(", ")) + "</div>" +
+          (sx && sx.updated ? '<div class="setmeta">updated ' + esc(sx.updated) + "</div>" : "") + "</div>"
+      : '<div class="setstat none">No Service Xpress charts loaded yet. Load the yearly VW Service Xpress PDFs to show oil drain plug &amp; wheel bolt torque for the loaded vehicle.</div>';
+
     ov.innerHTML = '<div class="setbox">' +
       '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
-      '<p class="settl">Shop special-tool list</p>' +
-      '<p class="setsub">Upload your shop’s tool list (a CSV or Excel <b>.xlsx</b> file). Hahns shows each special tool’s drawer location and flags tools that aren’t on the list.</p>' +
-      status +
-      '<div class="setbtns">' +
-        (st ? '<button class="danger remove">Remove list</button>' : "") +
-        '<button class="primary upload">' + (st ? "Replace list" : "Upload list") + "</button>" +
-      "</div>" +
-      '<div class="setdiv"></div>' +
-      '<p class="settl">Fluid capacity tables</p>' +
-      '<p class="setsub">Load the yearly <b>VW Fluid Capacity Tables</b> PDFs. Hahns converts them on this computer — kept only in this browser, never uploaded — and shows the values matched to the loaded vehicle.</p>' +
-      flStatus +
-      '<div class="setbtns">' +
-        (flYears.length ? '<button class="danger flremove">Remove tables</button>' : "") +
-        '<button class="primary flupload">' + (flYears.length ? "Add / replace PDFs" : "Load PDFs") + "</button>" +
-      "</div>" +
-      '<div class="setdiv"></div>' +
-      '<p class="settl">Fluid database</p>' +
-      '<p class="setsub">The parsed tables and their source PDFs live in this browser’s database. When the parser is improved, saved PDFs are re-read automatically — no re-upload needed.</p>' +
-      fluidsInfoHTML() +
+      '<div class="setupd"><button class="chkupd">Check for Update</button></div>' +
+      // shop special-tool list
+      '<details class="setacc" data-sec="tools">' +
+        '<summary>Shop special-tool list<span class="sccount">' + esc(toolCount) + "</span></summary>" +
+        '<div class="setbody">' +
+          '<p class="setsub">Upload your shop’s tool list (a CSV or Excel <b>.xlsx</b> file). Hahns shows each special tool’s drawer location and flags tools that aren’t on the list.</p>' +
+          status +
+          '<div class="setbtns">' +
+            (st ? '<button class="danger remove">Remove list</button>' : "") +
+            '<button class="primary upload">' + (st ? "Replace list" : "Upload list") + "</button>" +
+          "</div>" +
+        "</div>" +
+      "</details>" +
+      // fluid capacity tables
+      '<details class="setacc" data-sec="fluids">' +
+        '<summary>Fluid capacity tables<span class="sccount">' + esc(flCount) + "</span></summary>" +
+        '<div class="setbody">' +
+          '<p class="setsub">Load the yearly <b>VW Fluid Capacity Tables</b> PDFs. Hahns converts them on this computer — kept only in this browser, never uploaded — and shows the values matched to the loaded vehicle.</p>' +
+          flStatus +
+          '<div class="setbtns">' +
+            (flYears.length ? '<button class="danger flremove">Remove tables</button>' : "") +
+            '<button class="primary flupload">' + (flYears.length ? "Add / replace PDFs" : "Load PDFs") + "</button>" +
+          "</div>" +
+        "</div>" +
+      "</details>" +
+      // Service Xpress torque specs (v0.4.1)
+      '<details class="setacc" data-sec="sx">' +
+        '<summary>Service Xpress (torque specs)<span class="sccount">' + esc(sxCount) + "</span></summary>" +
+        '<div class="setbody">' +
+          '<p class="setsub">Load the yearly <b>VW Service Xpress</b> charts (PDF). Hahns reads the <b>oil drain plug</b> and <b>wheel bolt</b> torque and shows them for the loaded vehicle — everything else in the chart is ignored. Kept only on this computer, never uploaded.</p>' +
+          sxStatus +
+          '<div class="setbtns">' +
+            (sxYears.length ? '<button class="danger sxremove">Remove charts</button>' : "") +
+            '<button class="primary sxupload">' + (sxYears.length ? "Add / replace PDFs" : "Load PDFs") + "</button>" +
+          "</div>" +
+        "</div>" +
+      "</details>" +
+      // fluid database (info only)
+      '<details class="setacc" data-sec="fluiddb">' +
+        '<summary>Fluid database</summary>' +
+        '<div class="setbody">' +
+          '<p class="setsub">The parsed tables and their source PDFs live in this browser’s database. When the parser is improved, saved PDFs are re-read automatically — no re-upload needed.</p>' +
+          fluidsInfoHTML() +
+        "</div>" +
+      "</details>" +
       '<p class="setnote">Everything here is saved only on this computer (under ELSA) — never uploaded anywhere or sent to GitHub.</p>' +
       "</div>";
-    root.appendChild(ov);
+
+    // restore / apply section open-state
+    Array.prototype.forEach.call(ov.querySelectorAll("details.setacc"), function (d) {
+      if (openState[d.getAttribute("data-sec")]) d.open = true;
+    });
+
     var close = function () { try { ov.remove(); } catch (e) {} };
-    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    // rebuild in place so an upload/remove refresh keeps the tech in Settings
+    var refresh = function () { openSettings(host, r, options, root); };
+    if (fresh) ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
     ov.querySelector(".xclose").addEventListener("click", close);
+    // "Check for Update" — force the loader's daily update window to run NOW. The
+    // hook exists only when the app was delivered by the self-updating loader
+    // (v0.4.0+); on the classic self-contained bookmarklet there's no loader, so
+    // fall back to opening the setup page where they can re-grab the latest.
+    var chk = ov.querySelector(".chkupd");
+    if (chk) chk.addEventListener("click", function () {
+      close();
+      if (typeof window.hahnsCheckForUpdate === "function") {
+        try { window.hahnsCheckForUpdate(); } catch (e) {}
+      } else {
+        try { window.open(SITE_URL, "_blank", "noopener"); } catch (e) {}
+        flash(root, "Opening the H.A.H.N.S page…");
+      }
+    });
+    // upload buttons DON'T close Settings — the tech may have more to do here
     var up = ov.querySelector(".upload");
-    if (up) up.addEventListener("click", function () { close(); pickToolFile(host, r, options, root); });
+    if (up) up.addEventListener("click", function () { pickToolFile(host, r, options, root); });
     var rm = ov.querySelector(".remove");
     if (rm) rm.addEventListener("click", function () {
-      removeShopTools(); close();
+      removeShopTools();
       renderInto(host, r, options);
+      refresh();
       flash(root, "Tool list removed");
     });
     var flup = ov.querySelector(".flupload");
-    if (flup) flup.addEventListener("click", function () { close(); pickFluidFiles(host, r, options, root); });
+    if (flup) flup.addEventListener("click", function () { pickFluidFiles(host, r, options, root); });
     var flrm = ov.querySelector(".flremove");
     if (flrm) flrm.addEventListener("click", function () {
-      removeFluids(); close();
+      removeFluids();
       renderInto(host, r, options);
+      refresh();
       flash(root, "Fluid tables removed");
+    });
+    var sxup = ov.querySelector(".sxupload");
+    if (sxup) sxup.addEventListener("click", function () { pickSxFiles(host, r, options, root); });
+    var sxrm = ov.querySelector(".sxremove");
+    if (sxrm) sxrm.addEventListener("click", function () {
+      removeSx();
+      renderInto(host, r, options);
+      refresh();
+      flash(root, "Service Xpress charts removed");
     });
   }
 
@@ -4438,6 +4876,8 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
         }
         close();
         renderInto(host, r, options);
+        // refresh Settings in place if it's still open behind the mapper
+        if (root.querySelector(".setc-settings")) openSettings(host, r, options, root);
         flash(root, built.count + " tools loaded");
       });
     });
@@ -4668,11 +5108,6 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
             } catch (e) {}
             host.remove();
           });
-        } else if (act === "reminddismiss") {
-          // this Wednesday's marker was already recorded when the banner became
-          // due, so dismissing just clears it from the current view
-          remindDue = false;
-          renderInto(host, r, options);
         } else if (act === "min") {
           setMin(!isMin());
           renderInto(host, r, options);
@@ -4696,7 +5131,12 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
         } else if (act === "vehexpand") {
           cancelVehAuto(); setVehExp(true); renderInto(host, r, options);
         } else if (act === "settings") {
-          openSettings(host, r, options, root);
+          // a "load" bar lands the tech straight in the right section (the torque
+          // bar tags itself data-sx); the gear opens with all sections collapsed
+          var expandSec = null;
+          if (btn && btn.getAttribute && btn.getAttribute("data-sx")) expandSec = "sx";
+          else if (btn && btn.classList && btn.classList.contains("load")) expandSec = "fluids";
+          openSettings(host, r, options, root, expandSec);
         } else if (act === "findtools") {
           if (e && e.preventDefault) e.preventDefault();
           if (!openToolWindow(r)) flash(root, "Allow pop-ups to open the tool list");
@@ -4906,11 +5346,6 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
       clearJob();
       show(emptyResults());
     }
-    // weekly update-check reminder (pure local date — no network): shows once,
-    // only on Wednesdays. We can't know if the app is actually stale, so it's a
-    // gentle nudge, not an alert.
-    remindDue = reminderDue();
-
     // open showing the current job (blank if nothing collected yet) WITHOUT
     // auto-scanning — scanning the page is a deliberate "Scan page" click
     show(loadJob() || emptyResults());
@@ -4933,7 +5368,12 @@ Coat the new bolt threads with locking fluid before installing.</textarea>
     fluidsBoot: fluidsBoot, loadFluids: loadFluids, fluidsSaveYears: fluidsSaveYears,
     reparseYear: reparseYear, fluidsInfoHTML: fluidsInfoHTML,
     // shop tool-list store (IndexedDB v0.3.16), exposed for dev harnesses
-    loadShopTools: loadShopTools, saveShopTools: saveShopTools, removeShopTools: removeShopTools };
+    loadShopTools: loadShopTools, saveShopTools: saveShopTools, removeShopTools: removeShopTools,
+    // Service Xpress torque (v0.4.1), exposed for dev harnesses
+    parseServiceXpress: parseServiceXpress, sxFromPdf: sxFromPdf, loadSx: loadSx,
+    sxSaveFiles: sxSaveFiles, removeSx: removeSx, sxForVehicle: sxForVehicle,
+    sxDrainText: sxDrainText, sxWheelText: sxWheelText,
+    buildFluidsWindowHTML: buildFluidsWindowHTML };
 })();
 </script>
 <script>

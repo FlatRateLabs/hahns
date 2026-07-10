@@ -15,7 +15,7 @@ const root = path.join(__dirname, "..");
 // ---- version ----
 // Bump this when you ship. While testing, keep the "-alpha" tag.
 //   tiny fix -> 0.1.1   new feature -> 0.2.0   stable release -> 1.0.0
-const VERSION = "0.4.0-alpha";
+const VERSION = "0.4.1-alpha";
 
 // ---- self-updating loader (POC) ----
 // Where the hosted app.js / update.html live. The loader trusts ONLY messages
