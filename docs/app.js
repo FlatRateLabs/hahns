@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.4.0-alpha · 2026-07-09 04:28 UTC";
+var BUILD = "v0.4.0-alpha · 2026-07-10 00:35 UTC";
 // where techs re-grab the latest (used by the "check for latest" link and the
 // weekly update-check reminder)
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
