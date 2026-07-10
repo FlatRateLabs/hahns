@@ -1,19 +1,10 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.4.0-alpha · 2026-07-10 00:35 UTC";
-// where techs re-grab the latest (used by the "check for latest" link and the
-// weekly update-check reminder)
+var BUILD = "v0.4.1-alpha · 2026-07-10 04:03 UTC";
+// the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
+// updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
-// ---- weekly "check for updates" reminder (no network — pure local date) ----
-// Auto-update can't work on ELSA: its CSP blocks every request to our domain
-// (confirmed by the browser for connect-src AND img-src), so the app makes
-// ZERO network calls. Instead we nudge the tech once a week — anchored to
-// Wednesday — to open the setup page and compare versions. We persist ONLY a
-// date string (the Wednesday we last reminded for), never job/ELSA content, so
-// the no-network / retain-nothing posture stays fully intact.
-var REMIND_KEY = "vwjb_upd_reminder_v1";  // localStorage: Wednesday-marker last acknowledged
-var remindDue = false;                     // show the weekly update-check banner
 // transient one-line note for the vehicle bar (e.g. a blocked procedure scan
 // before a vehicle is loaded). Cleared once shown — never persisted.
 var vehNotice = "";
@@ -897,7 +888,7 @@ var FLUIDS_KEY = "vwjb_fluids_v1";  // legacy localStorage (pre-v0.3.15) — kep
 // (shop tool list), created fresh at v1. (The short-lived v0.3.15 `hahns_fluids`
 // DB is intentionally NOT migrated — it shipped one day earlier and had almost
 // no real-world uptake; on update the tech re-loads their fluid PDFs once.)
-var APP_DB = "hahns_db", APP_DB_VER = 1;
+var APP_DB = "hahns_db", APP_DB_VER = 2;   // v2 (v0.4.1): + Service Xpress torque stores
 // Three parsers, named by the model-year range each one owns. Bump a range's
 // version string in ONE place → every stored PDF of that range auto-re-parses
 // on the next load (the other ranges are untouched). See familyForYear below.
@@ -942,6 +933,11 @@ if (!db.objectStoreNames.contains("parsed")) db.createObjectStore("parsed", { ke
 if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta", { keyPath: "year" });
 if (!db.objectStoreNames.contains("kv")) db.createObjectStore("kv", { keyPath: "k" });
 if (!db.objectStoreNames.contains("tools")) db.createObjectStore("tools", { keyPath: "k" });
+// Service Xpress torque (v0.4.1) — keyed by source FILE (one Service Xpress
+// PDF can carry several model years), unlike the fluid stores (keyed by year)
+if (!db.objectStoreNames.contains("sx_pdfs")) db.createObjectStore("sx_pdfs", { keyPath: "key" });
+if (!db.objectStoreNames.contains("sx_parsed")) db.createObjectStore("sx_parsed", { keyPath: "key" });
+if (!db.objectStoreNames.contains("sx_meta")) db.createObjectStore("sx_meta", { keyPath: "key" });
 };
 rq.onsuccess = function () {
 var db = rq.result;
@@ -998,7 +994,7 @@ return migrateLegacyFluids();
 }).then(function () {
 return migrateLegacyTools();   // v0.3.16: one-time localStorage → IDB for the tool list
 }).then(function () {
-return Promise.all([idbGetAll("parsed"), idbGetAll("meta"), idbGet("kv", "lastBgUpdate"), hydrateShopTools()]);
+return Promise.all([idbGetAll("parsed"), idbGetAll("meta"), idbGet("kv", "lastBgUpdate"), hydrateShopTools(), hydrateSx()]);
 }).then(function (out) {
 buildProjection(out[0]);
 fluidsMetaList = out[1] || [];
@@ -1006,11 +1002,13 @@ fluidsBgUpdate = (out[2] && out[2].v) || 0;
 fluidsReady = true;
 if (onReady) onReady();
 reconcileFluids();   // background, non-blocking
+reconcileSx();       // Service Xpress auto-reparse (background)
 }).catch(function () {
 // IDB unavailable → legacy sync read so the feature still works
 appIdbOk = false; appDB = null;
 try { var raw = localStorage.getItem(FLUIDS_KEY); fluidsData = raw ? JSON.parse(raw) : false; } catch (e) { fluidsData = false; }
 fluidsReady = true;
+hydrateSx();   // reads the Service Xpress localStorage fallback
 if (onReady) onReady();
 });
 }
@@ -1952,6 +1950,246 @@ if (!models.length) throw new Error("no fluid tables found — is this a VW Flui
 return { year: year, models: models };
 });
 }
+var SX_PARSER_VER = "1.0.0";               // bump → stored Service Xpress PDFs auto-re-parse
+var SX_YEAR_MIN = 2008, SX_YEAR_MAX = 2026;   // 2007 and earlier never had these charts
+var SX_KEY = "vwjb_sx_v1";                 // localStorage fallback (IDB-unavailable) — projection only, no blobs
+var sxData = null;      // sync projection: null=unread, false=none, obj={byYear,files,years,count,updated}
+var sxMetaList = [];    // sync mirror of sx_meta (info panel + reconcile)
+var sxReady = false;    // projection hydrated
+// ---- parser: layout text → [{year, model, platform, isEV, codes, drain, wheel}]
+// Values are classified by MAGNITUDE (drain <=85 N·m, wheel >=100 N·m — a gap
+// verified across every 2008-2026 chart), so the scrambled old-file layout is
+// moot. Qualifier labels are captured: drain M14/M24 (plug thread), wheel
+// FWD/AWD (drivetrain), wheel 1PC/2PC (wheel-bolt design).
+function parseServiceXpress(text) {
+var lines = String(text || "").split(/\r?\n/);
+var SEC = /^\s*\d+\.\d+\s+(.+?)\s*\(([^()]*)\)\s*$/;       // "1.1  Jetta / GLI (BU4)"
+var THDR = /^\s*(20\d\d)\b[^\n]*Torque Spec/i;            // torque-table header + its printed year
+var END = /Resetting the service|service reminder can be reset|service interval display/i;
+var CODE = /\b([A-Z]{3,4}[0-9]?)\b/g;
+var STOP = { TDI:1,TSI:1,FSI:1,USA:1,GLI:1,GTI:1,SEL:1,AWD:1,FWD:1,DSG:1,PHEV:1,VR6:1,SAE:1,VW:1,ETKA:1,DIN:1,PR:1,ABS:1,LWB:1,SWB:1,NM:1,ONLY:1,SET:1,REQ:1,AMP:1,CA:1,CMC:1,MCE:1,USB:1,OFF:1,OIL:1,RUN:1,VIN:1,OK:1,PSI:1,TPMS:1 };
+function drainQ(ln) { return /\bM14\b/i.test(ln) ? "M14" : /\bM24\b/i.test(ln) ? "M24" : null; }
+function wheelQ(ln) {
+if (/\bAWD\b|4\s?MOTION|4-?MOT\b/i.test(ln)) return "AWD";
+if (/\bFWD\b/i.test(ln)) return "FWD";
+if (/(single|one)[\s-]*piece|\(\s*single|\(\s*one/i.test(ln)) return "1PC";
+if (/(two|2)[\s-]*piece|\(\s*two/i.test(ln)) return "2PC";
+return null;
+}
+var out = [], cur = null, model = "", platform = "";
+function flush() { if (cur && cur.year) out.push(cur); cur = null; }
+function newEntry() { return { year: null, model: model, platform: platform, isEV: false, drain: [], wheel: [], codes: {}, inTable: false, pendD: null, pendW: null }; }
+for (var i = 0; i < lines.length; i++) {
+var ln = lines[i];
+var ms = ln.match(SEC);
+if (ms) { flush(); model = ms[1].replace(/\s+/g, " ").trim(); platform = ms[2].trim(); cur = newEntry(); continue; }
+if (!cur) continue;
+var th = ln.match(THDR);
+if (th) {
+if (!cur.year) cur.year = th[1];
+if (/Torque Spec/i.test(ln) && !/Engine Code/i.test(ln)) cur.isEV = true;   // EV table: no Engine Code column
+cur.inTable = true; continue;
+}
+if (!cur.inTable) continue;                 // skip the parts tables above the torque table
+if (END.test(ln)) { flush(); continue; }
+var qd = drainQ(ln), qw = wheelQ(ln), vm, re = /(\d{2,3})\s*N[m]/gi, hadVal = false;
+while ((vm = re.exec(ln))) {
+var v = +vm[1]; hadVal = true;
+if (v <= 85) cur.drain.push({ v: v, q: qd || cur.pendD || null });
+else if (v >= 100) cur.wheel.push({ v: v, q: qw || cur.pendW || null });
+}
+if (hadVal) { cur.pendD = null; cur.pendW = null; }
+else { if (qd) cur.pendD = qd; if (qw) cur.pendW = qw; }
+var cm;
+while ((cm = CODE.exec(ln))) { var c = cm[1]; if (!STOP[c] && !/^\d/.test(c) && !/^(N|L|V)$/.test(c) && /^[A-Z]{3,4}[0-9]?$/.test(c)) cur.codes[c] = 1; }
+}
+flush();
+return out.map(function (e) {
+return { year: e.year, model: e.model, platform: e.platform, isEV: e.isEV,
+codes: Object.keys(e.codes).sort(), drain: sxReduce(e.drain, "drain"), wheel: sxReduce(e.wheel, "wheel") };
+});
+}
+// collapse a raw {v,q} list → compact shape:
+//  {single:N} | {m14,m24} | {fwd,awd} | {onePiece,twoPiece} | {multi:[..]} | null
+function sxReduce(arr, kind) {
+if (!arr.length) return null;
+function firstWith(q) { for (var i = 0; i < arr.length; i++) if (arr[i].q === q) return arr[i].v; return null; }
+var qs = {}; arr.forEach(function (x) { if (x.q) qs[x.q] = 1; });
+if (kind === "drain") { if (qs.M14 || qs.M24) return sxTrim({ m14: firstWith("M14"), m24: firstWith("M24") }); }
+else {
+if (qs.FWD || qs.AWD) return sxTrim({ fwd: firstWith("FWD"), awd: firstWith("AWD") });
+if (qs["1PC"] || qs["2PC"]) return sxTrim({ onePiece: firstWith("1PC"), twoPiece: firstWith("2PC") });
+}
+var d = {}; arr.forEach(function (x) { d[x.v] = 1; });
+var distinct = Object.keys(d).map(Number).sort(function (a, b) { return a - b; });
+return distinct.length === 1 ? { single: distinct[0] } : { multi: distinct };
+}
+function sxTrim(o) { Object.keys(o).forEach(function (k) { if (o[k] == null) delete o[k]; }); return o; }
+// read one Service Xpress PDF → { fileName, entries, years } (via our reader)
+function sxFromPdf(buf, name) {
+return pdfTextLines(buf).then(function (text) {
+var entries = parseServiceXpress(text);
+if (!entries.length) throw new Error("no Service Xpress torque tables found — is this a VW Service Xpress chart?");
+var ys = {}; entries.forEach(function (e) { if (e.year) ys[e.year] = 1; });
+return { fileName: name, entries: entries, years: Object.keys(ys).sort() };
+});
+}
+// ---- projection: merge all stored files' entries, keyed by year, deduped by
+// (year|model|platform); prefer the entry from the file whose NAME year matches
+// the entry's printed year (the authoritative source for that model year).
+function buildSxProjection(parsedRecs) {
+var pick = {}, files = [], latest = "";
+(parsedRecs || []).forEach(function (p) {
+var fileYear = (String(p.fileName || "").match(/20\d\d/) || [])[0] || "";
+files.push({ key: p.key, fileName: p.fileName || "", parserVersion: p.parserVersion || "", years: p.years || [], count: (p.entries || []).length });
+if (p.parsedDate && p.parsedDate > latest) latest = p.parsedDate;
+(p.entries || []).forEach(function (e) {
+if (!e || !e.year) return;
+var k = e.year + "|" + modelNorm(e.model) + "|" + e.platform;
+var prefer = fileYear && fileYear === String(e.year);
+if (!pick[k] || (prefer && !pick[k].prefer)) {
+var ee = {}; for (var kk in e) if (Object.prototype.hasOwnProperty.call(e, kk)) ee[kk] = e[kk];
+ee.file = p.fileName || "";
+pick[k] = { e: ee, prefer: !!prefer };
+}
+});
+});
+var byYear = {};
+Object.keys(pick).forEach(function (k) { var e = pick[k].e; (byYear[e.year] = byYear[e.year] || []).push(e); });
+var yrs = Object.keys(byYear).sort();
+sxData = yrs.length ? { byYear: byYear, files: files, years: yrs, count: yrs.length, updated: latest || todayISO() } : false;
+}
+function loadSx() { return sxData || null; }
+// save newly-uploaded Service Xpress files (Blob + parsed + meta per file). Falls
+// back to a projection-only localStorage record if IndexedDB is unavailable.
+function sxSaveFiles(list) {
+if (!appIdbOk || !appDB) {
+var st = null; try { st = JSON.parse(localStorage.getItem(SX_KEY) || "null"); } catch (e) {}
+st = st || { recs: [] };
+list.forEach(function (o) {
+st.recs = st.recs.filter(function (rc) { return rc.fileName !== o.name; });
+st.recs.push({ key: o.name, fileName: o.name, parserVersion: "0", entries: o.entries, years: o.years, parsedDate: todayISO() });
+});
+try { localStorage.setItem(SX_KEY, JSON.stringify(st)); } catch (e) { return Promise.reject(e); }
+buildSxProjection(st.recs);
+return Promise.resolve();
+}
+var chain = Promise.resolve(), now = todayISO();
+list.forEach(function (o) {
+chain = chain.then(function () {
+var blob = new Blob([o.buf], { type: "application/pdf" });
+return idbPutMany(["sx_pdfs", "sx_parsed", "sx_meta"], [
+{ store: "sx_pdfs", val: { key: o.name, blob: blob, hash: o.hash || "", size: o.size || blob.size, fileName: o.name, importDate: now } },
+{ store: "sx_parsed", val: { key: o.name, parserVersion: SX_PARSER_VER, entries: o.entries, fileName: o.name, years: o.years, parsedDate: now } },
+{ store: "sx_meta", val: { key: o.name, parserVersion: SX_PARSER_VER, hash: o.hash || "", fileName: o.name, size: o.size || blob.size, years: o.years, count: (o.entries || []).length, hasBlob: true, status: "ok", importDate: now, lastParsedDate: now, appBuild: BUILD } }
+]);
+});
+});
+return chain.then(function () { return Promise.all([idbGetAll("sx_parsed"), idbGetAll("sx_meta")]); })
+.then(function (out) { buildSxProjection(out[0]); sxMetaList = out[1] || []; });
+}
+function removeSx() {
+sxData = false; sxMetaList = [];
+try { localStorage.removeItem(SX_KEY); } catch (e) {}
+if (appIdbOk && appDB) { try { var tx = appDB.transaction(["sx_pdfs", "sx_parsed", "sx_meta"], "readwrite"); tx.objectStore("sx_pdfs").clear(); tx.objectStore("sx_parsed").clear(); tx.objectStore("sx_meta").clear(); } catch (e) {} }
+}
+// hydrate the sync projection at boot (called from fluidsBoot so the DB opens once)
+function hydrateSx() {
+if (!appIdbOk || !appDB) {
+var st = null; try { st = JSON.parse(localStorage.getItem(SX_KEY) || "null"); } catch (e) {}
+buildSxProjection(st && st.recs ? st.recs : []); sxReady = true; return Promise.resolve();
+}
+return Promise.all([idbGetAll("sx_parsed"), idbGetAll("sx_meta")]).then(function (out) {
+buildSxProjection(out[0]); sxMetaList = out[1] || []; sxReady = true;
+}).catch(function () { sxData = false; sxReady = true; });
+}
+// background: any stored file whose parser version differs → re-read its Blob and
+// re-parse. Non-destructive (a failed re-parse keeps the last good data).
+function reconcileSx() {
+if (!appIdbOk || !appDB) return;
+var todo = sxMetaList.filter(function (m) { return m && m.hasBlob && m.parserVersion !== SX_PARSER_VER; }).map(function (m) { return m.key; });
+if (!todo.length) return;
+var idle = window.requestIdleCallback || function (f) { return setTimeout(f, 120); };
+(function next(i) {
+if (i >= todo.length) { if (fluidsRerender) fluidsRerender(); return; }
+reparseSxFile(todo[i]).then(function () {}, function () {}).then(function () { if (fluidsRerender) fluidsRerender(); idle(function () { next(i + 1); }); });
+})(0);
+}
+function reparseSxFile(key) {
+return idbGet("sx_pdfs", key).then(function (pdf) {
+if (!pdf || !pdf.blob) throw new Error("no source PDF");
+return pdf.blob.arrayBuffer().then(function (buf) {
+return sxFromPdf(buf, pdf.fileName || key).then(function (out) {
+var now = todayISO();
+return idbPutMany(["sx_parsed", "sx_meta"], [
+{ store: "sx_parsed", val: { key: key, parserVersion: SX_PARSER_VER, entries: out.entries, fileName: pdf.fileName || "", years: out.years, parsedDate: now } },
+{ store: "sx_meta", val: { key: key, parserVersion: SX_PARSER_VER, hash: pdf.hash || "", fileName: pdf.fileName || "", size: pdf.size || 0, years: out.years, count: out.entries.length, hasBlob: true, status: "ok", importDate: pdf.importDate || now, lastParsedDate: now, appBuild: BUILD } }
+]).then(function () { return Promise.all([idbGetAll("sx_parsed"), idbGetAll("sx_meta")]); })
+.then(function (o) { buildSxProjection(o[0]); sxMetaList = o[1] || []; });
+});
+});
+}).catch(function (e) {
+return idbGet("sx_meta", key).then(function (m) { m = m || { key: key }; m.status = "reparse-error"; m.lastError = (e && e.message) || "parse failed"; return idbPut("sx_meta", m); })
+.then(function () { return idbGetAll("sx_meta"); }).then(function (l) { sxMetaList = l || []; }).catch(function () {});
+});
+}
+// ---- matching: loaded vehicle → the right torque entry for its model year.
+// Engine code first (exact, from ELSA's Engine Code field), then model name.
+function sxForVehicle(r) {
+var st = loadSx(); if (!(st && st.byYear)) return null;
+var v = fluidVeh(r); if (!v.year) return null;
+var list = st.byYear[v.year]; if (!list || !list.length) return null;
+// MODEL NAME is the reliable key — torque is per-model, and engine codes are
+// SHARED across models (CCTA is in Eos/Golf/Jetta/Tiguan), so a code can only
+// DISAMBIGUATE among model matches, never pick the model on its own.
+var vm = modelNorm(v.model); if (/GTI|GOLFR/.test(vm)) vm += "GOLF";
+var matches = [];
+list.forEach(function (e) {
+var best = 0;
+String(e.model || "").toUpperCase().split("/").forEach(function (tok) {
+var t = modelNorm(tok);
+if (t && vm.indexOf(t) >= 0 && t.length > best) best = t.length;
+});
+if (best) matches.push({ e: e, score: best });
+});
+var hit = null;
+if (matches.length) {
+matches.sort(function (a, b) { return b.score - a.score; });
+if (v.engineCode) {   // among model matches, prefer the one carrying this engine code
+var ec = matches.filter(function (m) { return m.e.codes && m.e.codes.indexOf(v.engineCode) >= 0; });
+if (ec.length) hit = ec[0].e;
+}
+if (!hit) hit = matches[0].e;
+} else if (v.engineCode) {
+// no model match → only trust an engine code that's UNIQUE this year (never
+// guess off a code shared by several models)
+var uniq = list.filter(function (e) { return e.codes && e.codes.indexOf(v.engineCode) >= 0; });
+if (uniq.length === 1) hit = uniq[0];
+}
+return hit ? { entry: hit, drain: hit.drain, wheel: hit.wheel, year: v.year, veh: v } : null;
+}
+// ---- display text for the two specs (N·m). Wheel: if the value splits by
+// drivetrain AND the vehicle is known-AWD, show that one; otherwise show both
+// labeled (never guess FWD when the drivetrain is unknown).
+function sxNm(n) { return n + " N·m"; }
+function sxDrainText(d) {
+if (!d) return "not listed";
+if (d.single != null) return sxNm(d.single);
+if (d.m14 != null || d.m24 != null) return "M14 " + (d.m14 != null ? d.m14 : "?") + " · M24 " + (d.m24 != null ? d.m24 : "?") + " N·m";
+if (d.multi) return d.multi.join(" / ") + " N·m";
+return "not listed";
+}
+function sxWheelText(w, veh) {
+if (!w) return "not listed";
+if (w.single != null) return sxNm(w.single);
+if (w.fwd != null || w.awd != null) {
+if (veh && veh.awd && w.awd != null) return sxNm(w.awd) + " (AWD)";
+return "FWD " + (w.fwd != null ? w.fwd : "?") + " · AWD " + (w.awd != null ? w.awd : "?") + " N·m";
+}
+if (w.onePiece != null || w.twoPiece != null) return "1-pc " + (w.onePiece != null ? w.onePiece : "?") + " · 2-pc " + (w.twoPiece != null ? w.twoPiece : "?") + " N·m";
+if (w.multi) return w.multi.join(" / ") + " N·m";
+return "not listed";
+}
 function fluidVeh(r) {
 var v = (r && r.__vehicle) || {};
 var veh = {
@@ -2137,8 +2375,8 @@ var st = loadFluids();
 var yd = st && st.years && st.years[veh.year];
 var body;
 if (!yd) {
-body = '<div class="err">No fluid tables are loaded for <b>' + esc(veh.year || "this year") +
-"</b> on this computer. Open Settings (the ⚙ gear in Hahns) and load that year’s VW Fluid Capacity Tables PDF.</div>";
+body = '<div class="none" style="padding:14px 2px">No fluid tables loaded for <b>' + esc(veh.year || "this year") +
+"</b> — open the ⚙ gear in Hahns to add that year’s VW Fluid Capacity Tables PDF.</div>";
 } else {
 var m = pickFluidModel(yd.models || [], veh);
 if (!m) body = '<div class="err">No fluid entry found for <b>' + esc(veh.model || "this model") + "</b> in the " + esc(veh.year) + " tables.</div>";
@@ -2154,7 +2392,10 @@ return '<!doctype html><html><head><meta charset="utf-8">' +
 '<div class="bar"><button id="hb_print" onclick="window.print()">Print</button></div>' +
 "<h1>Fluids &amp; Capacities</h1>" +
 '<div class="meta">from the ' + esc(veh.year || "?") + " tables on this computer" + (yd && yd.file ? " (" + esc(yd.file) + ")" : "") + "</div>" +
+'<div class="topcols">' +
 '<div class="veh"><div class="t">Vehicle</div><div class="grid">' + vehGrid + "</div></div>" +
+sxWinHTML(r) +
+"</div>" +
 body +
 '<div class="foot">Approximate quantities — always confirm against the Repair Manual / Maintenance Procedures.<br>H.A.H.N.S ' + esc(BUILD) + " · matched to your vehicle, nothing saved online.</div>" +
 "</body></html>";
@@ -2264,7 +2505,86 @@ sv.disabled = true;
 fluidsSaveYears(ok).then(function () {
 close();
 renderInto(host, r, options);
+// if Settings is still open behind this dialog, refresh it in place so the
+// newly-saved years show without the tech having to reopen it
+if (root.querySelector(".setc-settings")) openSettings(host, r, options, root);
 flash(root, "Fluid tables saved: " + ok.map(function (o) { return o.year; }).sort().join(", "));
+}).catch(function (e) {
+var err = ov.querySelector(".maperr");
+err.textContent = "Couldn’t save (" + ((e && e.message) || "storage blocked or full on this machine") + ").";
+err.style.display = "block"; sv.disabled = false;
+});
+});
+}
+// pick the yearly VW Service Xpress PDFs (multi-select), read them LOCALLY (a
+// FileReader read — NO network), parse the two torque specs, then preview/confirm.
+function pickSxFiles(host, r, options, root) {
+var inp = document.createElement("input");
+inp.type = "file"; inp.accept = ".pdf,application/pdf"; inp.multiple = true; inp.style.display = "none";
+inp.addEventListener("change", function () {
+var files = Array.prototype.slice.call(inp.files || []);
+try { inp.remove(); } catch (e) {}
+if (!files.length) return;
+if (typeof DecompressionStream === "undefined") { flash(root, "This browser can’t read PDFs — use Chrome, Edge or Safari"); return; }
+flash(root, "Reading " + files.length + " PDF" + (files.length > 1 ? "s" : "") + "…");
+var results = [], chain = Promise.resolve();
+files.forEach(function (f) {
+chain = chain.then(function () {
+return new Promise(function (res) {
+var fr = new FileReader();
+fr.onload = function () {
+var buf = fr.result;
+sha256Hex(buf).then(function (hash) {
+sxFromPdf(buf, f.name).then(function (out) {
+results.push({ name: f.name, entries: out.entries, years: out.years, buf: buf, hash: hash, size: (f.size || (buf && buf.byteLength) || 0) }); res();
+}).catch(function (err) { results.push({ name: f.name, err: (err && err.message) || "could not read that PDF" }); res(); });
+});
+};
+fr.onerror = function () { results.push({ name: f.name, err: "could not read that file" }); res(); };
+try { fr.readAsArrayBuffer(f); } catch (e) { results.push({ name: f.name, err: "could not read that file" }); res(); }
+});
+});
+});
+chain.then(function () { openSxConfirm(host, r, options, root, results); });
+});
+(root.querySelector(".wrap") || root).appendChild(inp);
+inp.click();
+}
+// preview per file: the model years + how many model tables were found (or a
+// plain error). Save writes them to IndexedDB, keeping the PDF for auto-reparse.
+function openSxConfirm(host, r, options, root, results) {
+var ok = results.filter(function (o) { return !o.err; });
+var rows = results.map(function (o) {
+if (o.err) return '<div class="flrow bad"><b>' + esc(o.name) + "</b><span>" + esc(o.err) + "</span></div>";
+var yrs = (o.years || []).join(", ");
+return '<div class="flrow"><b>' + esc(yrs || "?") + " — " + o.entries.length + " model tables</b><span>" + esc(o.name) + "</span></div>";
+}).join("");
+var ov = document.createElement("div");
+ov.className = "setc";
+ov.innerHTML = '<div class="setbox">' +
+'<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
+'<p class="settl">Load Service Xpress charts</p>' +
+'<p class="setsub">Check the model years below, then save. Read on this computer and kept only in this browser (so future parser fixes apply automatically) — nothing is uploaded.</p>' +
+rows +
+'<div class="maperr" style="display:none"></div>' +
+'<div class="setbtns"><button class="cancel">Cancel</button>' +
+(ok.length ? '<button class="primary save">Save ' + ok.length + " file" + (ok.length > 1 ? "s" : "") + "</button>" : "") +
+"</div></div>";
+root.appendChild(ov);
+var close = function () { try { ov.remove(); } catch (e) {} };
+ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+ov.querySelector(".cancel").addEventListener("click", close);
+ov.querySelector(".xclose").addEventListener("click", close);
+var sv = ov.querySelector(".save");
+if (sv) sv.addEventListener("click", function () {
+sv.disabled = true;
+sxSaveFiles(ok).then(function () {
+close();
+renderInto(host, r, options);
+// refresh Settings in place if it's still open behind this dialog
+if (root.querySelector(".setc-settings")) openSettings(host, r, options, root);
+var allYears = {}; ok.forEach(function (o) { (o.years || []).forEach(function (y) { allYears[y] = 1; }); });
+flash(root, "Service Xpress saved: " + Object.keys(allYears).sort().join(", "));
 }).catch(function (e) {
 var err = ov.querySelector(".maperr");
 err.textContent = "Couldn’t save (" + ((e && e.message) || "storage blocked or full on this machine") + ").";
@@ -2812,32 +3132,6 @@ function setVehExp(v) { try { sessionStorage.setItem("vwjb_vehexp_v1", v ? "1" :
 var vehAutoArmed = false;   // arm the 3s auto-collapse only once per page load
 var vehCollapseTimer = null;
 function cancelVehAuto() { if (vehCollapseTimer) { clearTimeout(vehCollapseTimer); vehCollapseTimer = null; } }
-// the most recent Wednesday on or before `now`, as YYYY-MM-DD. Used as a
-// once-a-week marker: it only changes when a new Wednesday passes.
-function wedMarker(now) {
-var d = new Date(now);
-d.setHours(0, 0, 0, 0);
-var back = (d.getDay() - 3 + 7) % 7;   // 3 = Wednesday; days since the last one
-d.setDate(d.getDate() - back);
-var mm = ("0" + (d.getMonth() + 1)).slice(-2), dd = ("0" + d.getDate()).slice(-2);
-return d.getFullYear() + "-" + mm + "-" + dd;
-}
-// Is the weekly reminder due right now? Two guards keep it from being annoying:
-//   1. it only fires on WEDNESDAY (getDay() === 3), and
-//   2. it shows at most ONCE per Wednesday — we record this Wednesday's marker
-//      the moment it becomes due, so re-opening the panel later the same day
-//      won't show it again.
-// We can't actually tell whether the app is out of date (there's no network
-// check), so this is a gentle once-a-week nudge to go look — never a real alert.
-function reminderDue() {
-try {
-if (new Date().getDay() !== 3) return false;                  // 3 = Wednesday only
-var cur = wedMarker(Date.now());
-if (localStorage.getItem(REMIND_KEY) === cur) return false;   // already shown this Wed
-localStorage.setItem(REMIND_KEY, cur);                        // show once, then mark seen
-return true;
-} catch (e) { return false; }
-}
 // tags that end the current line
 var LINEBREAK = { DIV: 1, P: 1, LI: 1, TR: 1, UL: 1, OL: 1, TABLE: 1, BR: 1,
 H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1, SECTION: 1, ARTICLE: 1, HEADER: 1,
@@ -2950,7 +3244,7 @@ var CSS = "" +
 ".wrap.min{max-height:none}" +
 // minimized = just the header bar (with a compact green SCAN in it). The full
 // scanbar and everything else are hidden so the collapsed bar stays tiny.
-".wrap.min .sub,.wrap.min .topbar,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .updbar,.wrap.min .vbar,.wrap.min .fluidbar,.wrap.min .scanbar{display:none}" +
+".wrap.min .sub,.wrap.min .topbar,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .vbar,.wrap.min .fluidbar,.wrap.min .scanbar{display:none}" +
 // SCAN in the header: hidden while expanded, shown as plain green text (no
 // button box) only when minimized, sitting just left of the minimize icon.
 ".hdscan{display:none}" +
@@ -2979,15 +3273,6 @@ var CSS = "" +
 ".sub{padding:6px 13px;background:#eef1f6;display:flex;align-items:center}" +
 ".bld{font-size:11px;color:#5a6b8c;white-space:nowrap;cursor:pointer}" +
 ".bld:hover{color:#001e50;text-decoration:underline}" +
-".upd{margin-left:auto;font-size:11px;color:#185fa5;text-decoration:none;white-space:nowrap}" +
-".upd:hover{text-decoration:underline}" +
-// weekly "App may be out of date" update-check reminder banner (yellow)
-".updbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 13px;background:#fff8e6;border-bottom:1px solid #f3e2b3;font-size:12px;color:#6b5300;line-height:1.3}" +
-".updmsg2{flex:1;min-width:120px;font-weight:600;color:#5a4300}" +
-".updget{flex-shrink:0;appearance:none;-webkit-appearance:none;background:#185fa5;color:#fff;text-decoration:none;font-family:inherit;font-weight:600;font-size:11.5px;padding:6px 11px;border-radius:7px;white-space:nowrap;border:0;cursor:pointer}" +
-".updget:hover{background:#134c84}" +
-".updx{flex-shrink:0;appearance:none;-webkit-appearance:none;border:1px solid #e0cf9a;background:#fff;color:#6b5300;font-family:inherit;font-weight:600;font-size:11.5px;padding:6px 10px;border-radius:7px;cursor:pointer}" +
-".updx:hover{background:#fdf6e3}" +
 // big primary action — its own bar, directly above the job title row
 ".scanbar{padding:11px 13px 4px}" +
 ".scan{width:100%;appearance:none;-webkit-appearance:none;background:#2fb84d;color:#0a0a0a;font-family:inherit;font-size:17px;font-weight:800;letter-spacing:.1em;padding:13px;border:0;border-radius:9px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.18)}" +
@@ -3123,6 +3408,21 @@ var CSS = "" +
 ".dbrow .v.dbwait{color:#12508a}" +
 ".dbrow .v.dbnone{color:#7a7a7a}" +
 ".setdiv{border-top:1px solid #e3e6ee;margin:16px 0 12px}" +
+// top "Check for Update" button — full width, neutral
+".setupd{margin:2px 0 14px;padding-right:26px}" +
+".setupd button{width:100%;appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:13px;padding:10px 14px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4;background:#fff;color:#001e50}" +
+".setupd button:hover{background:#f3f6fb}" +
+// collapsible section (native <details>) — declutters the panel
+".setacc{border:1px solid #dfe4ec;border-radius:9px;margin:0 0 10px;background:#fbfcfe}" +
+".setacc>summary{list-style:none;cursor:pointer;padding:11px 13px;font-weight:700;font-size:13px;color:#001e50;display:flex;align-items:center;gap:8px;user-select:none;border-radius:9px}" +
+".setacc>summary::-webkit-details-marker{display:none}" +
+".setacc>summary::before{content:'\\25B8';font-size:11px;color:#7286a6;transition:transform .12s ease;display:inline-block}" +
+".setacc[open]>summary::before{transform:rotate(90deg)}" +
+".setacc[open]>summary{border-bottom:1px solid #e7ebf3;border-radius:9px 9px 0 0}" +
+".setacc>summary:hover{background:#f2f6fc}" +
+".setacc .sccount{margin-left:auto;font-weight:600;font-size:11px;color:#5a6b8c}" +
+".setacc .setbody{padding:11px 13px 13px}" +
+".setacc .setbody .setsub{margin-bottom:10px}" +
 // fluid-PDF confirm rows (year + models found per picked file)
 ".flrow{background:#eef1f6;border:1px solid #dfe4ee;border-radius:8px;padding:8px 11px;font-size:12px;color:#3a4a63;line-height:1.4;margin-bottom:8px}" +
 ".flrow b{display:block;color:#001e50;font-size:12.5px}" +
@@ -3232,13 +3532,36 @@ if (!fluidsReady) return '<div class="fluidbar"><div class="fluidbtn off" title=
 // yearly VW Fluid Capacity Tables PDFs). No data for this year yet → point
 // the tech at Settings; otherwise open the locally-built lookup window.
 var st = loadFluids();
-if (!(st && st.years && st.years[v.year])) {
-return '<div class="fluidbar"><button class="fluidbtn load" data-act="settings" data-tip="Open Settings (⚙) and load the yearly VW Fluid Capacity Tables PDFs — kept only on this computer">' +
+var hasFluids = !!(st && st.years && st.years[v.year]);
+var hasSx = !!sxForVehicle(r);   // torque lives in this same window
+if (!hasFluids && !hasSx) {
+return '<div class="fluidbar"><button class="fluidbtn load" data-act="settings" data-tip="Open Settings (⚙) and load the yearly VW Fluid Capacity Tables / Service Xpress PDFs — kept only on this computer">' +
 svg(DROPLET) + (st ? "No " + esc(String(v.year)) + " fluid tables on this computer — add the PDF in Settings"
 : "Fluids &amp; capacities — load the fluid PDFs in Settings") + "</button></div>";
 }
 return '<div class="fluidbar"><button class="fluidbtn" data-act="fluids">' +
 svg(DROPLET) + "Fluids &amp; capacities for this vehicle<span class=\"arr\">&#8599;</span></button></div>";
+}
+// Service Xpress torque card for the Fluids & Capacities WINDOW — sits at the top,
+// to the right of the Vehicle section (same row). Returns "" for pre-2008 vehicles
+// (no charts ever existed). If the year's chart isn't loaded, or no model matches,
+// it still shows the card with a short note so the tech knows why.
+function sxWinHTML(r) {
+var v = (r && r.__vehicle) || {};
+var year = +(String(v.year || 0).match(/\d{4}/) || [0])[0];
+if (year && year < SX_YEAR_MIN) return "";   // 2007 & earlier never had Service Xpress
+var m = sxForVehicle(r), rows;
+if (m) {
+rows = '<div class="sxwrow"><span class="sxwk">Oil drain plug</span><span class="sxwv">' + esc(sxDrainText(m.drain)) + "</span></div>" +
+'<div class="sxwrow"><span class="sxwk">Wheel bolts</span><span class="sxwv">' + esc(sxWheelText(m.wheel, m.veh)) + "</span></div>";
+} else {
+var st = loadSx();
+var msg = (st && st.byYear && v.year && st.byYear[v.year])
+? "No matching model in the " + esc(String(v.year)) + " chart"
+: "No " + esc(String(v.year || "")) + " Service Xpress loaded — add it in ⚙ Settings";
+rows = '<div class="sxwrow"><span class="sxwv none">' + msg + "</span></div>";
+}
+return '<div class="sxwin"><div class="t">Torque</div>' + rows + "</div>";
 }
 // a small ALERT badge shown after a tool in the Special Tools list (only a
 // PROBLEM is shown inline — missing/check or not-on-the-list — so the tech is
@@ -3320,23 +3643,15 @@ var html = "" +
 '<button data-act="close" title="Close">&#10005;</button></div>' +
 // version stamp — pinned to the very top, directly under the title bar
 '<div class="sub">' +
-'<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span>" +
-'<a class="upd" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Opens the H.A.H.N.S page so you can compare versions">check for latest &#8599;</a></div>' +
+'<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span></div>" +
 // "New Vehicle" — the start-over action: wipes the loaded vehicle AND all
 // collected info. Pinned at the very top, right under the version bar.
 (embed ? "" : '<div class="topbar"><button class="newveh" data-act="newjob" data-tip="Start over with a NEW vehicle — clears the loaded vehicle and all collected info">' + svg(RESTART) + "New Vehicle</button></div>") +
 // vehicle identity strip (required before any procedure page is collected)
 (embed ? "" : vehicleBar(r)) +
-// fluids & capacities link — pinned directly under the vehicle bar
+// fluids & capacities link — pinned directly under the vehicle bar (the
+// Service Xpress torque specs live INSIDE that window, next to the vehicle)
 (embed ? "" : fluidsBar(r)) +
-// gentle once-a-week nudge to open the setup page and compare versions —
-// shown only on Wednesdays, once that day. Network-free (we can't actually
-// know if the app is stale), so it behaves the same inside and outside ELSA.
-(!embed && remindDue
-? '<div class="updbar"><span class="updmsg2">App may be out of date.</span>' +
-'<a class="updget" href="' + SITE_URL + '" target="_blank" rel="noopener" title="Open the H.A.H.N.S setup page to compare versions">Check for update?</a>' +
-'<button class="updx" data-act="reminddismiss" title="Hide this">Dismiss</button></div>'
-: "") +
 '<div class="scanbar"><button class="scan" data-act="rescan" data-tip="Read this page and add its specs to the job">SCAN</button></div>' +
 '<div class="jobbar">' +
 '<input class="job" type="text" placeholder="Job title — e.g. Rear Brakes" value="' + esc(r.__title || "") + '">' +
@@ -3555,6 +3870,16 @@ var FLUIDS_WIN_CSS =
 ".xclose:hover{background:#f3f6fb;color:#000}" +
 "h1{font-size:21px;margin:0 0 3px;color:#1b232b}" +
 ".meta{color:#555;font-size:12px;margin-bottom:14px;border-bottom:2px solid #2fb84d;padding-bottom:10px}" +
+// top row: Vehicle (left) + Torque (right), same row
+".topcols{display:flex;gap:12px;align-items:stretch;margin:14px 0;flex-wrap:wrap}" +
+".topcols .veh{flex:1 1 55%;margin:0}" +
+".sxwin{flex:1 1 34%;min-width:150px;background:#f6f3ee;border:1px solid #e4dcc9;border-radius:12px;padding:12px 14px}" +
+".sxwin .t{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#8a6d2f;margin-bottom:7px}" +
+".sxwrow{padding:7px 0;border-top:1px solid #ece5d5}" +
+".sxwrow:first-of-type{border-top:0}" +
+".sxwk{display:block;font-size:12px;color:#6b5c3e;font-weight:600}" +
+".sxwv{display:block;font-size:16px;font-weight:800;color:#3a2f18;margin-top:1px}" +
+".sxwv.none{font-size:12px;font-weight:600;color:#9a8c6e;font-style:italic}" +
 ".veh{background:#fff;border:1px solid #e3e3e3;border-radius:12px;padding:12px 14px;margin:14px 0}" +
 ".veh .t{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#5a6b8c;margin-bottom:7px}" +
 ".veh .grid{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:13px}" +
@@ -3698,8 +4023,6 @@ var byU = {}; cands.forEach(function (c) { if (!(c.url in byU) || c.area > byU[c
 Object.keys(byU).forEach(function (u) { if (!have[u] && byU[u] >= 45000) displayCount++; });
 }
 } catch (e) {}
-var remindSeen;
-try { remindSeen = localStorage.getItem(REMIND_KEY) || "(unset)"; } catch (e) { remindSeen = "(unreadable)"; }
 var toolsLine;
 try {
 var stt = loadShopTools();
@@ -3717,14 +4040,23 @@ fluidsLine = (appIdbOk ? "IndexedDB" : "localStorage(fallback)") +
 " · last bg update " + fmtWhen(fluidsBgUpdate) +
 (errs.length ? " · re-parse errors: " + errs.join(", ") : "");
 } catch (e) { fluidsLine = "(unreadable)"; }
+var sxLine;
+try {
+var sxt = loadSx();
+var sxys = sxt && sxt.years ? sxt.years : [];
+var sxerr = sxMetaList.filter(function (m) { return m && m.status === "reparse-error"; }).map(function (m) { return m.fileName || m.key; });
+sxLine = (appIdbOk ? "IndexedDB" : "localStorage(fallback)") + " · parser " + SX_PARSER_VER +
+" · " + (sxys.length ? sxys.length + " years (" + sxys.join(", ") + ") from " + (sxt.files ? sxt.files.length : "?") + " files" : "none loaded") +
+(sxerr.length ? " · re-parse errors: " + sxerr.join(", ") : "");
+} catch (e) { sxLine = "(unreadable)"; }
 var veh = {}, isSum = false;
 try { veh = extractVehicle(lastSegments) || {}; } catch (e) {}
 try { isSum = isVehicleSummaryPage(lastSegments); } catch (e) {}
 var vehLine = VEH_FIELDS.map(function (f) { return f.label + "=" + (veh[f.k] || "(none)"); }).join(" · ");
 return "H.A.H.N.S diagnostic — version " + BUILD + "\n" +
-"update reminder — last acknowledged week: " + remindSeen + " · this week: " + wedMarker(Date.now()) + "\n" +
 "shop tool list: " + toolsLine + "\n" +
 "fluid tables (this computer): " + fluidsLine + "\n" +
+"service xpress torque (this computer): " + sxLine + "\n" +
 "looks like Vehicle Summary page: " + (isSum ? "yes" : "no") + "\n" +
 "vehicle grab (from last scan): " + vehLine + "\n" +
 "flags: B=read as bold, H=recognised as a part heading\n" +
@@ -3822,11 +4154,28 @@ try { fr.readAsText(f); } catch (e) { flash(root, "Could not read that file"); }
 (root.querySelector(".wrap") || root).appendChild(inp);
 inp.click();
 }
-// the ⚙ settings panel — manage the shop tool list (upload / replace / remove)
-function openSettings(host, r, options, root) {
+// the ⚙ settings panel — a "Check for Update" button plus collapsible sections
+// (shop tool list, fluid tables, fluid database). Rebuilds IN PLACE when already
+// open (`expand` optionally force-opens one section, e.g. from the fluids "load"
+// button) so an upload/remove can refresh it without closing — the tech stays in
+// Settings to keep working.
+function openSettings(host, r, options, root, expand) {
+var ov = root.querySelector(".setc-settings");
+var fresh = !ov;
+// remember which sections are open so an in-place refresh doesn't collapse them
+var openState = {};
+if (!fresh) {
+Array.prototype.forEach.call(ov.querySelectorAll("details.setacc"), function (d) {
+openState[d.getAttribute("data-sec")] = d.open;
+});
+}
+if (expand) openState[expand] = true;
+if (fresh) {
+ov = document.createElement("div");
+ov.className = "setc setc-settings";
+root.appendChild(ov);
+}
 var st = loadShopTools();
-var ov = document.createElement("div");
-ov.className = "setc";
 var fmtLabel = st ? (st.fmt === "xlsx" ? "Excel (.xlsx)" : st.fmt === "csv" ? "CSV" : "") : "";
 var meta = st ? [fmtLabel, st.updated ? "uploaded " + st.updated : ""].filter(function (x) { return x; }).join(" · ") : "";
 var status = st
@@ -3842,48 +4191,118 @@ var flStatus = flYears.length
 '<div class="setfile">' + esc(flYears.join(", ")) + "</div>" +
 (fl.updated ? '<div class="setmeta">updated ' + esc(fl.updated) + "</div>" : "") + "</div>"
 : '<div class="setstat none">No fluid tables loaded yet. Load the yearly “VW Fluid Capacity Tables” PDFs (you can pick several at once) to enable the Fluids &amp; Capacities lookup.</div>';
+// one-line status shown right in each section's header so the tech sees state
+// without expanding
+var toolCount = st ? String(st.count || 0) + " tool" + ((st.count || 0) === 1 ? "" : "s") : "not loaded";
+var flCount = flYears.length ? String(flYears.length) + " year" + (flYears.length > 1 ? "s" : "") : "not loaded";
+// ---- Service Xpress torque status (v0.4.1) ----
+var sx = loadSx();
+var sxYears = sx && sx.years ? sx.years : [];
+var sxCount = sxYears.length ? String(sxYears.length) + " year" + (sxYears.length > 1 ? "s" : "") : "not loaded";
+var sxStatus = sxYears.length
+? '<div class="setstat">Torque charts loaded: <b>' + esc(String(sxYears.length)) + "</b> year" + (sxYears.length > 1 ? "s" : "") +
+'<div class="setfile">' + esc(sxYears.join(", ")) + "</div>" +
+(sx && sx.updated ? '<div class="setmeta">updated ' + esc(sx.updated) + "</div>" : "") + "</div>"
+: '<div class="setstat none">No Service Xpress charts loaded yet. Load the yearly VW Service Xpress PDFs to show oil drain plug &amp; wheel bolt torque for the loaded vehicle.</div>';
 ov.innerHTML = '<div class="setbox">' +
 '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
-'<p class="settl">Shop special-tool list</p>' +
+'<div class="setupd"><button class="chkupd">Check for Update</button></div>' +
+// shop special-tool list
+'<details class="setacc" data-sec="tools">' +
+'<summary>Shop special-tool list<span class="sccount">' + esc(toolCount) + "</span></summary>" +
+'<div class="setbody">' +
 '<p class="setsub">Upload your shop’s tool list (a CSV or Excel <b>.xlsx</b> file). Hahns shows each special tool’s drawer location and flags tools that aren’t on the list.</p>' +
 status +
 '<div class="setbtns">' +
 (st ? '<button class="danger remove">Remove list</button>' : "") +
 '<button class="primary upload">' + (st ? "Replace list" : "Upload list") + "</button>" +
 "</div>" +
-'<div class="setdiv"></div>' +
-'<p class="settl">Fluid capacity tables</p>' +
+"</div>" +
+"</details>" +
+// fluid capacity tables
+'<details class="setacc" data-sec="fluids">' +
+'<summary>Fluid capacity tables<span class="sccount">' + esc(flCount) + "</span></summary>" +
+'<div class="setbody">' +
 '<p class="setsub">Load the yearly <b>VW Fluid Capacity Tables</b> PDFs. Hahns converts them on this computer — kept only in this browser, never uploaded — and shows the values matched to the loaded vehicle.</p>' +
 flStatus +
 '<div class="setbtns">' +
 (flYears.length ? '<button class="danger flremove">Remove tables</button>' : "") +
 '<button class="primary flupload">' + (flYears.length ? "Add / replace PDFs" : "Load PDFs") + "</button>" +
 "</div>" +
-'<div class="setdiv"></div>' +
-'<p class="settl">Fluid database</p>' +
+"</div>" +
+"</details>" +
+// Service Xpress torque specs (v0.4.1)
+'<details class="setacc" data-sec="sx">' +
+'<summary>Service Xpress (torque specs)<span class="sccount">' + esc(sxCount) + "</span></summary>" +
+'<div class="setbody">' +
+'<p class="setsub">Load the yearly <b>VW Service Xpress</b> charts (PDF). Hahns reads the <b>oil drain plug</b> and <b>wheel bolt</b> torque and shows them for the loaded vehicle — everything else in the chart is ignored. Kept only on this computer, never uploaded.</p>' +
+sxStatus +
+'<div class="setbtns">' +
+(sxYears.length ? '<button class="danger sxremove">Remove charts</button>' : "") +
+'<button class="primary sxupload">' + (sxYears.length ? "Add / replace PDFs" : "Load PDFs") + "</button>" +
+"</div>" +
+"</div>" +
+"</details>" +
+// fluid database (info only)
+'<details class="setacc" data-sec="fluiddb">' +
+'<summary>Fluid database</summary>' +
+'<div class="setbody">' +
 '<p class="setsub">The parsed tables and their source PDFs live in this browser’s database. When the parser is improved, saved PDFs are re-read automatically — no re-upload needed.</p>' +
 fluidsInfoHTML() +
+"</div>" +
+"</details>" +
 '<p class="setnote">Everything here is saved only on this computer (under ELSA) — never uploaded anywhere or sent to GitHub.</p>' +
 "</div>";
-root.appendChild(ov);
+// restore / apply section open-state
+Array.prototype.forEach.call(ov.querySelectorAll("details.setacc"), function (d) {
+if (openState[d.getAttribute("data-sec")]) d.open = true;
+});
 var close = function () { try { ov.remove(); } catch (e) {} };
-ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+// rebuild in place so an upload/remove refresh keeps the tech in Settings
+var refresh = function () { openSettings(host, r, options, root); };
+if (fresh) ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
 ov.querySelector(".xclose").addEventListener("click", close);
+// "Check for Update" — force the loader's daily update window to run NOW. The
+// hook exists only when the app was delivered by the self-updating loader
+// (v0.4.0+); on the classic self-contained bookmarklet there's no loader, so
+// fall back to opening the setup page where they can re-grab the latest.
+var chk = ov.querySelector(".chkupd");
+if (chk) chk.addEventListener("click", function () {
+close();
+if (typeof window.hahnsCheckForUpdate === "function") {
+try { window.hahnsCheckForUpdate(); } catch (e) {}
+} else {
+try { window.open(SITE_URL, "_blank", "noopener"); } catch (e) {}
+flash(root, "Opening the H.A.H.N.S page…");
+}
+});
+// upload buttons DON'T close Settings — the tech may have more to do here
 var up = ov.querySelector(".upload");
-if (up) up.addEventListener("click", function () { close(); pickToolFile(host, r, options, root); });
+if (up) up.addEventListener("click", function () { pickToolFile(host, r, options, root); });
 var rm = ov.querySelector(".remove");
 if (rm) rm.addEventListener("click", function () {
-removeShopTools(); close();
+removeShopTools();
 renderInto(host, r, options);
+refresh();
 flash(root, "Tool list removed");
 });
 var flup = ov.querySelector(".flupload");
-if (flup) flup.addEventListener("click", function () { close(); pickFluidFiles(host, r, options, root); });
+if (flup) flup.addEventListener("click", function () { pickFluidFiles(host, r, options, root); });
 var flrm = ov.querySelector(".flremove");
 if (flrm) flrm.addEventListener("click", function () {
-removeFluids(); close();
+removeFluids();
 renderInto(host, r, options);
+refresh();
 flash(root, "Fluid tables removed");
+});
+var sxup = ov.querySelector(".sxupload");
+if (sxup) sxup.addEventListener("click", function () { pickSxFiles(host, r, options, root); });
+var sxrm = ov.querySelector(".sxremove");
+if (sxrm) sxrm.addEventListener("click", function () {
+removeSx();
+renderInto(host, r, options);
+refresh();
+flash(root, "Service Xpress charts removed");
 });
 }
 // the column-mapper overlay — the tech tags which CSV column is which. Honors
@@ -3997,6 +4416,8 @@ err.style.display = "block"; return;
 }
 close();
 renderInto(host, r, options);
+// refresh Settings in place if it's still open behind the mapper
+if (root.querySelector(".setc-settings")) openSettings(host, r, options, root);
 flash(root, built.count + " tools loaded");
 });
 });
@@ -4214,11 +4635,6 @@ sessionStorage.removeItem("vwjb_vehexp_v1");
 } catch (e) {}
 host.remove();
 });
-} else if (act === "reminddismiss") {
-// this Wednesday's marker was already recorded when the banner became
-// due, so dismissing just clears it from the current view
-remindDue = false;
-renderInto(host, r, options);
 } else if (act === "min") {
 setMin(!isMin());
 renderInto(host, r, options);
@@ -4242,7 +4658,12 @@ cancelVehAuto(); setVehExp(false); renderInto(host, r, options);
 } else if (act === "vehexpand") {
 cancelVehAuto(); setVehExp(true); renderInto(host, r, options);
 } else if (act === "settings") {
-openSettings(host, r, options, root);
+// a "load" bar lands the tech straight in the right section (the torque
+// bar tags itself data-sx); the gear opens with all sections collapsed
+var expandSec = null;
+if (btn && btn.getAttribute && btn.getAttribute("data-sx")) expandSec = "sx";
+else if (btn && btn.classList && btn.classList.contains("load")) expandSec = "fluids";
+openSettings(host, r, options, root, expandSec);
 } else if (act === "findtools") {
 if (e && e.preventDefault) e.preventDefault();
 if (!openToolWindow(r)) flash(root, "Allow pop-ups to open the tool list");
@@ -4435,10 +4856,6 @@ function newJob() {
 clearJob();
 show(emptyResults());
 }
-// weekly update-check reminder (pure local date — no network): shows once,
-// only on Wednesdays. We can't know if the app is actually stale, so it's a
-// gentle nudge, not an alert.
-remindDue = reminderDue();
 // open showing the current job (blank if nothing collected yet) WITHOUT
 // auto-scanning — scanning the page is a deliberate "Scan page" click
 show(loadJob() || emptyResults());
@@ -4460,5 +4877,10 @@ fluidsFromPdf: fluidsFromPdf, pdfTextLines: pdfTextLines, parseFluidModels: pars
 fluidsBoot: fluidsBoot, loadFluids: loadFluids, fluidsSaveYears: fluidsSaveYears,
 reparseYear: reparseYear, fluidsInfoHTML: fluidsInfoHTML,
 // shop tool-list store (IndexedDB v0.3.16), exposed for dev harnesses
-loadShopTools: loadShopTools, saveShopTools: saveShopTools, removeShopTools: removeShopTools };
+loadShopTools: loadShopTools, saveShopTools: saveShopTools, removeShopTools: removeShopTools,
+// Service Xpress torque (v0.4.1), exposed for dev harnesses
+parseServiceXpress: parseServiceXpress, sxFromPdf: sxFromPdf, loadSx: loadSx,
+sxSaveFiles: sxSaveFiles, removeSx: removeSx, sxForVehicle: sxForVehicle,
+sxDrainText: sxDrainText, sxWheelText: sxWheelText,
+buildFluidsWindowHTML: buildFluidsWindowHTML };
 })();if(window.VWJB){window.VWJB.run();}})();

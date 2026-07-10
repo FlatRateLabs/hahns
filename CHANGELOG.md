@@ -9,6 +9,42 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.4.1-alpha — 2026-07-10
+
+### Added
+- **Torque specs — oil drain plug & wheel bolt (Service Xpress).** Load the yearly **VW Service
+  Xpress** charts (PDF) in ⚙ Settings, and the **Fluids & Capacities** window now shows the **oil drain
+  plug** and **wheel bolt** torque for the loaded vehicle — in its own **Torque** card at the top, right
+  next to the Vehicle box — no digging through the chart. It's smart
+  about the tricky cases: **wheel torque that differs by drivetrain** (e.g. Tiguan FWD 120 / AWD 140 N·m)
+  shows the right one for your vehicle; **one-piece vs two-piece wheel bolts** (some Atlas) and **M14 vs M24
+  drain plugs** (older years) show both, labeled, since the car can't tell us which; EVs correctly show no
+  drain plug. Covers **2008–2026** (2007 and earlier never had these charts). Everything else in the chart
+  (oil spec, capacities, etc.) is ignored — that comes from the Fluid Capacity tables. Charts are read and
+  kept **only on this computer**, never uploaded, and re-read automatically when the reader is improved —
+  same as the fluid tables.
+- **A "Check for Update" button in Settings (⚙).** Open Settings and click it to check right away — the
+  same little update window that normally runs about once a day opens on the spot. If there's a newer
+  version it asks before installing; if you're already current, it tells you so.
+
+### Changed
+- **Settings is tidier.** Each part (shop tool list, fluid tables, fluid database) is now a collapsible
+  section — click a heading to expand it. Each heading shows its status at a glance (e.g. how many tools
+  or years are loaded), so you don't have to open a section to check.
+- **Uploading no longer closes Settings.** After you load a tool list or fluid PDFs, Settings stays open
+  (and updates to show what you just loaded) so you can keep working — instead of closing and making you
+  reopen it.
+
+### Removed
+- **The weekly "App may be out of date" reminder is gone.** Now that Hahns updates itself (the
+  self-updating loader added in v0.4.0), the old once-a-week Wednesday nudge to go re-check the setup
+  page is no longer needed.
+- **The "check for latest" link in the panel header is gone too** — Hahns updates itself now, so there's
+  nothing to check by hand. (If you ever want to check on demand, use the new **Check for Update** button
+  in Settings.) The version stamp stays where it was, and clicking it still copies a diagnostic.
+
+---
+
 ## v0.4.0-alpha — 2026-07-09
 
 ### Added
