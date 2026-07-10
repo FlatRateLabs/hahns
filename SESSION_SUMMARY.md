@@ -5,6 +5,76 @@ permanent project reference.
 
 ---
 
+## Session close (2026-07-10) — v0.4.1-alpha LIVE (Service Xpress torque + Settings tidy + manual update check)
+
+Full session, four owner-requested changes, all merged to `main` (PR #95, squash `--admin`) and
+**live-confirmed** — `version.json` = `v0.4.1-alpha · 2026-07-10 04:03 UTC` on flatratelabs.github.io.
+This is also the first real over-the-wire exercise of the v0.4.0 loader (techs on v0.4.0 get the
+"newer version → Update now / Not now" popup for v0.4.1).
+
+### 1. Removed the Wednesday update reminder
+All of it: `REMIND_KEY`/`remindDue` vars, `wedMarker()`/`reminderDue()`, the `.updbar` banner + CSS,
+the `reminddismiss` handler, the `remindDue = reminderDue()` call, and the diagnostic-dump line.
+Superseded by the self-updating loader. Orphan localStorage key `vwjb_upd_reminder_v1` left in old
+browsers (harmless date string, nothing reads it). Kept `SITE_URL` (now reserved for the update button).
+
+### 2. Removed the panel "check for latest" link
+Dropped the `.upd` anchor + CSS from the version bar; kept the clickable version stamp (diagnostic).
+
+### 3. "Check for Update" button in Settings
+Forces the loader's daily update window to run NOW. **loader.js** refactored: the update check is now
+`openUpdate(force)`; the postMessage listener is registered once per page (`window.__hahnsListening`
+guard); exposes **`window.hahnsCheckForUpdate()`** (force=true → bypasses the once-a-day throttle).
+**update.html** takes `&force=1` → on "already current" it shows the version + a Close button instead of
+the 600 ms auto-flash. **helper.js** Settings has a bare "Check for Update" button (no explanatory text);
+falls back to opening `SITE_URL` when the loader hook is absent (classic bookmarklet). Node-harness +
+browser verified (force URL, single listener, origin rejection, injection).
+
+### 4. Settings redesigned + uploads keep Settings open
+Each section (tool list / fluid tables / fluid database / Service Xpress) is a native `<details>`
+accordion with a status hint in the summary; all collapsed by default. `openSettings` rebuilds IN PLACE
+(reuses `.setc-settings`, preserves open-state, optional `expand` arg for the "load" buttons). Upload
+buttons no longer `close()` Settings; the mapper/confirm saves refresh Settings in place if still open.
+
+### 5. Service Xpress torque (THE big one — issue-level feature)
+Oil drain plug + wheel bolt torque from the yearly **VW Service Xpress** charts, shown in the **Fluids &
+Capacities window** as a **Torque** card at the top-right of the Vehicle box (owner chose window-only,
+next to the window's Vehicle section — NOT a panel card). Mirrors the fluids pipeline:
+- **Storage:** `APP_DB_VER` 1→2, three new stores `sx_pdfs`/`sx_parsed`/`sx_meta` keyed by **source file**
+  (one chart bundles several model years, unlike fluids' per-year keying), PDF kept as Blob, own
+  `SX_PARSER_VER="1.0.0"` for auto-reparse (`reconcileSx`/`reparseSxFile`, folded into `fluidsBoot`).
+  localStorage fallback (`vwjb_sx_v1`, projection-only) when IDB is down.
+- **Parser** (`parseServiceXpress`, in helper.js — reads via our existing `pdfTextLines`, no new dep):
+  per model-section (`N.N Model (Platform)` header), classify torque values by **MAGNITUDE** — drain ≤85,
+  wheel ≥120 N·m — a gap **verified across all 19 real charts** (drain 27/30/40/50; wheel 120/135/140/160/
+  180). This sidesteps the scrambled old-file layout entirely. Captures qualifier labels: drain M14/M24
+  (plug thread), wheel FWD/AWD (drivetrain), wheel 1PC/2PC (wheel-bolt design). Section-bounded so
+  page-split tables (header repeats) stay one row.
+- **Matching** (`sxForVehicle`): **MODEL NAME first** (torque is per-model), engine code only as a
+  within-model tiebreak — because **engine codes are SHARED across models** (CCTA is in Eos/Golf/Jetta/
+  Tiguan; matching code-first put a Tiguan on Eos's torque — real bug, fixed). Drivetrain-aware wheel:
+  `veh.awd` known → show that value ("140 N·m (AWD)"); unknown → show both labelled; never guess FWD.
+- **Display:** `sxWinHTML` (window torque card) + `sxDrainText`/`sxWheelText`. `.topcols` flex row =
+  Vehicle | Torque. Fluids window now opens when fluids **or** SX data exists (so torque is reachable
+  before fluid PDFs are loaded); "no fluids" softened from red error to a note.
+- **Settings:** new collapsible "Service Xpress (torque specs)" section (upload/remove) + `pickSxFiles`/
+  `openSxConfirm`. Diagnostic-dump line added.
+- **Verification:** built a `pdftotext` dev prototype (`scratchpad/sx-parse.js`), iterated to **146 model
+  tables across 19 years, 1 flag** (2010 Passat wheel = genuinely blank in the source PDF — confirmed on
+  the page; shows "not listed"). Cross-checked our in-app reader = same values. Owner eyeballed the review
+  sheet and approved every number. Browser-verified matching for 8 sample vehicles across all format eras;
+  window layout (Vehicle | Torque same row); no console errors.
+- **Privacy:** 100% local, zero network. All source PDFs gitignored (`*.pdf`), plus `sx-parser.js`/
+  `sx-review.txt` added to `.gitignore`. Confirmed no VW data in the committed diff. The **19 real charts
+  live at the repo root, gitignored**, kept as the verification corpus (like the fluid PDFs).
+
+### Ideas raised / not done
+- Owner declined putting torque in the panel or the printed job sheet — window-only was the ask. (Print/
+  copy inclusion is an easy follow-up if wanted.)
+- `buildFluidsWindowHTML` is now exposed on `window.VWJB` (dev-harness surface, used to verify the window).
+
+---
+
 ## Session close (2026-07-09) — v0.4.0-alpha self-updating loader LIVE
 
 **The big one: the dragged bookmark is no longer a frozen snapshot.** v0.4.0 ships a tiny
