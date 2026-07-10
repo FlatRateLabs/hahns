@@ -16,8 +16,8 @@ Send techs that link. They open it, drag the **H.A.H.N.S** button to their
 bookmarks bar, and they're done — nothing installs.
 
 ## Shipping an update
-   Tell techs to **re-drag** the bookmark from the link (the panel's build stamp
-   confirms they have the latest).
+   After initial install, Hahns will check automatically for an update once a day.
+   Go to settings(gear icon) to manually check for updates
 
 ## Changelog
 What changed in each version, newest first: **[CHANGELOG.md](CHANGELOG.md)**.
@@ -26,7 +26,7 @@ It's also shown on the setup page (under "Current version") and pops up once in
 the panel after a tech updates to a new version.
 
 ## Privacy by design
-- Runs entirely in your browser. No server, no network calls, no analytics.
+- Runs entirely in your browser. No server, no network calls(except once daily update check), no analytics.
 - Only reads text ELSA has already displayed to you.
 - Saves no files.
 
