@@ -4503,7 +4503,10 @@
   // about the repair job — only what the tech types. User-gesture window.open, so
   // it isn't pop-up-blocked; if it somehow is, nudge the tech.
   function openReport(root) {
-    var url = REPORT_URL + "?v=" + encodeURIComponent(BUILD);
+    // &t= cache-busts so a REUSED popup (same window name) actually reloads and
+    // re-runs its fit-to-content sizing — otherwise the browser just refocuses the
+    // old window at its stale size, which left a tiny scroll after reopening.
+    var url = REPORT_URL + "?v=" + encodeURIComponent(BUILD) + "&t=" + Date.now();
     var win = null;
     try { win = window.open(url, "hahns_report", "width=480,height=720"); } catch (e) {}
     if (!win && root) flash(root, "Please allow pop-ups to send feedback.");

@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.4.6.3-alpha · 2026-07-11 16:11 UTC";
+var BUILD = "v0.4.6.4-alpha · 2026-07-11 16:20 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -4221,7 +4221,10 @@ inp.click();
 // about the repair job — only what the tech types. User-gesture window.open, so
 // it isn't pop-up-blocked; if it somehow is, nudge the tech.
 function openReport(root) {
-var url = REPORT_URL + "?v=" + encodeURIComponent(BUILD);
+// &t= cache-busts so a REUSED popup (same window name) actually reloads and
+// re-runs its fit-to-content sizing — otherwise the browser just refocuses the
+// old window at its stale size, which left a tiny scroll after reopening.
+var url = REPORT_URL + "?v=" + encodeURIComponent(BUILD) + "&t=" + Date.now();
 var win = null;
 try { win = window.open(url, "hahns_report", "width=480,height=720"); } catch (e) {}
 if (!win && root) flash(root, "Please allow pop-ups to send feedback.");

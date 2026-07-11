@@ -9,7 +9,17 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.6.3-alpha — in progress
+## v0.4.6.4-alpha — in progress
+
+### Fixed
+- **The feedback window no longer shows a tiny scrollbar** when opened from the ⚙ Settings button (or
+  reopened). It now re-checks its size after opening and always fits the whole form.
+
+This ships as a normal app update, so **no re-drag needed**.
+
+---
+
+## v0.4.6.3-alpha — 2026-07-11
 
 ### Changed
 - **The feedback window now opens tall enough to show the whole form** — no more scrolling to reach
