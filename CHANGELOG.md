@@ -9,7 +9,17 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.6.1-alpha — in progress
+## v0.4.6.2-alpha — in progress
+
+### Fixed
+- **The feedback form now checks that your email is actually an email.** Before, it would accept any
+  text; now it must look like a real address (or you can just leave it blank).
+
+This ships as a normal app update, so **no re-drag needed**.
+
+---
+
+## v0.4.6.1-alpha — 2026-07-11
 
 ### Changed
 - **The feedback form now also asks for your email** (in addition to your name) — so the developer can
