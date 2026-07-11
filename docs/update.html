@@ -28,6 +28,19 @@
   .vrow b{font-weight:700}
   #cur{color:#e8e8e8}
   #latest{color:#2fb84d}
+  /* "What's new" — the offered version's changes only */
+  #whatsnew{display:none;text-align:left;margin:14px 0 4px;padding:12px 14px;
+            background:#1b1b1b;border:1px solid #2a2a2a;border-radius:10px;
+            max-height:230px;overflow:auto}
+  #whatsnew .wn-h{font-weight:800;color:#2fb84d;margin:0 0 8px;font-size:13px}
+  #whatsnew h4{margin:10px 0 4px;font-size:12px;text-transform:uppercase;
+               letter-spacing:.04em;color:#9aa0a6}
+  #whatsnew ul{margin:0 0 4px;padding-left:18px}
+  #whatsnew li{margin:3px 0;font-size:12.5px;color:#dcdcdc}
+  #whatsnew p{margin:4px 0;font-size:12.5px;color:#dcdcdc}
+  #whatsnew p.note{color:#c9a94b}
+  #whatsnew strong{color:#fff}
+  #whatsnew code{background:#000;padding:0 4px;border-radius:4px;font-size:11.5px}
   #btns{display:none;gap:10px;justify-content:center;margin-top:16px}
   button{font:700 14px system-ui;border:0;border-radius:8px;padding:10px 18px;cursor:pointer}
   #yes{background:#2fb84d;color:#04210f}
@@ -38,6 +51,7 @@
   <div class="vrow"><span>Installed:</span> <b id="cur"></b></div>
   <div class="vrow"><span>Latest:</span> <b id="latest"></b></div>
 </div>
+<div id="whatsnew"></div>
 <div id="btns">
   <button id="yes">Update now</button>
   <button id="no">Not now</button>
@@ -54,7 +68,22 @@
   function post(m){ try { opener.postMessage(m, "*"); } catch (e) { } }  // loader validates our origin
   function done(){ try { window.close(); } catch (e) { } }
 
+  // Center the popup on the screen (the loader opens it wherever the browser
+  // chooses; we recenter here so it always lands in the middle). Done in the popup,
+  // NOT the loader, so it needs no re-drag. availLeft/availTop keep it on the right
+  // monitor where supported.
+  function centerWindow(w, h) {
+    try {
+      window.resizeTo(w, h);
+      var sw = screen.availWidth || screen.width, sh = screen.availHeight || screen.height;
+      var sx = (typeof screen.availLeft === "number" ? screen.availLeft : 0);
+      var sy = (typeof screen.availTop === "number" ? screen.availTop : 0);
+      window.moveTo(sx + Math.max(0, Math.round((sw - w) / 2)), sy + Math.max(0, Math.round((sh - h) / 2)));
+    } catch (e) { }
+  }
+
   if (!opener) { msg.textContent = "Opened directly — nothing to do."; setTimeout(done, 1200); return; }
+  centerWindow(460, 540);
 
   var have = "", force = false, techLoader = 0;
   try {
@@ -64,6 +93,19 @@
     techLoader = +(qs.get("lv")) || 0; // this bookmark's loader generation (0 = pre-lv loader)
   } catch (e) { }
   var cb = "?cb=" + Date.now();
+
+  // "What's new" = the OFFERED (latest) version's changes only. notes.json is built
+  // from CHANGELOG.md's top entry, so it always describes the version we're offering.
+  // Our own trusted content (never ELSA/manual) -> innerHTML is fine.
+  var notesP = fetch("./notes.json" + cb).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+  function showWhatsNew() {
+    var box = document.getElementById("whatsnew");
+    notesP.then(function (n) {
+      if (!n || !n.html) return;
+      box.innerHTML = "<div class='wn-h'>What’s new in v" + (n.version || "") + "</div>" + n.html;
+      box.style.display = "block";
+    });
+  }
 
   // Show the re-drag alert: a newer LOADER (bookmark) exists than the one running.
   // The loader can't update itself, so we hand the tech a button to the setup page
@@ -80,6 +122,7 @@
     cur.textContent = "v" + have;
     latestEl.textContent = "v" + latest;
     vers.style.display = "block";
+    showWhatsNew();
     var y = document.getElementById("yes"), n = document.getElementById("no");
     y.textContent = "Update the bookmark";
     y.onclick = function () {
@@ -163,6 +206,7 @@
       cur.textContent = "v" + have;
       latestEl.textContent = "v" + latest;
       vers.style.display = "block";
+      showWhatsNew();
       btns.style.display = "flex";
       document.getElementById("yes").onclick = function () {
         btns.style.display = "none";

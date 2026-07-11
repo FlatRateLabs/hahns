@@ -9,6 +9,21 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.4.5-alpha — 2026-07-11
+
+### Added
+- **"What's new" right in the update window.** When an update is offered, the popup now lists the changes
+  in the version you're about to get — so you know what you're updating to before you click. It shows only
+  that one version's changes, not the whole history.
+
+### Changed
+- **The update window now opens in the center of the screen** instead of wherever the browser happened to
+  put it.
+
+Both are in the update window itself, so **no re-drag needed** — you'll see them on your next update.
+
+---
+
 ## v0.4.4-alpha — 2026-07-11
 
 ### Fixed

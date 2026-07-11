@@ -15,7 +15,7 @@ const root = path.join(__dirname, "..");
 // ---- version ----
 // Bump this when you ship. While testing, keep the "-alpha" tag.
 //   tiny fix -> 0.1.1   new feature -> 0.2.0   stable release -> 1.0.0
-const VERSION = "0.4.4-alpha";
+const VERSION = "0.4.5-alpha";
 
 // Loader generation. The loader is the dragged bookmark; it can ONLY change by
 // re-dragging. Bump this whenever src/loader.js changes so the update popup can
@@ -80,7 +80,38 @@ function renderChangelog(md) {
   closeVer();
   return html + "</div>";
 }
-const changelogHtml = renderChangelog(fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8"));
+// Just the LATEST version's changes, rendered to a small HTML fragment for the
+// update popup's "What's new" (it shows only the version being offered). Same
+// markdown subset as renderChangelog, but stops at the second "## " heading.
+function latestNotesHtml(md) {
+  var lines = md.split(/\r?\n/);
+  var i = 0;
+  while (i < lines.length && lines[i].indexOf("## ") !== 0) i++;   // first version heading
+  if (i >= lines.length) return "";
+  i++;                                                             // skip the heading itself
+  var html = "", inList = false, curLi = null;
+  function closeLi() { if (curLi !== null) { html += "<li>" + clInline(curLi.trim()) + "</li>"; curLi = null; } }
+  function closeList() { closeLi(); if (inList) { html += "</ul>"; inList = false; } }
+  for (; i < lines.length; i++) {
+    var ln = lines[i];
+    if (ln.indexOf("## ") === 0) break;                           // next version -> stop
+    if (ln.indexOf("### ") === 0) { closeList(); html += "<h4>" + clInline(ln.slice(4).trim()) + "</h4><ul>"; inList = true; continue; }
+    if (ln.indexOf("---") === 0) continue;
+    if (/^\s*>\s?/.test(ln)) { closeList(); html += "<p class='note'>" + clInline(ln.replace(/^\s*>\s?/, "")) + "</p>"; continue; }
+    if (/^\s*-\s+/.test(ln)) { closeLi(); curLi = ln.replace(/^\s*-\s+/, ""); continue; }
+    if (/^\s+\S/.test(ln) && curLi !== null) { curLi += " " + ln.trim(); continue; }
+    var txt = ln.trim();
+    if (!txt) { closeLi(); continue; }
+    if (inList && curLi !== null) { curLi += " " + txt; continue; }  // wrapped bullet text
+    if (inList) closeList();                                         // a paragraph after the list ends it
+    html += "<p>" + clInline(txt) + "</p>";
+  }
+  closeList();
+  return html;
+}
+const changelogMd = fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8");
+const changelogHtml = renderChangelog(changelogMd);
+const notesJson = JSON.stringify({ version: VERSION, html: latestNotesHtml(changelogMd) });
 
 // the Hahns mascot (bust) is embedded as a base64 data URI so the bookmarklet stays
 // self-contained — no network fetch (mandatory on ELSA; see CLAUDE.md privacy posture).
@@ -137,6 +168,8 @@ fs.writeFileSync(path.join(distDir, "HAHNS.html"), html);
 // plain published record of the current build.
 const versionJson = JSON.stringify({ version: VERSION, build: build, loader: LOADER_VER });
 fs.writeFileSync(path.join(distDir, "version.json"), versionJson);
+// "What's new" for the update popup — the latest version's changes only
+fs.writeFileSync(path.join(distDir, "notes.json"), notesJson);
 
 // GitHub Pages: serve the site from /docs (index.html is the default page)
 const docsDir = path.join(root, "docs");
@@ -144,6 +177,7 @@ fs.mkdirSync(docsDir, { recursive: true });
 fs.writeFileSync(path.join(docsDir, "index.html"), html);
 fs.writeFileSync(path.join(docsDir, "bookmarklet.txt"), bookmarklet);
 fs.writeFileSync(path.join(docsDir, "version.json"), versionJson);
+fs.writeFileSync(path.join(docsDir, "notes.json"), notesJson);
 // stop Pages' Jekyll from touching our files
 fs.writeFileSync(path.join(docsDir, ".nojekyll"), "");
 
