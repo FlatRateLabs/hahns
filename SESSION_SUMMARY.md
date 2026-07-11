@@ -5,6 +5,53 @@ permanent project reference.
 
 ---
 
+## Session close (2026-07-11) — v0.4.6.1 → v0.4.6.4 all LIVE (Jetta A/C fix + feedback-form polish)
+
+Short bug-fix session, four patch releases, all merged to `main` (admin squash) and live-confirmed.
+Owner bay-verified each before moving on. All **app-only → no re-drag** (`LOADER_VER` stays 2). The
+feedback relay Worker needed **one manual redeploy** (v0.4.6.1) — see the caveat below.
+
+### v0.4.6.1-alpha — 2025 Jetta A/C compressor oil (issue #103, CLOSED) + feedback email field
+- **#103 (the real bug):** the 2025 *VW Fluid Capacity Tables* PDF has a **source typo** — the Jetta's
+  A/C compressor-oil unit is written **"cm" instead of "cc"** ("80 +/- 10 cm"). `VAL_RE` only knows
+  `L|g|cc|ml`, so the value matched nothing → the Denso/Sanden rows got no fills → filtered out. Taos/
+  Tiguan (same PDF, identical 80/75 values) spell it "cc", so **only the Jetta lost it**. Even the poppler
+  reference sheet (`tools/fluids-review/2025.txt`) had dropped it — confirmed both parsers were affected.
+  Also present in **2023 and 2026**. **Fix:** normalize `cm`→`cc` in `parseCAC` (shared coolant/AC/
+  drivetrain parser) before value extraction — safe because these tables never use "cm" for a capacity.
+  Ported to `tools/parse-fluids.js`. Bumped **`PARSER_1126_VER` 1.3.4→1.3.5** so stored 2023/25/26 PDFs
+  auto-reparse. **Verified end-to-end with the real in-app reader** (`fluidsFromPdf`) on the actual 2025
+  PDF → Jetta now Denso 80 cc / Sanden 75 cc; 2023/26 too; model counts unchanged, no leftover "cm".
+  (The real fluid PDFs live in `~/Downloads`, e.g. `2025 VW Fluid Capacity Tables.pdf` — NOT in the repo.)
+- **Feedback email field:** added an optional **email** input to `src/report.html`; Worker records it.
+  (Owner first asked to replace name with email, then to keep BOTH with name above email — final state:
+  name then email, both optional. Worker `worker/report.js` writes **From:** name / **Email:** email.)
+
+### v0.4.6.2-alpha — validate feedback email (issue #110, CLOSED)
+The form accepted any text (a tech submitted "sdlkajsdlkfjlakj" — via the new field, which proved it
+worked). The button-click handler read `.value` directly, bypassing `type="email"` validation. Added a
+client-side `looksEmail` check (`something@something.tld`) in the send handler; blank stays allowed.
+
+### v0.4.6.3-alpha — feedback window fits its content (no scroll)
+Popup was a fixed 480×640 but the form is ~681px tall → email + Send below the fold. `report.html` now
+sizes itself to content height + window chrome (`outerHeight − innerHeight`), capped to screen. Opener
+default 640→720.
+
+### v0.4.6.4-alpha — fix tiny scroll on reopen (esp. from the Settings button)
+The popup uses a fixed window name (`hahns_report`); reopening with the same URL just refocused the
+**stale** window without reloading, and the one-shot size read could land a few px short → a tiny
+scrollbar that then persisted. **Fix:** `openReport` cache-busts the URL (`&t=`) so a reused popup
+reloads and re-fits; `report.html` re-runs `fitWindow` on `load` + a frame later with a small pad so it
+never lands short. (Confirmed the sub-pixel race is real — content measured 681px one run, 685px another.)
+
+### ⚠️ Standing caveat — the feedback Worker
+`worker/report.js` is a Cloudflare Worker; **editing the repo file does NOT redeploy it** (owner must
+paste it into the Cloudflare dashboard → Deploy). Needed once this session for the name/email fields
+(owner did it; liveness-checked: preflight 204, wrong-gate 403). The v0.4.6.2/.3/.4 changes were all
+client-side, so they needed no Worker touch. See [[feedback-relay-cloudflare-worker]].
+
+---
+
 ## Session close (2026-07-11) — v0.4.6-alpha LIVE (in-app bug report / feedback → GitHub issue)
 
 Closed **issue #97**: techs can now report a bug or request a feature from inside the app, and it files a
