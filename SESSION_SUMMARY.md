@@ -5,6 +5,51 @@ permanent project reference.
 
 ---
 
+## Session close (2026-07-11) — v0.4.6-alpha LIVE (in-app bug report / feedback → GitHub issue)
+
+Closed **issue #97**: techs can now report a bug or request a feature from inside the app, and it files a
+**labeled GitHub issue** automatically. Merged (PR #104, squash `--admin`), **live-confirmed**
+(`version.json` = v0.4.6-alpha), and **owner bay-verified end-to-end** for both a bug report and a feature
+request. **No re-drag** (app-code change; `LOADER_VER` stays 2 — techs get the Feedback button on their
+next update).
+
+### The design decision that drove everything
+Creating a GitHub issue needs a credential, and **a public bookmarklet can't hold a GitHub token**. ELSA's
+CSP also blocks in-page fetch. Chose the **relay route** (over a prefilled GitHub issue URL, which needs the
+tech to have a GitHub login — shop techs don't): a hosted popup POSTs to a **token-holding Cloudflare
+Worker**, same popup-origin trick as the self-update channel. Placement: **version-bar Feedback link +
+Settings button** (owner picked both).
+
+### What shipped
+- **`worker/report.js`** (committed, holds NO token) — Cloudflare Worker at
+  `hahns-feedback.rvanpolen89.workers.dev`. Validates Origin allowlist + soft gate-string + length caps →
+  creates a labeled issue (`bug`/`enhancement`) via the GitHub API using `env.GITHUB_TOKEN`; CORS-scoped to
+  the Pages origin. Secrets `GITHUB_TOKEN` (fine-grained PAT, Issues r/w on this repo only) + `SHARED_SECRET`
+  live ONLY in Cloudflare. **Editing the repo file does NOT redeploy the Worker** — see
+  [[feedback-relay-cloudflare-worker]].
+- **`src/report.html`** — the popup form (Bug/Feature toggle, summary, details, optional name). POSTs to the
+  Worker; shows a "✓ sent" panel linking the new issue. Build fills `__WORKER_URL__`/`__REPORT_GATE__`.
+- **`src/helper.js`** — `REPORT_URL` const, `openReport()` (`window.open` the popup with `?v=<BUILD>`),
+  version-bar **Feedback** link (`.fblink`, right-aligned, gated out of embed/demo), Settings **Report a bug /
+  send feedback** button (`.fbbtn`), CSS + wiring. Sends only typed text + version + browser — never
+  ELSA/job/manual content (not even the diagnostic dump).
+- **`tools/build.js`** — VERSION→0.4.6-alpha, `WORKER_URL`/`REPORT_GATE` consts, `__REPORT_URL__` injected
+  into helper, emits `report.html` into dist/docs.
+- CHANGELOG + CLAUDE.md (Third-party services + new `src/report.html` folder entry) updated.
+
+### One-time setup (owner did, guided)
+Fine-grained GitHub PAT (Issues r/w, this repo only) → free Cloudflare Worker via the dashboard (paste
+`worker/report.js`, add the two secrets, deploy) → gave me the Worker URL → baked into the build.
+
+### Verified
+- Worker (curl): CORS preflight OK; wrong gate → 403 gate; bad origin → 403 origin.
+- Browser: report form renders, Bug/Feature toggle, empty-details validation, error path; both app entry
+  points present + open the correct `report.html?v=…` URL; no console errors. (Live 403-from-localhost lands
+  in the friendly catch — CORS blocks the cross-origin body, expected.)
+- **Owner tested the real thing (bug + feature) after deploy — both filed correctly.** Token/org perms fine.
+
+---
+
 ## Session close (2026-07-10) — v0.4.5-alpha (update popup: "What's new" + centered)
 
 Two owner asks for the update-available popup, both **update.html-only → no re-drag** (fetched fresh each
