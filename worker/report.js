@@ -58,6 +58,7 @@ export default {
     let title = clamp(data.title, 120);
     const desc = clamp(data.description, 5000);
     const name = clamp(data.name, 80);
+    const email = clamp(data.email, 120);
     const version = clamp(data.version, 40);
     const ua = clamp(data.ua, 300);
 
@@ -73,6 +74,7 @@ export default {
       "_Submitted from the H.A.H.N.S in-app " +
       (type === "feature" ? "feedback" : "bug report") + " form._\n" +
       (name ? "**From:** " + name + "\n" : "") +
+      (email ? "**Email:** " + email + "\n" : "") +
       "**App version:** " + (version || "unknown") + "\n" +
       "**Browser:** " + (ua || "unknown") + "\n" +
       "**When:** " + new Date().toISOString() + "\n";

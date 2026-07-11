@@ -171,6 +171,9 @@ function parseCAC(lines, hdrIdx) {
     // A/C is metric (grams) — drop imperial "(… oz.)" conversions; also un-breaks
     // e-Golf/Tiguan cells that interleave that paren into the value. See helper.js.
     capCell = capCell.replace(/\([^)]*(?:oz|fl)[^)]*\)/gi, " ");
+    // source-typo guard: 2023/2025/2026 Jetta A/C compressor-oil cells write the
+    // unit as "cm" instead of "cc" — normalise so the value isn't dropped. See helper.js
+    capCell = capCell.replace(/(\d)\s*cm\b/gi, "$1 cc");
     // reassemble a "N +/-" tolerance split from its "M unit" by interleaved label
     // words (2018 Golf R: "Initial 500 +/- Fill / Refill 15 g") — see helper.js
     capCell = capCell.replace(

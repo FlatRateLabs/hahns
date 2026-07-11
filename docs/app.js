@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.4.6-alpha · 2026-07-11 06:03 UTC";
+var BUILD = "v0.4.6.1-alpha · 2026-07-11 15:53 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -895,7 +895,7 @@ var APP_DB = "hahns_db", APP_DB_VER = 2;   // v2 (v0.4.1): + Service Xpress torq
 // Three parsers, named by the model-year range each one owns. Bump a range's
 // version string in ONE place → every stored PDF of that range auto-re-parses
 // on the next load (the other ranges are untouched). See familyForYear below.
-var PARSER_1126_VER = "1.3.4";   // Parser 11-26 — engine-code layout (1.3.4: range capacities, e.g. ID.Buzz 0MJ 0.88-0.93 L)
+var PARSER_1126_VER = "1.3.5";   // Parser 11-26 — engine-code layout (1.3.5: A/C compressor-oil unit typo cm→cc, 2023/25/26 Jetta)
 var PARSER_0610_VER = "2.0.0";   // Parser 06-10 — same layout, engines keyed by DISPLACEMENT ("2.0L") + nearest-cc match
 var PARSER_0005_VER = "1.1.0";   // Parser 00-05 — old two-column layout (1.1.0: stitch wrapped A/C labels)
 var FLUID_YEAR_MIN = 2000, FLUID_YEAR_MAX = 2026;  // span for "Years installed: N/M"
@@ -1750,6 +1750,11 @@ if (comp) lastComp = comp;
 // between a charge and its tolerance ("500 +/- (17.6 +/- 0.5 oz.) 15 g"),
 // which otherwise stranded the charge in the label.
 capCell = capCell.replace(/\([^)]*(?:oz|fl)[^)]*\)/gi, " ");
+// Source-typo guard: a few A/C compressor-oil cells (2023/2025/2026 Jetta
+// "80 +/- 10 cm") write the unit as "cm" (a length) instead of "cc". VAL_RE
+// only knows L/g/cc/ml, so the value wouldn't match and the whole Denso /
+// Sanden row would be dropped. "cm" is never a real capacity unit here.
+capCell = capCell.replace(/(\d)\s*cm\b/gi, "$1 cc");
 // Some years' cells interleave the label words between a "N +/-" tolerance
 // and its trailing "M unit" (2018 Golf R A/C + compressor oil render as
 // "Initial 500 +/- Fill / Refill 15 g"). Left as-is, VAL_RE only sees the

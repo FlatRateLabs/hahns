@@ -9,7 +9,24 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.6-alpha — in progress
+## v0.4.6.1-alpha — in progress
+
+### Changed
+- **The feedback form now also asks for your email** (in addition to your name) — so the developer can
+  actually reach back out if there's a question about your report. Both are optional.
+
+### Fixed
+- **2025 Jetta A/C: the refrigerant compressor oil now shows up.** It was missing (should list
+  **Denso — 80 ± 10 cc** and **Sanden — 75 ± 10 cc**). The source PDF had a small typo — it wrote the
+  unit as "cm" instead of "cc" — so the app couldn't read the number and dropped the whole line. Now
+  handled. Same fix also restores the compressor oil on the **2023 and 2026 Jetta**. (Saved fluid
+  tables re-read themselves on the next update — no re-upload needed.)
+
+This ships as a normal app update, so **no re-drag needed**.
+
+---
+
+## v0.4.6-alpha — 2026-07-11
 
 ### Added
 - **Report a bug or send feedback right from the app.** There's now a small **Feedback** link on the
