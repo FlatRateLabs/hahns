@@ -5,6 +5,54 @@ permanent project reference.
 
 ---
 
+## Session close (2026-07-11, later) — parser regression test + v0.4.7 shop-config export/import (LIVE)
+
+Same day, second half: after the bug-fix run (entry below), the owner asked "anything you'd add/improve?"
+→ built the two highest-leverage things I recommended. Both LIVE-confirmed.
+
+### 1. Parser regression test — `tools/parser-test.js` (dev tool, NOT shipped, no version bump)
+The highest-leverage item: torque/capacity values are safety-relevant and the parsers get touched often,
+but every fix was verified by hand. New tool parses **all 46 real source PDFs** (27 fluid years 2000–2026
+from `~/Downloads/*Fluid Capacity*.pdf` + 19 SX charts 2008–2026 from repo-root `sx-YYYY.pdf`) with the SAME
+in-app code (`window.VWJB.fluidsFromPdf` / `sxFromPdf`) and **diffs against an approved snapshot**, printing
+exact `year > model[i].field: old → new`.
+- `node tools/parser-test.js` = check (exit 1 on drift); `--update` = (re)bless the baseline after an
+  INTENDED change. Snapshots live in **gitignored** `tools/parser-snapshots/` (they hold parsed VW data —
+  local baseline only, never committed; strips `parserVersion`/dates so a version bump alone never flags).
+  Dependency-free, zero network, Node 18+ (global `DecompressionStream`).
+- **Proven:** temporarily disabled the #103 cm→cc fix → the test flagged 2023/**2024**/2025/2026 with the exact
+  vanished Denso/Sanden rows (and caught 2024, which my earlier manual grep missed because its file lacks
+  "Tables" in the name), then restored + confirmed a clean 0-drift pass. Documented in CLAUDE.md (Common
+  Commands + folder entry + the two "no tests" lines corrected). Now a standard pre-ship gate.
+- **Caveat:** snapshots are gitignored, so a fresh machine needs a one-time `--update` to record its baseline.
+
+### 2. v0.4.7-alpha — Copy shop setup to another computer (export/import)
+Owner liked the idea: standing up a new bay computer meant re-uploading the tool list + every fluid PDF +
+every SX chart. New ⚙ Settings section **"Copy setup to another computer"**:
+- **`exportShopConfig()`** reads the seven `hahns_db` stores (`pdfs/parsed/meta/tools/sx_pdfs/sx_parsed/
+  sx_meta`; `kv` excluded = machine-local bookkeeping) → one JSON bundle `{hahns_shop_export:1,…,stores}`;
+  PDF Blobs base64'd (`abToB64`, chunked btoa) as `_blobB64`. `downloadShopConfig(root)` → `a.download` =
+  `hahns-shop-setup-YYYYMMDD.json`.
+- **`importShopConfig(bundle)`** rebuilds records (base64→Blob), writes ALL back in one `idbPutMany`
+  transaction (**MERGE** — put overwrites by key + adds new), re-hydrates the sync projections
+  (`hydrateShopTools`/`buildProjection`/`refreshMetaList`/`hydrateSx`) + `fluidsRerender()`. `pickImportFile`
+  = FileReader → JSON.parse → import → refresh Settings in place. On the target, a PDF whose parser version
+  differs auto-reparses via the normal `reconcile*` pass.
+- **100% local, zero network** (Blob download + FileReader read — same posture as the PDF uploads); shop
+  config, never job/ELSA content. Both fns exposed on `window.VWJB`.
+- **Verified in a real-browser IDB harness:** export→clear→import restored the tool map, parsed fluid years,
+  AND the source-PDF bytes **byte-perfect** (`9:37,80` = 9 bytes, `%P…`); Settings renders the new "transfer"
+  section + both buttons; no console errors. Parser test 0 drift. App-only — no re-drag, no Worker.
+- Merged PR #115 (admin squash), live `version.json` = v0.4.7-alpha. Note for techs: **Load setup MERGES**
+  (won't wipe existing data); use Remove first for a clean slate.
+
+### Session arc (2026-07-11, full day)
+#103 Jetta A/C (v0.4.6.1) → feedback email field/validation/window polish (v0.4.6.1–.4) → parser regression
+test → v0.4.7 export/import. Issues **#103 and #110 CLOSED**. Live at **v0.4.7-alpha**. The Cloudflare Worker
+was redeployed once (owner) for the name/email fields; everything after was client-side/app-only.
+
+---
+
 ## Session close (2026-07-11) — v0.4.6.1 → v0.4.6.4 all LIVE (Jetta A/C fix + feedback-form polish)
 
 Short bug-fix session, four patch releases, all merged to `main` (admin squash) and live-confirmed.
