@@ -15,7 +15,7 @@ const root = path.join(__dirname, "..");
 // ---- version ----
 // Bump this when you ship. While testing, keep the "-alpha" tag.
 //   tiny fix -> 0.1.1   new feature -> 0.2.0   stable release -> 1.0.0
-const VERSION = "0.4.5-alpha";
+const VERSION = "0.4.6-alpha";
 
 // Loader generation. The loader is the dragged bookmark; it can ONLY change by
 // re-dragging. Bump this whenever src/loader.js changes so the update popup can
@@ -30,6 +30,13 @@ const LOADER_VER = 2;
 // origin (https://flatratelabs.github.io) before shipping to main.
 const PAGES_BASE = "https://flatratelabs.github.io/hahns";
 const PAGES_ORIGIN = "https://flatratelabs.github.io";
+
+// ---- feedback / bug-report relay (v0.4.6) ----
+// The Cloudflare Worker that turns an in-app report into a labeled GitHub issue.
+// It holds the GitHub token (never in this repo). REPORT_GATE is a soft anti-spam
+// string baked into report.html; it must match the Worker's SHARED_SECRET.
+const WORKER_URL = "https://hahns-feedback.rvanpolen89.workers.dev";
+const REPORT_GATE = "z3kZsEXFIx1rWxv67P8FUZ7fCbcNwwd6";
 
 // shown in the panel + setup page: "v0.1.0-alpha · 2026-06-20 21:53 UTC"
 const date = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
@@ -119,7 +126,8 @@ const hahnsIcon = "data:image/png;base64," +
   fs.readFileSync(path.join(root, "src/assets/hahns-icon.png")).toString("base64");
 const helper = fs.readFileSync(path.join(root, "src/helper.js"), "utf8")
   .replace(/__BUILD__/g, build)
-  .replace(/__HAHNS_ICON__/g, hahnsIcon);
+  .replace(/__HAHNS_ICON__/g, hahnsIcon)
+  .replace(/__REPORT_URL__/g, PAGES_BASE + "/report.html");
 // (v0.3.13: the Fluids & Capacities lookup no longer has a hosted page or hosted
 // data — the tech loads the yearly PDFs through the panel's ⚙ Settings and the
 // lookup window is built locally inside helper.js.)
@@ -189,9 +197,17 @@ const appJs = payload;
 const updateHtml = fs.readFileSync(path.join(root, "src/update.html"), "utf8");
 // (loader.txt written below is the same `loader` string handed out on the setup page)
 
+// report.html = the feedback / bug-report popup. Posts to the Cloudflare relay
+// Worker (WORKER_URL), which files a labeled GitHub issue. REPORT_GATE is the soft
+// anti-spam string; it must match the Worker's SHARED_SECRET.
+const reportHtml = fs.readFileSync(path.join(root, "src/report.html"), "utf8")
+  .replace(/__WORKER_URL__/g, WORKER_URL)
+  .replace(/__REPORT_GATE__/g, REPORT_GATE);
+
 [distDir, docsDir].forEach(function (d) {
   fs.writeFileSync(path.join(d, "app.js"), appJs);
   fs.writeFileSync(path.join(d, "update.html"), updateHtml);
+  fs.writeFileSync(path.join(d, "report.html"), reportHtml);
   fs.writeFileSync(path.join(d, "loader.txt"), loader);
 });
 

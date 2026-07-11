@@ -9,6 +9,19 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.4.6-alpha — in progress
+
+### Added
+- **Report a bug or send feedback right from the app.** There's now a small **Feedback** link on the
+  version bar (and a **Report a bug / send feedback** button in ⚙ Settings). It opens a quick form —
+  pick Bug or Feature request, type what happened, optionally leave your name — and your report goes
+  straight to the developer as a labeled GitHub issue. Your app version and browser are attached
+  automatically to help with debugging. **Nothing about the repair job is included — only what you type.**
+
+This ships as a normal app update, so **no re-drag needed** — you'll get the Feedback button on your next update.
+
+---
+
 ## v0.4.5-alpha — 2026-07-11
 
 ### Added

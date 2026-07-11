@@ -20,6 +20,9 @@
   // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
   // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
   var SITE_URL = "https://flatratelabs.github.io/hahns/";
+  // the feedback / bug-report popup (hosted on Pages; posts to the relay Worker
+  // which files a labeled GitHub issue). Opened from the version bar + Settings.
+  var REPORT_URL = "__REPORT_URL__";
   // transient one-line note for the vehicle bar (e.g. a blocked procedure scan
   // before a vehicle is loaded). Cleared once shown — never persisted.
   var vehNotice = "";
@@ -3562,6 +3565,8 @@
     ".sub{padding:6px 13px;background:#eef1f6;display:flex;align-items:center}" +
     ".bld{font-size:11px;color:#5a6b8c;white-space:nowrap;cursor:pointer}" +
     ".bld:hover{color:#001e50;text-decoration:underline}" +
+    ".fblink{margin-left:auto;appearance:none;-webkit-appearance:none;background:transparent;border:0;font-family:inherit;font-size:11px;color:#5a6b8c;cursor:pointer;padding:2px 4px;white-space:nowrap}" +
+    ".fblink:hover{color:#001e50;text-decoration:underline}" +
     // big primary action — its own bar, directly above the job title row
     ".scanbar{padding:11px 13px 4px}" +
     ".scan{width:100%;appearance:none;-webkit-appearance:none;background:#2fb84d;color:#0a0a0a;font-family:inherit;font-size:17px;font-weight:800;letter-spacing:.1em;padding:13px;border:0;border-radius:9px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.18)}" +
@@ -3702,6 +3707,10 @@
     ".setupd button{width:100%;appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:13px;padding:10px 14px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4;background:#fff;color:#001e50}" +
     ".setupd button:hover{background:#f3f6fb}" +
     ".setupdnote{font-size:11px;color:#7a7a7a;line-height:1.4;margin:8px 2px 0}" +
+    ".setfb{margin:0 0 14px;padding-right:26px}" +
+    ".setfb button{width:100%;appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:13px;padding:10px 14px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4;background:#fff;color:#001e50}" +
+    ".setfb button:hover{background:#f3f6fb}" +
+    ".setfbnote{font-size:11px;color:#7a7a7a;line-height:1.4;margin:8px 2px 0}" +
     // collapsible section (native <details>) — declutters the panel
     ".setacc{border:1px solid #dfe4ec;border-radius:9px;margin:0 0 10px;background:#fbfcfe}" +
     ".setacc>summary{list-style:none;cursor:pointer;padding:11px 13px;font-weight:700;font-size:13px;color:#001e50;display:flex;align-items:center;gap:8px;user-select:none;border-radius:9px}" +
@@ -3942,7 +3951,9 @@
         '<button data-act="close" title="Close">&#10005;</button></div>' +
       // version stamp — pinned to the very top, directly under the title bar
       '<div class="sub">' +
-        '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span></div>" +
+        '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span>" +
+        (embed ? "" : '<button class="fblink" data-tip="Report a bug or send feedback to the developer">Feedback</button>') +
+      "</div>" +
       // "New Vehicle" — the start-over action: wipes the loaded vehicle AND all
       // collected info. Pinned at the very top, right under the version bar.
       (embed ? "" : '<div class="topbar"><button class="newveh" data-act="newjob" data-tip="Start over with a NEW vehicle — clears the loaded vehicle and all collected info">' + svg(RESTART) + "New Vehicle</button></div>") +
@@ -4481,6 +4492,18 @@
   // open (`expand` optionally force-opens one section, e.g. from the fluids "load"
   // button) so an upload/remove can refresh it without closing — the tech stays in
   // Settings to keep working.
+  // open the feedback / bug-report popup (report.html on Pages). We pass the app
+  // build so the report carries it; the popup reads the browser string itself and
+  // POSTs to the relay Worker, which files a labeled GitHub issue. Sends NOTHING
+  // about the repair job — only what the tech types. User-gesture window.open, so
+  // it isn't pop-up-blocked; if it somehow is, nudge the tech.
+  function openReport(root) {
+    var url = REPORT_URL + "?v=" + encodeURIComponent(BUILD);
+    var win = null;
+    try { win = window.open(url, "hahns_report", "width=480,height=640"); } catch (e) {}
+    if (!win && root) flash(root, "Please allow pop-ups to send feedback.");
+  }
+
   function openSettings(host, r, options, root, expand) {
     var ov = root.querySelector(".setc-settings");
     var fresh = !ov;
@@ -4546,6 +4569,9 @@
     ov.innerHTML = '<div class="setbox">' +
       '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
       updHTML +
+      // report a bug / send feedback (files a labeled GitHub issue via the relay)
+      '<div class="setfb"><button class="fbbtn">Report a bug / send feedback</button>' +
+        '<div class="setfbnote">Opens a quick form that sends your report to the developer as a GitHub issue. Nothing about the repair job is included — only what you type.</div></div>' +
       // shop special-tool list
       '<details class="setacc" data-sec="tools">' +
         '<summary>Shop special-tool list<span class="sccount">' + esc(toolCount) + "</span></summary>" +
@@ -4620,6 +4646,9 @@
         flash(root, "Opening the setup page — re-drag the bookmark from there.");
       }
     });
+    // "Report a bug / send feedback" — close Settings and open the report popup
+    var fb = ov.querySelector(".fbbtn");
+    if (fb) fb.addEventListener("click", function () { close(); openReport(root); });
     // upload buttons DON'T close Settings — the tech may have more to do here
     var up = ov.querySelector(".upload");
     if (up) up.addEventListener("click", function () { pickToolFile(host, r, options, root); });
@@ -5066,6 +5095,9 @@
     if (bld) bld.addEventListener("click", function () {
       copyText(debugDump(), toast("Diagnostic copied"));
     });
+    // version-bar "Feedback" link — open the report popup
+    var fbl = root.querySelector(".fblink");
+    if (fbl) fbl.addEventListener("click", function () { openReport(root); });
 
     // draggable panel — restore where the tech parked it, then make it movable
     if (!options.embed) {
