@@ -4505,7 +4505,7 @@
   function openReport(root) {
     var url = REPORT_URL + "?v=" + encodeURIComponent(BUILD);
     var win = null;
-    try { win = window.open(url, "hahns_report", "width=480,height=640"); } catch (e) {}
+    try { win = window.open(url, "hahns_report", "width=480,height=720"); } catch (e) {}
     if (!win && root) flash(root, "Please allow pop-ups to send feedback.");
   }
 

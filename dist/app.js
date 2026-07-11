@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.4.6.2-alpha · 2026-07-11 16:05 UTC";
+var BUILD = "v0.4.6.3-alpha · 2026-07-11 16:11 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -4223,7 +4223,7 @@ inp.click();
 function openReport(root) {
 var url = REPORT_URL + "?v=" + encodeURIComponent(BUILD);
 var win = null;
-try { win = window.open(url, "hahns_report", "width=480,height=640"); } catch (e) {}
+try { win = window.open(url, "hahns_report", "width=480,height=720"); } catch (e) {}
 if (!win && root) flash(root, "Please allow pop-ups to send feedback.");
 }
 function openSettings(host, r, options, root, expand) {
