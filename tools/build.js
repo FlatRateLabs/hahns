@@ -15,7 +15,14 @@ const root = path.join(__dirname, "..");
 // ---- version ----
 // Bump this when you ship. While testing, keep the "-alpha" tag.
 //   tiny fix -> 0.1.1   new feature -> 0.2.0   stable release -> 1.0.0
-const VERSION = "0.4.2-alpha";
+const VERSION = "0.4.3-alpha";
+
+// Loader generation. The loader is the dragged bookmark; it can ONLY change by
+// re-dragging. Bump this whenever src/loader.js changes so the update popup can
+// tell a tech their bookmark is behind and hand them the re-drag button. Pre-lv
+// loaders (v0.4.0–v0.4.2) send no lv → the popup reads 0 → they're prompted to
+// re-drag onto this generation. Published in version.json as `loader`.
+const LOADER_VER = 2;
 
 // ---- self-updating loader (POC) ----
 // Where the hosted app.js / update.html live. The loader trusts ONLY messages
@@ -110,7 +117,8 @@ const bookmarklet = "javascript:" + encodeURIComponent(payload);
 // This is what the setup page now hands out via __LOADER__.
 const loaderSrc = fs.readFileSync(path.join(root, "src/loader.js"), "utf8")
   .replace(/__PAGES_BASE__/g, PAGES_BASE)
-  .replace(/__PAGES_ORIGIN__/g, PAGES_ORIGIN);
+  .replace(/__PAGES_ORIGIN__/g, PAGES_ORIGIN)
+  .replace(/__LOADER_VER__/g, String(LOADER_VER));
 const loader = "javascript:" + encodeURIComponent(lighten(loaderSrc));
 
 const distDir = path.join(root, "dist");
@@ -127,7 +135,7 @@ fs.writeFileSync(path.join(distDir, "HAHNS.html"), html);
 // machine-readable version record. The app no longer fetches this (auto-update is
 // impossible on ELSA — the app reminds the tech to check here instead); kept as a
 // plain published record of the current build.
-const versionJson = JSON.stringify({ version: VERSION, build: build });
+const versionJson = JSON.stringify({ version: VERSION, build: build, loader: LOADER_VER });
 fs.writeFileSync(path.join(distDir, "version.json"), versionJson);
 
 // GitHub Pages: serve the site from /docs (index.html is the default page)

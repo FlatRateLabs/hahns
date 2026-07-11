@@ -25,6 +25,9 @@
 (function () {
   var BASE = "__PAGES_BASE__";        // e.g. https://flatratelabs.github.io/hahns
   var ORIGIN = "__PAGES_ORIGIN__";    // e.g. https://flatratelabs.github.io  (trusted sender)
+  var LOADER_VER = __LOADER_VER__;    // loader generation (build.js) — the update popup
+                                      // compares this to version.json's `loader` to
+                                      // tell whether THIS bookmark needs a re-drag.
   var LS_CODE = "hahns_code", LS_VER = "hahns_ver", LS_TS = "hahns_upd_ts", LS_DAY = "hahns_upd_day";
 
   // local calendar day "YYYY-MM-DD" (local, not UTC, so the day rolls at the
@@ -78,7 +81,7 @@
       listen();
       var w = window.open(
         BASE + "/update.html?v=" + encodeURIComponent(ver) +
-          (force ? "&force=1" : "") + "&cb=" + Date.now(),
+          "&lv=" + LOADER_VER + (force ? "&force=1" : "") + "&cb=" + Date.now(),
         "hahns_upd", "popup=1,width=400,height=280");
       if (!w) {
         var haveCode = false;

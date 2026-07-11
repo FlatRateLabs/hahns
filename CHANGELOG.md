@@ -9,6 +9,22 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.4.3-alpha — 2026-07-11
+
+### Added
+- **The update popup now tells you when you need a fresh bookmark.** When a new version needs the
+  bookmark itself re-dragged (not just the app updated), the little update window now **says so** and
+  shows an **"Update the bookmark"** button that takes you straight to the setup page to drag the new one —
+  instead of quietly doing nothing. Most updates still install on their own with no re-drag; this only
+  appears the rare times the bookmark itself changed.
+
+### Changed
+- Because of the above, this release **does** need a one-time re-drag (it's the version that teaches the
+  bookmark how to notice future bookmark updates). Delete the H.A.H.N.S bookmark and drag the newest one
+  from the setup page once.
+
+---
+
 ## v0.4.2-alpha — 2026-07-11
 
 ### Fixed
