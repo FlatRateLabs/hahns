@@ -115,9 +115,15 @@
   document.getElementById("cancel").onclick = close;
   document.getElementById("close2").onclick = close;
 
+  // basic email shape: something@something.tld (no spaces). Deliberately simple —
+  // just enough to reject typos/junk; the field stays optional (blank is fine).
+  function looksEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s); }
+
   send.onclick = function () {
     var desc = (descEl.value || "").trim();
     if (!desc) { setStatus("Please add a few details before sending.", "err"); descEl.focus(); return; }
+    var email = (emailEl.value || "").trim();
+    if (email && !looksEmail(email)) { setStatus("That email doesn't look right — please fix it or leave it blank.", "err"); emailEl.focus(); return; }
     send.disabled = true;
     setStatus("Sending…", "");
 
@@ -127,7 +133,7 @@
       title: (titleEl.value || "").trim(),
       description: desc,
       name: (nameEl.value || "").trim(),
-      email: (emailEl.value || "").trim(),
+      email: email,
       version: version,
       ua: navigator.userAgent || ""
     };
