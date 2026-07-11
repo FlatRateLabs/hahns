@@ -5,9 +5,11 @@
  *
  * How it works on ELSA (proven possible 2026-07-08; see CLAUDE.md / memory):
  *   1. Inject the last cached copy of the app instantly  -> works offline, no wait.
- *   2. At most once a day, open the GitHub Pages update window. If a newer version
- *      exists it ASKS the tech (Update now / Not now) and only hands the code back
- *      if they accept; we cache it and apply it right away.
+ *   2. On the FIRST bookmark click of each calendar day, open the GitHub Pages
+ *      update window. If a newer version exists it ASKS the tech (Update now /
+ *      Not now) and only hands the code back if they accept; we cache it and apply
+ *      it right away. (So arriving at work and clicking Hahns always checks if you
+ *      haven't been on since the day before.)
  *   3. First run on a machine (no cache): the window installs the app silently.
  *   4. Manual check: the app's Settings "Check for updates" button calls
  *      window.hahnsCheckForUpdate(), which forces the same window open NOW,
@@ -23,8 +25,14 @@
 (function () {
   var BASE = "__PAGES_BASE__";        // e.g. https://flatratelabs.github.io/hahns
   var ORIGIN = "__PAGES_ORIGIN__";    // e.g. https://flatratelabs.github.io  (trusted sender)
-  var DAY = 86400000;
-  var LS_CODE = "hahns_code", LS_VER = "hahns_ver", LS_TS = "hahns_upd_ts";
+  var LS_CODE = "hahns_code", LS_VER = "hahns_ver", LS_TS = "hahns_upd_ts", LS_DAY = "hahns_upd_day";
+
+  // local calendar day "YYYY-MM-DD" (local, not UTC, so the day rolls at the
+  // tech's midnight — the auto-check fires on the first click of a new day).
+  function today() {
+    var d = new Date(), p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
 
   function inject(src) {
     try {
@@ -46,7 +54,7 @@
       var d = e.data;
       if (!d || d.source !== "hahns-updater") return;
       if (d.upToDate || d.dismissed) {                       // current, or the tech chose "Not now"
-        try { localStorage.setItem(LS_TS, String(Date.now())); } catch (_) { }
+        try { localStorage.setItem(LS_TS, String(Date.now())); localStorage.setItem(LS_DAY, today()); } catch (_) { }
         return;                                              // don't auto-check again until the next day
       }
       if (typeof d.code !== "string") return;
@@ -54,6 +62,7 @@
         localStorage.setItem(LS_CODE, d.code);
         localStorage.setItem(LS_VER, d.version || "");
         localStorage.setItem(LS_TS, String(Date.now()));
+        localStorage.setItem(LS_DAY, today());
       } catch (_) { }
       inject(d.code);   // install (first run) or apply an accepted update now; run() replaces any open panel
     }, false);
@@ -96,10 +105,11 @@
   // 1) run the cached app right now (instant, works with no network)
   if (code) inject(code);
 
-  // 2) throttle the AUTOMATIC update check to once a day (unless we have no app yet)
-  var last = 0;
-  try { last = +localStorage.getItem(LS_TS) || 0; } catch (e) { }
-  if (code && (Date.now() - last) < DAY) return;
+  // 2) automatic check once per calendar day: skip only if we already have the app
+  //    AND we already checked today. (First click of a new day always checks.)
+  var lastDay = "";
+  try { lastDay = localStorage.getItem(LS_DAY) || ""; } catch (e) { }
+  if (code && lastDay === today()) return;
 
   // 3) automatic background check
   openUpdate(false);
