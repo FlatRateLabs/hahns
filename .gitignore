@@ -6,6 +6,8 @@ node_modules/
 # public repo (only the obfuscated docs/fluids/*.json is meant to ship). Source PDFs
 # stay off the repo too.
 tools/fluids-review/
+# parser regression-test snapshots hold parsed VW data — local baseline only
+tools/parser-snapshots/
 *.pdf
 
 # Service Xpress dev scratch (parser prototype)
