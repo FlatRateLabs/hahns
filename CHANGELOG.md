@@ -9,7 +9,17 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.6.2-alpha — in progress
+## v0.4.6.3-alpha — in progress
+
+### Changed
+- **The feedback window now opens tall enough to show the whole form** — no more scrolling to reach
+  the email field and Send button. It sizes itself to fit its contents.
+
+This ships as a normal app update, so **no re-drag needed**.
+
+---
+
+## v0.4.6.2-alpha — 2026-07-11
 
 ### Fixed
 - **The feedback form now checks that your email is actually an email.** Before, it would accept any

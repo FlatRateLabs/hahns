@@ -84,12 +84,20 @@
   var WORKER = "__WORKER_URL__";
   var GATE = "__REPORT_GATE__";
 
-  // recenter (the opener picks a corner; we land in the middle). availLeft/Top keep
-  // us on the right monitor where supported.
+  // Size the window to fit the content (no inner scroll), then recenter. We add
+  // the window chrome (outer − inner height, i.e. the title bar) so the CONTENT
+  // gets its full height, and cap to the screen so we never grow off-screen.
+  // availLeft/Top keep us on the right monitor where supported.
   try {
-    var w = 480, h = 640;
-    window.resizeTo(w, h);
+    var w = 480;
     var sw = screen.availWidth || screen.width, sh = screen.availHeight || screen.height;
+    var chrome = Math.max(0, (window.outerHeight || 0) - (window.innerHeight || 0));
+    var need = Math.max(
+      document.documentElement.scrollHeight || 0,
+      (document.body && document.body.scrollHeight) || 0
+    );
+    var h = Math.min(need + chrome + 6, sh - 40);
+    window.resizeTo(w, h);
     var sx = (typeof screen.availLeft === "number" ? screen.availLeft : 0);
     var sy = (typeof screen.availTop === "number" ? screen.availTop : 0);
     window.moveTo(sx + Math.max(0, Math.round((sw - w) / 2)), sy + Math.max(0, Math.round((sh - h) / 2)));
