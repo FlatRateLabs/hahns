@@ -5,6 +5,34 @@ permanent project reference.
 
 ---
 
+## Session close (2026-07-10) — v0.4.4-alpha (re-drag no longer double-prompts)
+
+Owner bay-verified v0.4.3: the re-drag prompt showed, he re-dragged, reopened — and got a SECOND "newer
+version available" prompt. Correct-but-clunky: **a re-drag only swaps the bookmark/loader; the app code
+(`hahns_code`) is cached separately and still updates through the popup's normal prompt.** So two prompts.
+
+**Fix (`src/update.html`, `showRedrag` "Update the bookmark" handler):** before navigating to the setup
+page, if the app is also behind (`have !== latest`), **fetch `app.js` and `postMessage` it to the CURRENT
+(old) loader right then** (the same `{code}` message every loader already understands → it caches + injects
+the new app). So the freshly-dragged bookmark opens already current → no second prompt. If the app is already
+current (only the loader behind) or the fetch fails, it just navigates (graceful fallback = old two-step).
+Delivering the code also stamps the loader's day-marker, which is fine here (app + loader both current after
+re-drag, so the skipped next-check is correct).
+
+**No re-drag / no loader change** — `LOADER_VER` stays **2**, `version.json.loader:2` unchanged. Bumped
+VERSION 0.4.3→**0.4.4** only for the record + changelog (the app code itself is unchanged — helper.js
+untouched — so it's effectively an `update.html`-only ship, which reaches every installed loader immediately
+since the popup is fetched fresh).
+
+**Verified:** extracted the `update.html` `<script>` and `node --check`'d it (syntax clean); `version.json`
+= `{version:0.4.4-alpha, loader:2}`; deliver-during-redrag branch present; `docs`==`dist`. Full opener→
+postMessage click-through still not drivable in the automated browser (script `window.open` blocked); the new
+branch reuses the exact `fetch`/`post`/`cb` pattern the existing silent-`deliver()` path ships. **Owner
+bay-check:** on an OLD bookmark, "Update the bookmark" → re-drag → reopen should now land up-to-date with NO
+second prompt.
+
+---
+
 ## Session close (2026-07-10) — v0.4.3-alpha (re-drag alert in the update popup)
 
 Owner clarification right after v0.4.2 shipped: **"If a re-drag is necessary in the update, the technician
