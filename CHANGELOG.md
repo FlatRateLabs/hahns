@@ -9,7 +9,20 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.6.4-alpha — in progress
+## v0.4.7-alpha — in progress
+
+### Added
+- **Copy your setup to another shop computer.** ⚙ Settings has a new **“Copy setup to another computer”**
+  section. **Save setup to a file** bundles your tool list, fluid capacity tables (and their PDFs), and
+  Service Xpress torque charts into a single file. **Load setup from a file** loads all of it onto another
+  shop computer — so you don’t have to upload every PDF again on each machine. The file stays on your own
+  computers; nothing is uploaded anywhere.
+
+This ships as a normal app update, so **no re-drag needed**.
+
+---
+
+## v0.4.6.4-alpha — 2026-07-11
 
 ### Fixed
 - **The feedback window no longer shows a tiny scrollbar** when opened from the ⚙ Settings button (or

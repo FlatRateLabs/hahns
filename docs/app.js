@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.4.6.4-alpha · 2026-07-11 16:20 UTC";
+var BUILD = "v0.4.7-alpha · 2026-07-11 17:01 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -2180,6 +2180,115 @@ return idbGet("sx_meta", key).then(function (m) { m = m || { key: key }; m.statu
 .then(function () { return idbGetAll("sx_meta"); }).then(function (l) { sxMetaList = l || []; }).catch(function () {});
 });
 }
+// ---- Shop-config backup / transfer (v0.4.7) --------------------------------
+// Standing up a NEW bay computer means re-uploading the tool list + every fluid
+// PDF + every Service Xpress chart. This bundles all of that shop config into ONE
+// local file the tech carries to another machine and loads there. Pure local: a
+// Blob download + a FileReader import, ZERO network (same posture as the PDF
+// uploads). This is machine SHOP CONFIG, never job/ELSA content. The source PDFs
+// travel as base64 inside the JSON so the target machine can auto-reparse them.
+var SHOP_STORES = ["pdfs", "parsed", "meta", "tools", "sx_pdfs", "sx_parsed", "sx_meta"];
+function abToB64(ab) {
+var bytes = new Uint8Array(ab), CH = 0x8000, parts = [];
+for (var i = 0; i < bytes.length; i += CH) parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + CH)));
+return btoa(parts.join(""));
+}
+function b64ToBytes(b64) {
+var bin = atob(b64 || ""), n = bin.length, u8 = new Uint8Array(n), i;
+for (i = 0; i < n; i++) u8[i] = bin.charCodeAt(i);
+return u8;
+}
+// read every shop-config record out of IDB → a serializable bundle (PDF Blobs
+// become base64). Rejects if IDB is unavailable (the normal store everywhere we run).
+function exportShopConfig() {
+if (!appIdbOk || !appDB) return Promise.reject(new Error("storage unavailable"));
+return Promise.all(SHOP_STORES.map(function (s) { return idbGetAll(s).catch(function () { return []; }); }))
+.then(function (results) {
+var stores = {}, blobJobs = [];
+SHOP_STORES.forEach(function (s, i) {
+stores[s] = (results[i] || []).map(function (rec) {
+var out = {}, k;
+for (k in rec) if (rec.hasOwnProperty(k) && k !== "blob") out[k] = rec[k];
+if (rec.blob) blobJobs.push(rec.blob.arrayBuffer().then(function (ab) { out._blobB64 = abToB64(ab); }));
+return out;
+});
+});
+return Promise.all(blobJobs).then(function () {
+return { hahns_shop_export: 1, exportedAt: new Date().toISOString(), appBuild: BUILD, stores: stores };
+});
+});
+}
+// write an imported bundle back into IDB (MERGE — put overwrites by key, adds
+// new), then re-hydrate the in-memory projections so the UI reflects it at once.
+function importShopConfig(bundle) {
+if (!bundle || bundle.hahns_shop_export !== 1 || !bundle.stores) return Promise.reject(new Error("not a H.A.H.N.S setup file"));
+if (!appIdbOk || !appDB) return Promise.reject(new Error("storage unavailable"));
+var recs = [], used = {};
+SHOP_STORES.forEach(function (s) {
+(bundle.stores[s] || []).forEach(function (rec) {
+var val = {}, k;
+for (k in rec) if (rec.hasOwnProperty(k) && k !== "_blobB64") val[k] = rec[k];
+if (rec._blobB64 != null) val.blob = new Blob([b64ToBytes(rec._blobB64)], { type: "application/pdf" });
+recs.push({ store: s, val: val }); used[s] = 1;
+});
+});
+if (!recs.length) return Promise.reject(new Error("that file has no setup data"));
+return idbPutMany(Object.keys(used), recs).then(function () {
+return Promise.all([hydrateShopTools(), idbGetAll("parsed").then(buildProjection), refreshMetaList(), hydrateSx()]);
+}).then(function () {
+if (fluidsRerender) fluidsRerender();
+var flp = loadFluids(), sxp = loadSx(), tl = loadShopTools();
+return {
+fluidYears: (flp && flp.years) ? Object.keys(flp.years).length : 0,
+sxYears: (sxp && sxp.years) ? sxp.years.length : 0,
+tools: tl ? (tl.count || 0) : 0
+};
+});
+}
+// Settings button → build the bundle and hand the tech a downloadable file.
+function downloadShopConfig(root) {
+flash(root, "Preparing your setup file…");
+exportShopConfig().then(function (bundle) {
+var blob = new Blob([JSON.stringify(bundle)], { type: "application/json" });
+var url = URL.createObjectURL(blob);
+var a = document.createElement("a");
+var d = new Date(), pad = function (n) { return (n < 10 ? "0" : "") + n; };
+a.href = url;
+a.download = "hahns-shop-setup-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + ".json";
+(root.querySelector(".wrap") || root).appendChild(a);
+a.click();
+setTimeout(function () { try { a.remove(); URL.revokeObjectURL(url); } catch (e) {} }, 4000);
+var fl = loadFluids(), sx = loadSx(), tl = loadShopTools();
+var flN = (fl && fl.years) ? Object.keys(fl.years).length : 0, sxN = (sx && sx.years) ? sx.years.length : 0;
+flash(root, "Saved your setup — " + flN + " fluid, " + sxN + " torque year" + (sxN === 1 ? "" : "s") + (tl ? ", tool list" : "") + ". Copy it to the other computer and use Load setup there.");
+}).catch(function (e) { flash(root, "Couldn’t export: " + ((e && e.message) || "error")); });
+}
+// Settings button → pick a previously-exported setup file and load it in.
+function pickImportFile(host, r, options, root) {
+var inp = document.createElement("input");
+inp.type = "file"; inp.accept = ".json,application/json"; inp.style.display = "none";
+inp.addEventListener("change", function () {
+var f = (inp.files || [])[0];
+try { inp.remove(); } catch (e) {}
+if (!f) return;
+flash(root, "Loading setup…");
+var fr = new FileReader();
+fr.onload = function () {
+var bundle = null;
+try { bundle = JSON.parse(fr.result); } catch (e) {}
+if (!bundle) { flash(root, "That file isn’t a valid setup file"); return; }
+importShopConfig(bundle).then(function (n) {
+renderInto(host, r, options);
+openSettings(host, r, options, root);   // refresh Settings in place
+flash(root, "Setup loaded — " + n.fluidYears + " fluid, " + n.sxYears + " torque year" + (n.sxYears === 1 ? "" : "s") + (n.tools ? ", tool list (" + n.tools + ")" : ""));
+}).catch(function (e) { flash(root, "Couldn’t load: " + ((e && e.message) || "error")); });
+};
+fr.onerror = function () { flash(root, "Couldn’t read that file"); };
+try { fr.readAsText(f); } catch (e) { flash(root, "Couldn’t read that file"); }
+});
+(root.querySelector(".wrap") || root).appendChild(inp);
+inp.click();
+}
 // ---- matching: loaded vehicle → the right torque entry for its model year.
 // Engine code first (exact, from ELSA's Engine Code field), then model name.
 function sxForVehicle(r) {
@@ -4338,6 +4447,17 @@ sxStatus +
 fluidsInfoHTML() +
 "</div>" +
 "</details>" +
+// copy setup to another computer (backup / transfer)
+'<details class="setacc" data-sec="transfer">' +
+'<summary>Copy setup to another computer</summary>' +
+'<div class="setbody">' +
+'<p class="setsub">Save your tool list, fluid tables, and torque charts to one file, then load it on another shop computer — so you don’t have to upload everything again on each machine. The file stays on your computers; nothing is uploaded.</p>' +
+'<div class="setbtns">' +
+'<button class="primary cfgexport">Save setup to a file</button>' +
+'<button class="primary cfgimport">Load setup from a file</button>' +
+"</div>" +
+"</div>" +
+"</details>" +
 '<p class="setnote">Everything here is saved only on this computer (under ELSA) — never uploaded anywhere or sent to GitHub.</p>' +
 "</div>";
 // restore / apply section open-state
@@ -4397,6 +4517,11 @@ renderInto(host, r, options);
 refresh();
 flash(root, "Service Xpress charts removed");
 });
+// backup / transfer: export the whole shop config to a file, or import one
+var cex = ov.querySelector(".cfgexport");
+if (cex) cex.addEventListener("click", function () { downloadShopConfig(root); });
+var cim = ov.querySelector(".cfgimport");
+if (cim) cim.addEventListener("click", function () { pickImportFile(host, r, options, root); });
 }
 // the column-mapper overlay — the tech tags which CSV column is which. Honors
 // any layout (3-col shop sheet, 4-col VW minimum index, …). Picking one role
@@ -4978,5 +5103,6 @@ loadShopTools: loadShopTools, saveShopTools: saveShopTools, removeShopTools: rem
 parseServiceXpress: parseServiceXpress, sxFromPdf: sxFromPdf, loadSx: loadSx,
 sxSaveFiles: sxSaveFiles, removeSx: removeSx, sxForVehicle: sxForVehicle,
 sxDrainText: sxDrainText, sxWheelText: sxWheelText,
-buildFluidsWindowHTML: buildFluidsWindowHTML };
+buildFluidsWindowHTML: buildFluidsWindowHTML,
+exportShopConfig: exportShopConfig, importShopConfig: importShopConfig };
 })();if(window.VWJB){window.VWJB.run();}})();
