@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.4.1-alpha · 2026-07-10 04:03 UTC";
+var BUILD = "v0.4.2-alpha · 2026-07-11 00:48 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -1228,6 +1228,41 @@ if (o.dataEnd > o.dataStart) o.data = bytes.subarray(o.dataStart, o.dataEnd);
 });
 return objs;
 }
+// PDF 1.5 compressed object streams (/Type /ObjStm): some charts (e.g. the 2025
+// Service Xpress file, an older Antenna House build) pack the font / page /
+// ToUnicode-reference dicts INSIDE a FlateDecoded stream instead of writing them
+// as classic "N 0 obj" objects, so the plaintext scan in pdfObjects never sees
+// them → no ToUnicode map → the reader emits raw glyph codes (garbled text) and
+// the table parser finds nothing. Unpack each ObjStm and merge the objects it
+// contains into `objs` (classic objects win). Async (inflate); no-op on the
+// classic PDF 1.4 files every other year uses. Stream objects (content streams,
+// ToUnicode, FontFile) can never live in an ObjStm, so those stay classic.
+function expandObjStms(objs) {
+var stms = [], n;
+for (n in objs) {
+var o = objs[n];
+if (o && o.data && /\/Type\s*\/ObjStm\b/.test(o.dict || "")) stms.push(o);
+}
+if (!stms.length) return Promise.resolve(objs);
+var jobs = stms.map(function (o) {
+var infl = /\/FlateDecode\b/.test(o.dict) ? inflateZlib(o.data) : Promise.resolve(o.data);
+return infl.then(function (u) {
+var body = bstr(u);
+var N = +((/\/N\s+(\d+)/.exec(o.dict) || [])[1] || 0);
+var First = +((/\/First\s+(\d+)/.exec(o.dict) || [])[1] || 0);
+if (!N || !First) return;
+var toks = body.slice(0, First).trim().split(/\s+/), ent = [], k;
+for (k = 0; k < N; k++) ent.push({ num: +toks[k * 2], off: +toks[k * 2 + 1] });
+for (k = 0; k < ent.length; k++) {
+if (isNaN(ent[k].num) || (ent[k].num in objs)) continue;   // classic object wins
+var start = First + ent[k].off;
+var end = (k + 1 < ent.length) ? First + ent[k + 1].off : body.length;
+objs[ent[k].num] = { num: ent[k].num, dict: body.slice(start, end), data: null, lenRef: -1, dataStart: -1, dataEnd: -1 };
+}
+}).catch(function () {});
+});
+return Promise.all(jobs).then(function () { return objs; });
+}
 function pdfRef(dict, key) {
 var m = new RegExp("\\/" + key + "\\s+(\\d+)\\s+0\\s+R").exec(dict || "");
 return m ? +m[1] : -1;
@@ -1522,6 +1557,10 @@ function pdfTextLines(buf) {
 var bytes = new Uint8Array(buf);
 if (bstr(bytes.subarray(0, 5)) !== "%PDF-") return Promise.reject(new Error("that file isn't a PDF"));
 var objs = pdfObjects(bytes);
+return expandObjStms(objs).then(function () { return pdfTextLinesFrom(objs); });
+}
+// second half of pdfTextLines, after any PDF 1.5 object streams are unpacked
+function pdfTextLinesFrom(objs) {
 var pages = pdfPageOrder(objs);
 if (!pages.length) return Promise.reject(new Error("couldn't read that PDF"));
 var jobs = [], fontByObj = {}, contentText = {}, pageInfo = [];
@@ -3412,6 +3451,7 @@ var CSS = "" +
 ".setupd{margin:2px 0 14px;padding-right:26px}" +
 ".setupd button{width:100%;appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:13px;padding:10px 14px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4;background:#fff;color:#001e50}" +
 ".setupd button:hover{background:#f3f6fb}" +
+".setupdnote{font-size:11px;color:#7a7a7a;line-height:1.4;margin:8px 2px 0}" +
 // collapsible section (native <details>) — declutters the panel
 ".setacc{border:1px solid #dfe4ec;border-radius:9px;margin:0 0 10px;background:#fbfcfe}" +
 ".setacc>summary{list-style:none;cursor:pointer;padding:11px 13px;font-weight:700;font-size:13px;color:#001e50;display:flex;align-items:center;gap:8px;user-select:none;border-radius:9px}" +
@@ -4204,9 +4244,23 @@ var sxStatus = sxYears.length
 '<div class="setfile">' + esc(sxYears.join(", ")) + "</div>" +
 (sx && sx.updated ? '<div class="setmeta">updated ' + esc(sx.updated) + "</div>" : "") + "</div>"
 : '<div class="setstat none">No Service Xpress charts loaded yet. Load the yearly VW Service Xpress PDFs to show oil drain plug &amp; wheel bolt torque for the loaded vehicle.</div>';
+// The manual update button drives the self-updating loader's popup. The hook
+// exists only when the running bookmark IS the v0.4.1+ loader; on the old
+// v0.4.0 loader (or the classic bookmarklet) it's absent. When it's present we
+// do an instant in-app check and NEVER touch the old setup page. When it's
+// absent the button instead opens the setup page — the ONE legitimate use of
+// that page: re-dragging the bookmark itself (a one-time switch to the loader).
+var hasLoader = false;
+try { hasLoader = (typeof window.hahnsCheckForUpdate === "function"); } catch (e) {}
+var updHTML = '<div class="setupd">' +
+(hasLoader
+? '<button class="chkupd">Check for Update</button>'
+: '<button class="chkupd">Update the bookmark…</button>' +
+'<div class="setupdnote">This bookmark can’t check for updates on its own yet. The button above opens the setup page — delete the old H.A.H.N.S bookmark there and drag the newest one, just once. After that it becomes an instant in-app update check.</div>') +
+"</div>";
 ov.innerHTML = '<div class="setbox">' +
 '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
-'<div class="setupd"><button class="chkupd">Check for Update</button></div>' +
+updHTML +
 // shop special-tool list
 '<details class="setacc" data-sec="tools">' +
 '<summary>Shop special-tool list<span class="sccount">' + esc(toolCount) + "</span></summary>" +
@@ -4268,12 +4322,15 @@ ov.querySelector(".xclose").addEventListener("click", close);
 // fall back to opening the setup page where they can re-grab the latest.
 var chk = ov.querySelector(".chkupd");
 if (chk) chk.addEventListener("click", function () {
-close();
 if (typeof window.hahnsCheckForUpdate === "function") {
+close();
 try { window.hahnsCheckForUpdate(); } catch (e) {}
 } else {
+// No loader hook: the ONLY reason to open the old page — get the tech to
+// the setup page to re-drag the current loader (a one-time switch). This
+// is NOT an update-check path; it's how you (re)install the bookmark.
 try { window.open(SITE_URL, "_blank", "noopener"); } catch (e) {}
-flash(root, "Opening the H.A.H.N.S page…");
+flash(root, "Opening the setup page — re-drag the bookmark from there.");
 }
 });
 // upload buttons DON'T close Settings — the tech may have more to do here

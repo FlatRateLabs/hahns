@@ -9,6 +9,31 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.4.2-alpha — in progress
+
+### Fixed
+- **The 2025 Service Xpress chart now loads.** It was being rejected with "not a Service Xpress PDF."
+  That one year's file was saved in a slightly newer PDF format than every other year, and Hahns's
+  built-in PDF reader couldn't unpack it — so the torque tables came out as scrambled text and the file
+  looked empty. The reader now handles that format. All other years are unchanged. Load the 2025 chart
+  again in ⚙ Settings and it works.
+- **The "Check for Update" button no longer opens the old website.** On the newest bookmark it does an
+  instant in-app check (no website). If your bookmark is an older one that can't check on its own yet, the
+  button now clearly says **"Update the bookmark…"** and opens the setup page so you can drag the newest
+  one — that's the *only* time the setup page is used now, and only for (re)installing the bookmark itself.
+
+### Changed
+- **Automatic update check now runs on the first time you open Hahns each day** (instead of a rolling
+  24-hour timer). So getting to work and clicking Hahns will check for a new version if you haven't been
+  on since the day before — more predictable than before. You can still force a check any time with the
+  **Check for Update** button in ⚙ Settings.
+
+> **One-time re-drag:** to get the fixed manual button and the new daily-check timing, delete the
+> H.A.H.N.S bookmark and drag the newest one from the setup page once. After that, app updates keep
+> installing on their own — no more re-dragging.
+
+---
+
 ## v0.4.1-alpha — 2026-07-10
 
 ### Added
