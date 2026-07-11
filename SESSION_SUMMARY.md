@@ -5,6 +5,33 @@ permanent project reference.
 
 ---
 
+## Session close (2026-07-10) — v0.4.5-alpha (update popup: "What's new" + centered)
+
+Two owner asks for the update-available popup, both **update.html-only → no re-drag** (fetched fresh each
+check, so they reach every installed loader at once):
+- **"What's new" list** showing ONLY the offered version's changes. `tools/build.js` now emits **`notes.json`**
+  (`{version, html}`) via new **`latestNotesHtml(md)`** — same markdown subset as `renderChangelog` but stops
+  at the 2nd `## ` heading (top/latest entry only). `update.html` fetches it (`notesP`) and `showWhatsNew()`
+  injects it into a scrollable `#whatsnew` box on both the re-drag prompt and the newer-version prompt. (Also
+  fixed a latent `renderChangelog`-family bug: a paragraph trailing a bullet list was dropped — now closes the
+  list and emits `<p>`.)
+- **Center the popup** — `centerWindow(w,h)` in `update.html` (`resizeTo` + `moveTo` using
+  `screen.avail*`), called on load. In the popup, not the loader's `window.open`, so no re-drag.
+
+Bumped VERSION 0.4.4→**0.4.5** for the record (helper.js untouched → effectively update.html/build-only;
+`LOADER_VER` stays 2, `version.json.loader:2`).
+
+**Verified:** built; `version.json` `{0.4.5-alpha, loader:2}`; `notes.json` carries exactly the 0.4.5
+changes (Added/Changed + trailing note); `update.html <script>` `node --check` clean; `docs`==`dist`.
+**Visual: rendered the real CSS + real `notes.json` in a throwaway served harness (deleted after) at 480×560
+— "What's new in v0.4.5-alpha" green header, ADDED/CHANGED subheads, bold-lead bullets, scrollable box,
+version rows + buttons all correct** (screenshot). Couldn't drive the live popup opener→postMessage path
+(automated browser blocks `window.open`); `showWhatsNew`/`centerWindow` are standard DOM/window calls,
+syntax-verified. Owner will see it on the next update (he's on 0.4.4 → the 0.4.5 popup shows its own "What's
+new").
+
+---
+
 ## Session close (2026-07-10) — v0.4.4-alpha (re-drag no longer double-prompts)
 
 Owner bay-verified v0.4.3: the re-drag prompt showed, he re-dragged, reopened — and got a SECOND "newer
