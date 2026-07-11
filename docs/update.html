@@ -68,9 +68,11 @@
   // Show the re-drag alert: a newer LOADER (bookmark) exists than the one running.
   // The loader can't update itself, so we hand the tech a button to the setup page
   // to re-drag once.
-  //   - "Update the bookmark" navigates to the setup page WITHOUT posting a reply,
-  //     so no day-marker is set — the freshly-dragged loader then fetches the new
-  //     app on its very next click instead of waiting for tomorrow.
+  //   - "Update the bookmark" FIRST delivers the new app to the CURRENT (old) loader
+  //     via postMessage, so the cached app is already current — then sends them to
+  //     the setup page to re-drag. That way re-dragging + reopening does NOT throw a
+  //     second "newer version" prompt (a re-drag only swaps the bookmark/loader; the
+  //     app code is cached separately and would otherwise still be behind).
   //   - "Not now" posts `dismissed` (sets the loader's throttle) so it won't nag
   //     again until the next check.
   function showRedrag(latest) {
@@ -81,8 +83,18 @@
     var y = document.getElementById("yes"), n = document.getElementById("no");
     y.textContent = "Update the bookmark";
     y.onclick = function () {
-      try { window.resizeTo(900, 720); } catch (e) { }
-      location.href = "./";   // the setup page sits beside update.html on Pages
+      btns.style.display = "none";
+      var go = function () { try { window.resizeTo(900, 720); } catch (e) { } location.href = "./"; };
+      // if the app is already current, only the loader is behind -> just re-drag
+      if (!latest || have === latest) { go(); return; }
+      // otherwise push the new app to the running (old) loader NOW, then re-drag,
+      // so the freshly-dragged bookmark opens already up to date (no 2nd prompt)
+      msg.textContent = "Getting the latest, then sending you to re-drag…";
+      fetch("./app.js" + cb)
+        .then(function (r) { if (!r.ok) throw new Error("app.js " + r.status); return r.text(); })
+        .then(function (code) { if (code && code.length > 100) post({ source: "hahns-updater", version: latest, code: code }); })
+        .catch(function () { /* delivery failed — the re-drag still fixes it on next check */ })
+        .then(go);
     };
     n.textContent = "Not now";
     n.onclick = function () {

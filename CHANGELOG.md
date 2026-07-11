@@ -9,6 +9,18 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.4.4-alpha — 2026-07-11
+
+### Fixed
+- **Re-dragging the bookmark no longer leaves a second update waiting.** In v0.4.3, updating the bookmark
+  and reopening Hahns would immediately show *another* "newer version available" prompt — because
+  re-dragging only swaps the bookmark, while the app itself updates separately. Now, when you click
+  **"Update the bookmark,"** Hahns quietly grabs the latest app at the same moment, so the freshly-dragged
+  bookmark opens already up to date — one step, no surprise second prompt. **No re-drag needed for this
+  fix** (it lives in the update window, which always loads fresh).
+
+---
+
 ## v0.4.3-alpha — 2026-07-11
 
 ### Added

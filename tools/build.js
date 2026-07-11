@@ -15,7 +15,7 @@ const root = path.join(__dirname, "..");
 // ---- version ----
 // Bump this when you ship. While testing, keep the "-alpha" tag.
 //   tiny fix -> 0.1.1   new feature -> 0.2.0   stable release -> 1.0.0
-const VERSION = "0.4.3-alpha";
+const VERSION = "0.4.4-alpha";
 
 // Loader generation. The loader is the dragged bookmark; it can ONLY change by
 // re-dragging. Bump this whenever src/loader.js changes so the update popup can
