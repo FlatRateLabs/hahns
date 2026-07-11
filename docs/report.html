@@ -57,8 +57,11 @@
   <label for="desc">Details <span style="color:#777;font-weight:400">(required)</span></label>
   <textarea id="desc" maxlength="5000" placeholder="What happened, what you expected, and any steps to reproduce it. For a feature: what would help you at the bay?"></textarea>
 
-  <label for="name">Your name <span style="color:#777;font-weight:400">(optional — so the dev can follow up)</span></label>
+  <label for="name">Your name <span style="color:#777;font-weight:400">(optional)</span></label>
   <input type="text" id="name" maxlength="80" placeholder="">
+
+  <label for="email">Your email <span style="color:#777;font-weight:400">(optional — so the dev can follow up)</span></label>
+  <input type="email" id="email" maxlength="120" placeholder="you@example.com">
 
   <div class="row">
     <div class="actions">
@@ -104,7 +107,8 @@
       statusEl = document.getElementById("status"),
       titleEl = document.getElementById("title"),
       descEl = document.getElementById("desc"),
-      nameEl = document.getElementById("name");
+      nameEl = document.getElementById("name"),
+      emailEl = document.getElementById("email");
 
   function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = cls || ""; }
   function close() { try { window.close(); } catch (e) {} }
@@ -123,6 +127,7 @@
       title: (titleEl.value || "").trim(),
       description: desc,
       name: (nameEl.value || "").trim(),
+      email: (emailEl.value || "").trim(),
       version: version,
       ua: navigator.userAgent || ""
     };
