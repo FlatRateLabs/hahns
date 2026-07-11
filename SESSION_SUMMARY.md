@@ -5,6 +5,52 @@ permanent project reference.
 
 ---
 
+## Session close (2026-07-10) — v0.4.3-alpha (re-drag alert in the update popup)
+
+Owner clarification right after v0.4.2 shipped: **"If a re-drag is necessary in the update, the technician
+should be alerted on the update-available popup, and a drag-to-update button that links to the setup page is
+populated."** i.e. the re-drag guidance belongs in the **update popup** (`update.html`), not (only) the
+Settings button. Built + verified; **needs the one-time re-drag** (this is the loader change that teaches the
+bookmark to report its generation).
+
+### The mechanism — a loader "generation" number
+The loader is the dragged bookmark; it can only change by re-dragging, so the update system needs to know a
+bookmark is behind. Added:
+- **`LOADER_VER`** in `tools/build.js` (currently **2**) → injected into `loader.js` via `__LOADER_VER__`
+  **and** published in `version.json` as `loader`.
+- **`loader.js`** now sends its `LOADER_VER` to the popup as **`?lv=`** (alongside `?v=`).
+- **`update.html`** reads `lv` + `version.json.loader`; **new PRIORITY branch** `if (have && curLoader >
+  techLoader) showRedrag()` — alert + **"Update the bookmark"** button that navigates the popup to the setup
+  page (`./`); **"Update the bookmark" posts NO reply** (so no day-marker is set → the freshly-dragged loader
+  fetches the new app on its very next click), **"Not now"** posts `dismissed` (sets the throttle).
+- Pre-`lv` loaders (v0.4.0–v0.4.2) send no `lv` → popup reads `0 < 2` → they all get the re-drag prompt on
+  their next check. **Key property: `update.html` is fetched FRESH from Pages every check, so this new logic
+  reaches every already-installed loader immediately** — no re-drag needed for `update.html` itself.
+
+### Design notes
+- **Re-drag detection is release-gated by `LOADER_VER`, not by app version:** only bumping `LOADER_VER` (i.e.
+  actually changing `loader.js`) triggers the prompt; app-only releases keep `loader` the same → normal
+  silent/prompted app update, no re-drag nag. **Reminder: bump `LOADER_VER` whenever `src/loader.js` changes.**
+- Why "Update the bookmark" posts no reply: posting `dismissed` would set `hahns_upd_day`=today, and the
+  fresh loader would then skip its auto-fetch until tomorrow — so the tech would re-drag yet keep running the
+  old app for the rest of the day. Skipping the reply avoids that.
+- Privacy unchanged: still only Hahns's own `version.json`/`app.js` over the popup channel; nothing about the
+  job leaves.
+
+### Verified
+- `node --check` (helper + loader) clean; built **v0.4.3-alpha**; `version.json` = `{…,"loader":2}`;
+  `loader.txt` has `var LOADER_VER = 2` and sends `&lv=`; `docs`==`dist` update.html.
+- **Decision logic exhaustively unit-tested** (6 scenarios incl. old-no-lv, current loader, first-install,
+  future bump) — all pass. Script proven to parse + run clean in the browser (the no-opener auto-close fired).
+  Could NOT drive the full opener→postMessage flow in the automated browser (it hard-blocks script
+  `window.open`, even on a user gesture) — `showRedrag`'s DOM ops reuse the exact elements/pattern the
+  existing "force" path already uses in production.
+- **Owner bay-check recommended** once deployed: on the old bookmark, the next daily check (or Settings →
+  Check for Update) should now show "An updated H.A.H.N.S bookmark is ready" + "Update the bookmark" → setup
+  page.
+
+---
+
 ## Session close (2026-07-10) — v0.4.2-alpha LIVE (2025 SX PDF fix + update-button + daily check)
 
 Three owner-reported issues from the v0.4.1 release, all fixed, merged (PR #99, squash `--admin`),

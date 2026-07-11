@@ -4,10 +4,16 @@
      the ELSA page via postMessage, then closes itself.
 
      Behaviour:
+       - re-drag needed (version.json `loader` > this bookmark's `lv`)
+                                                -> ALERT + a button to the setup page
+                                                   to re-drag the bookmark once (the
+                                                   loader can't self-update). Priority.
        - first install (loader has no version)  -> fetch + hand over silently
        - already current                        -> say so, close
        - a newer version exists                 -> ASK the tech (installed vs latest,
                                                    Update now / Not now); only fetch on yes
+     This page is always fetched fresh from Pages, so changing it reaches EVERY
+     already-installed loader immediately — no re-drag needed for update.html itself.
      Fetches only Hahns's own files — never touches ELSA/manual content. -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -50,13 +56,42 @@
 
   if (!opener) { msg.textContent = "Opened directly — nothing to do."; setTimeout(done, 1200); return; }
 
-  var have = "", force = false;
+  var have = "", force = false, techLoader = 0;
   try {
     var qs = new URLSearchParams(location.search);
     have = qs.get("v") || "";
     force = qs.get("force") === "1";   // manual check from the app's Settings button
+    techLoader = +(qs.get("lv")) || 0; // this bookmark's loader generation (0 = pre-lv loader)
   } catch (e) { }
   var cb = "?cb=" + Date.now();
+
+  // Show the re-drag alert: a newer LOADER (bookmark) exists than the one running.
+  // The loader can't update itself, so we hand the tech a button to the setup page
+  // to re-drag once.
+  //   - "Update the bookmark" navigates to the setup page WITHOUT posting a reply,
+  //     so no day-marker is set — the freshly-dragged loader then fetches the new
+  //     app on its very next click instead of waiting for tomorrow.
+  //   - "Not now" posts `dismissed` (sets the loader's throttle) so it won't nag
+  //     again until the next check.
+  function showRedrag(latest) {
+    msg.innerHTML = "An updated H.A.H.N.S bookmark is ready.<br>Your bookmark can’t finish updating on its own — re-drag it once from the setup page.";
+    cur.textContent = "v" + have;
+    latestEl.textContent = "v" + latest;
+    vers.style.display = "block";
+    var y = document.getElementById("yes"), n = document.getElementById("no");
+    y.textContent = "Update the bookmark";
+    y.onclick = function () {
+      try { window.resizeTo(900, 720); } catch (e) { }
+      location.href = "./";   // the setup page sits beside update.html on Pages
+    };
+    n.textContent = "Not now";
+    n.onclick = function () {
+      post({ source: "hahns-updater", dismissed: true, version: latest });
+      msg.textContent = "Okay — you can update the bookmark later from the setup page.";
+      setTimeout(done, 1000);
+    };
+    btns.style.display = "flex";
+  }
 
   // download the full app and hand it to the loader, then close
   function deliver(latest, okMsg) {
@@ -76,6 +111,13 @@
     .catch(function () { return { version: "" }; })
     .then(function (vj) {
       var latest = (vj && vj.version) || "";
+      var curLoader = +((vj && vj.loader) || 0);
+
+      // re-drag needed -> the current release ships a NEWER loader than this
+      // bookmark, and a loader can only change by re-dragging. Priority over the
+      // app-version prompt (the re-drag brings the new app too). Never for a first
+      // install (no `have`) — that just dragged the current loader.
+      if (have && curLoader > techLoader) { showRedrag(latest); return; }
 
       // already current -> tell the loader, no download, no prompt
       if (have && latest && latest === have) {
