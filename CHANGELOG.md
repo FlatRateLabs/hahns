@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.2-alpha — in progress
+## v0.4.2-alpha — 2026-07-11
 
 ### Fixed
 - **The 2025 Service Xpress chart now loads.** It was being rejected with "not a Service Xpress PDF."

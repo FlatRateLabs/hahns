@@ -5,6 +5,60 @@ permanent project reference.
 
 ---
 
+## Session close (2026-07-10) — v0.4.2-alpha LIVE (2025 SX PDF fix + update-button + daily check)
+
+Three owner-reported issues from the v0.4.1 release, all fixed, merged (PR #99, squash `--admin`),
+and **live-confirmed** — `version.json` = `v0.4.2-alpha · 2026-07-11 00:48 UTC` and the live
+`loader.txt` carries the new `hahns_upd_day` logic. **Requires a one-time bookmark re-drag** (loader
+changed). This is the first exercise of the v0.4.1→v0.4.2 auto-update for techs already on the loader.
+
+### 1. 2025 Service Xpress chart rejected — "not a Service Xpress PDF" (the big one)
+Root cause found by reproducing in a Node harness with the real 19 charts: **the 2025 file is a PDF 1.5
+export** (older Antenna House build — MR5/6.6.1455 vs MR11/6.6.1548 for every other year) that packs its
+**font / page / ToUnicode-reference dicts inside compressed object streams** (`/Type /ObjStm`) with XRef
+streams, instead of classic `N 0 obj` objects. Our in-browser reader's `pdfObjects` only scans plaintext
+`N G obj`, so it never saw the fonts → no ToUnicode map → `runsToText` emitted **raw glyph codes**
+(uniformly +29-shifted garbage: `Miscellaneous`→`0LVFHOODQHRXV`) → `parseServiceXpress` found 0 sections →
+`sxFromPdf` threw the rejection. (The stream objects it needs — ToUnicode/content/FontFile — are classic
+and were already readable; only the *dicts referencing* them were hidden in the ObjStms.)
+- **Fix (`src/helper.js`):** new **`expandObjStms(objs)`** — inflates each `/Type /ObjStm`, parses the
+  `N`/`First` header + offset table, and merges the contained objects into `objs` (classic objects win;
+  stream objects can never live in an ObjStm so they stay classic). Async (uses `inflateZlib`); **no-op on
+  the classic PDF 1.4 files every other year uses.** `pdfTextLines` split into `pdfTextLines` (unpack ObjStms
+  first) + `pdfTextLinesFrom(objs)` (the original body).
+- **Verified BOTH in Node and the real browser** (browser's own `DecompressionStream`, fetched the real
+  `sx-2025.pdf`): 2025 → all **7 models** correct (Jetta 30/120, GTI 30/140, Taos 30/140, Tiguan 30/140,
+  Atlas 30 + 1PC 160/2PC 120, ID.4/ID.Buzz EVs no drain). **All 18 other SX years byte-identical — 146 model
+  tables total, exactly the prior verified count.** No console errors. Fluid PDFs share the same (now
+  refactored) classic path — unchanged (the 18 classic SX PDFs exercise it directly).
+
+### 2. Manual "Check for Update" opened the old website — owner: "I do not want this. Period."
+Root cause: the v0.4.1 Settings button fell back to `window.open(SITE_URL)` whenever
+`window.hahnsCheckForUpdate` was absent — and it's absent on the **v0.4.0 loader** (which never defined the
+hook; the owner's work PC was on v0.4.0). So the button surfaced the old setup page as if it were the updater.
+- **Fix (`src/helper.js`):** removed the blanket `SITE_URL` fallback. **Hook present** → instant in-app
+  check, never the old page. **Hook absent** → the button now reads **"Update the bookmark…"** with a note,
+  and opens the setup page **only** to re-drag the loader itself (owner's refinement: keep a path to the page
+  for (re)installing the bookmark, just not as an update mechanism). `hasLoader` computed at render time;
+  `.setupdnote` style added.
+
+### 3. Auto-check timing — owner asked "when is this?" → chose "first launch each day"
+Was a rolling-24h timer (`hahns_upd_ts`) — why it was stale in the morning (clicked <24h after the prior
+check) then updated later that day. Owner picked **first-launch-each-calendar-day**.
+- **Fix (`src/loader.js`):** new local-date `today()` (`YYYY-MM-DD`) + `hahns_upd_day` marker; gate is now
+  `if (code && lastDay === today()) return;`. Reply handler stamps `hahns_upd_day`=today on
+  up-to-date/dismissed/code. `hahns_upd_ts` still written but no longer gates. Manual force-check
+  (`hahnsCheckForUpdate`) still bypasses. Gate logic unit-verified (skip same-day, check next day / fresh).
+
+### Notes
+- `SITE_URL` is still defined (used by the "Update the bookmark…" path). `SX_PARSER_VER` **not** bumped —
+  the parser is unchanged; the only affected file (2025) couldn't be stored before, so there's nothing to
+  auto-reparse. Bookmarklet 448 KB.
+- **Owner action:** delete the H.A.H.N.S bookmark and drag the newest from the setup page **once** to pick up
+  the new loader (daily check + fixed manual button). App updates keep installing on their own after that.
+
+---
+
 ## Session close (2026-07-10) — v0.4.1-alpha LIVE (Service Xpress torque + Settings tidy + manual update check)
 
 Full session, four owner-requested changes, all merged to `main` (PR #95, squash `--admin`) and
