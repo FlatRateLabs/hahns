@@ -5,7 +5,7 @@ permanent project reference.
 
 ---
 
-## Session close (2026-07-16) — v0.4.8.2-alpha: issue #126 (built, NOT yet deployed)
+## Session close (2026-07-16) — v0.4.8.2-alpha: issue #126 (PR #128 open, owner merging)
 
 Picked up #126 exactly where the last session parked it. **The previous diagnosis was right** (parser
 bug, not matching) and the reverted "filter matched by AWD" non-fix was correctly rejected. Two owner
@@ -82,9 +82,13 @@ and drift spanned **2006–2022**. Bumping only 11-26 would have stranded every 
 doesn't use `parseCAC` → untouched. (See [[fluids-reparse-trigger-gotcha]].)
 
 ### Open at session end
-- **v0.4.8.2-alpha built + verified locally, NOT committed/deployed** — no PR yet. `loader` stays 2 → no
-  re-drag. Saved PDFs auto-reparse on update.
-- **#126 not yet closed** (deploy + owner bay-check first: 2017 Alltrack drivetrain card).
+- **PR #128** (v0.4.8.2-alpha, branch `0.4.8.2`, 15 files) — **open, owner merging himself.** Set to close
+  **#126** on merge. `loader` stays 2 → **no re-drag**; saved PDFs auto-reparse on update.
+- **Bay check once live:** 2017 Alltrack Drivetrain card → one gearbox (`0D9 (AWD)`) + only its own final
+  drive. Bonus to confirm if one turns up: a Golf R / Touareg should now show a single AWD wheel-bolt
+  torque on the SX card instead of "FWD … · AWD …".
+- **A plain FWD Golf still shows both DSG rows + both final drives** — unchanged, pre-existing, unreported.
+  Left alone deliberately: proving a car is FWD is the exact guess this release banned.
 - **Deliberately NOT fixed — worth its own issue:** the pre-existing `subs` filter still hides `Only AWD`
   rows (33+ across the corpus) whenever the marker is absent — the exact unsafe guess we just banned
   everywhere else. **`AWD_ONLY` shrank the blast radius** (Golf R / Touareg / Alltrack now resolve AWD, so
