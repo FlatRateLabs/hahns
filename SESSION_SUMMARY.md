@@ -5,7 +5,7 @@ permanent project reference.
 
 ---
 
-## Session close (2026-07-16) — v0.4.8.2-alpha: issue #126 (PR #128 open, owner merging)
+## Session close (2026-07-16) — v0.4.8.2-alpha: issue #126 — LIVE
 
 Picked up #126 exactly where the last session parked it. **The previous diagnosis was right** (parser
 bug, not matching) and the reverted "filter matched by AWD" non-fix was correctly rejected. Two owner
@@ -81,9 +81,16 @@ transmission. Both latent bugs nobody had reported.
 and drift spanned **2006–2022**. Bumping only 11-26 would have stranded every saved 2006–2010 PDF. p0005
 doesn't use `parseCAC` → untouched. (See [[fluids-reparse-trigger-gotcha]].)
 
+### Shipped
+**PR #128 merged by the owner** (merge commit `c0d41c7`) → **live-confirmed**: `version.json` =
+`v0.4.8.2-alpha · 2026-07-16 05:58 UTC`, live `app.js` carries the fix. **Issue #126 CLOSED** (auto-closed
+by the PR). `loader` stays 2 → **no re-drag**; saved PDFs auto-reparse on update.
+- **Gotcha for next time:** the owner merged #128 while the session was still running, so a
+  `docs: session summary` commit pushed to the feature branch afterwards was **orphaned** (the PR was
+  already merged). Had to cherry-pick it onto `main` and push directly. **Land the summary before the
+  owner merges, or commit it straight to `main`.**
+
 ### Open at session end
-- **PR #128** (v0.4.8.2-alpha, branch `0.4.8.2`, 15 files) — **open, owner merging himself.** Set to close
-  **#126** on merge. `loader` stays 2 → **no re-drag**; saved PDFs auto-reparse on update.
 - **Bay check once live:** 2017 Alltrack Drivetrain card → one gearbox (`0D9 (AWD)`) + only its own final
   drive. Bonus to confirm if one turns up: a Golf R / Touareg should now show a single AWD wheel-bolt
   torque on the SX card instead of "FWD … · AWD …".
