@@ -578,16 +578,18 @@
   // v0.3.15.4 rejected any such line outright, which silently dropped the 100 Nm.
   // So: mask the RANGE, then look at what's left — a value that survives belongs to
   // the fastener. No survivors ⇒ it really is just a wrench listing (issue #75).
-  var NM_RANGE   = /\d+(?:[.,]\d+)?\s*-\s*\d+(?:[.,]\d+)?\s*N\s*m\b/i;      // test only (non-global: no lastIndex state)
   var NM_RANGE_G = /\d+(?:[.,]\d+)?\s*-\s*\d+(?:[.,]\d+)?\s*N\s*m\b/gi;
   var NM_SPEC_G  = /\d+(?:[.,]\d+)?\s*N\s*m\b(?:\s*\+\s*\d+\s*°)?/gi;       // keeps an angle stage ("100 Nm + 90°")
-  function isWrenchLine(line) {
-    if (!/\btorque\s+wrench\b/i.test(line)) return false;
-    TOOL_RE.lastIndex = 0;                 // TOOL_RE is /g — .test() would resume mid-string
-    var hasTool = TOOL_RE.test(line);
-    TOOL_RE.lastIndex = 0;
-    return hasTool && NM_RANGE.test(line);
-  }
+  // The signature of a wrench listing is "torque wrench" FOLLOWED BY a range — its
+  // own capacity. Order matters: a genuine range spec ("tighten to 100-120 Nm with
+  // a torque wrench") puts the range BEFORE the wrench and is left alone.
+  // Deliberately does NOT require a tool number on the line (issue #124): ELSA's
+  // "Tool list" panel puts the number on its OWN line and the name on the next, so
+  // a bare "Torque Wrench, 40-200Nm" carries no number and was read as a 200 Nm
+  // spec. Whether it's a listing or a real instruction is decided by
+  // specsBesideWrench, not by the presence of a number.
+  var WRENCH_RANGE = /\btorque\s+wrench\b[^.]*?\d+(?:[.,]\d+)?\s*-\s*\d+(?:[.,]\d+)?\s*N\s*m\b/i;
+  function isWrenchLine(line) { return WRENCH_RANGE.test(line); }
   // the fastener's own spec(s) on a wrench line — [] when the line is only a listing.
   // Tool numbers come out FIRST: "T10663 - 100 Nm" otherwise reads as a "10663-100 Nm"
   // range and the range mask would swallow the real spec with it.

@@ -9,7 +9,22 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.8-alpha — in progress
+## v0.4.8.1-alpha — in progress
+
+### Fixed
+- **“Torque Wrench, 40-200Nm” no longer shows up as a torque spec** (issue #124). When a page’s **Tool
+  list** panel lists the wrench on its own line, Hahns was reading the wrench’s *size* (40-200Nm) as if
+  it were a tightening spec. It now recognises a wrench listing even when the tool number sits on a
+  separate line, and ignores it. A real spec written next to a wrench (like the 100 Nm fixed in v0.4.8)
+  still shows, and a genuine range spec — “tighten to 100-120 Nm with a torque wrench” — is untouched.
+  This one was **not new in v0.4.8** — v0.4.7 did the same; it only became visible on a page whose Tool
+  list panel was captured.
+
+This ships as a normal app update, so **no re-drag needed**.
+
+---
+
+## v0.4.8-alpha — 2026-07-15
 
 ### Fixed
 - **Fluids and torque now work for cars whose name doesn’t say the family** — like the **2017 Golf
