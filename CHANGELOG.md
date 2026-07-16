@@ -19,6 +19,11 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
   still shows, and a genuine range spec — “tighten to 100-120 Nm with a torque wrench” — is untouched.
   This one was **not new in v0.4.8** — v0.4.7 did the same; it only became visible on a page whose Tool
   list panel was captured.
+- **A special tool no longer picks up the previous tool's name** (issue #125). When ELSA lists several
+  tools on one line — *"Torque Wrench, 40-200Nm - V.A.G 1332A - and Counterholder - T10663 -"* — the
+  second tool was grabbing everything before it, so **T10663** read as *"Torque Wrench, 40-200Nm -
+  V.A.G 1332A - and Counterholder"*. Each tool now takes only the name written next to it: **T10663 —
+  Counterholder**, **V.A.G 1332A — Torque Wrench, 40-200Nm**.
 
 This ships as a normal app update, so **no re-drag needed**.
 

@@ -603,7 +603,10 @@
   // and strip leading filler verbs (Use/With/Install/the…) so we're left with the
   // name. Returns "" when nothing name-like remains (then we just show the number).
   function toolDescBefore(before) {
-    var s = String(before).replace(/[\s\-–—:,.]+$/, "").trim();
+    // strip separators off BOTH ends: slicing between two tool numbers leaves a
+    // leading dash ("- and Counterholder"), which would block the filler-word
+    // stripper below from seeing the leading "and" (issue #125)
+    var s = String(before).replace(/^[\s\-–—:,.]+/, "").replace(/[\s\-–—:,.]+$/, "").trim();
     if (!s) return "";
     s = s.split(/[.;:]\s+/).pop();                  // the clause nearest the number
     var prev;
@@ -630,12 +633,17 @@
   function toolEntries(line) {
     var out = [];
     TOOL_RE.lastIndex = 0;
-    var m;
+    var m, prevEnd = 0;
     while ((m = TOOL_RE.exec(line))) {
       var num = m[0].replace(/\s+/g, " ").trim();
-      var desc = toolDescBefore(line.slice(0, m.index)) ||
+      // A tool's name is the text between the PREVIOUS tool number and this one —
+      // NOT the whole line before it. ELSA lists several tools per line ("Torque
+      // Wrench, 40-200Nm - V.A.G 1332A - and Counterholder - T10663 -"), so slicing
+      // from 0 gave T10663 the previous tool's name too (issue #125).
+      var desc = toolDescBefore(line.slice(prevEnd, m.index)) ||
                  toolDescAfter(line.slice(m.index + m[0].length));
       out.push({ num: num, desc: desc });
+      prevEnd = m.index + m[0].length;
     }
     return out;
   }
