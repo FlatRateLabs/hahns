@@ -5,6 +5,95 @@ permanent project reference.
 
 ---
 
+## Session close (2026-07-16) — v0.4.8.2-alpha: issue #126 (built, NOT yet deployed)
+
+Picked up #126 exactly where the last session parked it. **The previous diagnosis was right** (parser
+bug, not matching) and the reverted "filter matched by AWD" non-fix was correctly rejected. Two owner
+answers reshaped the fix before any code was written.
+
+### Owner's two answers, and what the corpus said
+1. **"Rear final drive has its own section for Alltrack and its own for Golf R."** Confirmed: across all
+   27 PDFs, **`Golf R` (5×) and `Alltrack` (4×) are the ONLY variant-named rows in the entire corpus** —
+   everything else is qualified by AWD / a trans code / EDL. So the variant filter is narrow, not a
+   general guess.
+2. **"For AWD we look for AWD, 4mo, 4motion."** Checked: the **tables** only ever write **AWD (117) /
+   FWD (4)** — **zero 4MOTION/4MO in 27 years**. His designator list applies to the **vehicle** side
+   (ELSA Model Name), where `fluidVeh` already handled all three. **Nothing to change** — worth checking
+   before "fixing" what wasn't broken.
+
+### ⚠️ The question that changed the design — ASK IT, don't assume
+Asked whether an **AWD-only model (Golf R, Touareg)** still prints a marker in ELSA's Model Name.
+**Owner: "Can come through bare."** So **no marker ≠ FWD**. Had I taken the tidier "absent = FWD" reading
+(which his answer #2 seemed to endorse), a **Golf R would read as FWD and get the wrong DSG capacity** —
+another silent-wrong. Rule adopted: **marker present → narrow to it; absent → show both, labelled**,
+matching the torque card's existing "never guess FWD".
+
+### Owner's 3rd answer: "there is no FWD Golf R. Same for Touareg and Alltrack"
+Domain knowledge **not derivable from the data** (the Golf table covers the whole family, so nothing in
+it says which variants are AWD-only). Added **`AWD_ONLY`** in `fluidVeh` → those three count as AWD on
+the name alone, killing the last "show both" guess. **Set in `fluidVeh` so the torque card inherits it**
+(`sxForVehicle` → `fluidVeh`) — a bare-named Golf R now gets the AWD wheel torque, not "FWD 120 · AWD 140".
+- **Safe by construction:** the list only ADDS confidence (missing entry → falls back to "show both",
+  safe); a **wrong entry is not** (would hide the FWD spec from a car that has one).
+- **⚠️ Trap caught while writing it: "R-Line" is a TRIM, sold FWD.** `\bGOLF\s*R\b` happily matches
+  "GOLF R-LINE" (the `-` is a word boundary) → an FWD R-Line would have been read as an R. Hence
+  `(?!\s*-?\s*LINE)`. Unit-tested both spellings + the Tiguan/Atlas R-Line cases.
+
+### The fix (3 parts, all in `src/helper.js`)
+1. **`parseCAC` merges wrapped applications** — the actual #126 root cause. Signature is **structural**:
+   an Application cell with **no Component and no Capacity of its own** (a real new application always
+   carries its first capacity on the same line — that's what keeps the `Alltrack` row separate from the
+   `0D9 (AWD)` continuation). **`!TRANS_RE.test(app)` is load-bearing** — see the trap below.
+2. **`pickDrivetrain`** — narrow FWD/AWD only when `veh.awd` is true.
+3. **`filterVariants`** — data-driven (a variant = an application matching no known qualifier), no third
+   hardcoded model name. Matches none → keep all; never empty the card on a guess.
+
+### ⚠️ The trap parser-test caught (I'd have shipped it)
+First version merged **2024 Atlas `8-Speed Automatic (09S)` + `(09U)` into one row** — they're **siblings
+sharing one capacity**, not a wrap, and merging **invented a transmission**. Same empty-Component/
+empty-Capacity shape as a real wrap; only the FRAGMENT-vs-complete-name distinction separates them
+(`!TRANS_RE`). **Found by `tools/parser-test.js`, not by eye** — third session running where the guard
+earned itself.
+
+### Scope was bigger than the Alltrack
+The split hits **50+ rows across Eos/Jetta/Passat/CC/Beetle/Routan/Atlas/Touareg, 2006–2022**. It also
+**reunited capacities that had drifted**: Refill/Mechatronic were split from Initial Fill, and the
+**Touareg's transfer-case capacities sat under a phantom `*Dependant on engine type` row** instead of the
+transmission. Both latent bugs nobody had reported.
+
+### Verified
+- **Invariant proof (new, worth reusing):** the multiset of capacity VALUES per model is **identical for
+  203/203 models across 27 years** — the merge only REGROUPS values onto the right rows, never invents or
+  loses one. This is the check that made a 2-family reparse safe to ship.
+- parser-test: **drift 17 → 16 → reviewed all 16 → 0 after `--update`** (46 PDFs). Every remaining diff
+  was a merge improvement or an index shift.
+- Real 2017 PDF + the owner's real ELSA name (`GSW ALLTRACK SE 1.8T AUTO 4MO`) through the real functions:
+  Alltrack → **one** gearbox (`0D9 (AWD)`) + **only** its own final drive (Golf R gone). Bare-named Golf R
+  → also **one** gearbox + only its own final drive (via `AWD_ONLY`). Plain FWD Golf → unchanged (still
+  both, labelled — we can't prove FWD, and that noise is pre-existing + unreported).
+- `AWD_ONLY` unit-tested over 12 real-shaped ELSA names incl. both R-Line spellings — all pass.
+- Built bundle boots in a real browser (`window.VWJB` defined, temp `__t` export confirmed stripped from
+  the build, no console errors). **Did NOT** drive the full fluids window in-browser — that needs a real
+  licensed PDF in IndexedDB and copying VW PDFs into the served repo is off-limits.
+
+### ⚠️ Bumped BOTH parser versions
+`PARSER_1126_VER` 1.3.5→**1.3.6** AND `PARSER_0610_VER` 2.0.0→**2.0.1** — `parseCAC` serves both families
+and drift spanned **2006–2022**. Bumping only 11-26 would have stranded every saved 2006–2010 PDF. p0005
+doesn't use `parseCAC` → untouched. (See [[fluids-reparse-trigger-gotcha]].)
+
+### Open at session end
+- **v0.4.8.2-alpha built + verified locally, NOT committed/deployed** — no PR yet. `loader` stays 2 → no
+  re-drag. Saved PDFs auto-reparse on update.
+- **#126 not yet closed** (deploy + owner bay-check first: 2017 Alltrack drivetrain card).
+- **Deliberately NOT fixed — worth its own issue:** the pre-existing `subs` filter still hides `Only AWD`
+  rows (33+ across the corpus) whenever the marker is absent — the exact unsafe guess we just banned
+  everywhere else. **`AWD_ONLY` shrank the blast radius** (Golf R / Touareg / Alltrack now resolve AWD, so
+  they keep their rows), leaving only a genuinely-AWD car that is BOTH bare-named AND not in that list.
+  Unwinding it makes plain FWD cars noisier, so it needs the owner's call, not a drive-by.
+- Owner's other #126 comment question (sub-components assuming no-marker = FWD) is answered by the above.
+
+---
+
 ## Session close (2026-07-15, later) — v0.4.8.1-alpha: wrench-capacity + tool-name (PR #127, owner merging)
 
 Immediately after the v0.4.8 deploy the owner bay-tested a **2023 ID.4 front sway bar overview** and filed
