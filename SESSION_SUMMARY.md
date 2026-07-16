@@ -5,11 +5,14 @@ permanent project reference.
 
 ---
 
-## Session close (2026-07-15) — v0.4.8-alpha bug-fix batch (5 fixes)
+## Session close (2026-07-15) — v0.4.8-alpha bug-fix batch (5 fixes) — LIVE + owner bay-verified
 
 Owner-driven bug-fix session off in-app feedback issues. **Batched into ONE version** rather than five
 patch releases — each deploy costs a hard-refresh + live-check, and techs get app updates automatically.
-App-only → **no re-drag** (`LOADER_VER` stays 2).
+App-only → **no re-drag** (`LOADER_VER` stays 2). Merged as **PR #123** (owner merged it himself),
+**live-confirmed** `version.json` = `v0.4.8-alpha · 2026-07-16 03:16 UTC`. **Issues #118, #119, #120
+CLOSED** (auto-closed by the PR). **Owner bay-verified all five afterwards** — Alltrack fluids AND torque,
+the icon drag, the 100 Nm, and editing hand-added lines. Both open bay-checks came back good.
 
 ### 1. Issues #118 + #119 — 2017 Golf Alltrack: no fluids, no torque (ONE root cause)
 Both lookups keyed on ELSA's **Model Name**, and the substring test runs *table-name inside vehicle-name*.
@@ -68,9 +71,15 @@ PDFs.** Browser: Sales Code row renders + editable, blank one doesn't nag, edit 
 clear / blur / hand-added-tool cases all pass, no console errors. Temp `__t` export used then stripped
 (confirmed absent from the build).
 
-### Open
-- **Bay check:** drag the button **by the icon**; and whether ELSA prints a Sales Code on an older car
-  (harmless if not — that's what `opt` is for).
+### Bay-verified (owner, after deploy)
+Alltrack fluids ✓ · Alltrack torque ✓ · icon drag → real bookmark ✓ · the 100 Nm populates ✓ ·
+hand-added lines editable ✓. The drag fix in particular could only be confirmed this way — the bookmarks
+bar is native browser chrome, not reachable from the page.
+
+### Still unknown (low stakes)
+- **Whether ELSA prints a "Sales Code" on an OLDER car** (verified only on the 2017 Alltrack). If it
+  doesn't, nothing breaks: the field is `opt`, so a blank is silent and the name match still runs first.
+  Worth a glance next time an early-2000s car is on the hoist.
 
 ---
 
