@@ -578,16 +578,18 @@
   // v0.3.15.4 rejected any such line outright, which silently dropped the 100 Nm.
   // So: mask the RANGE, then look at what's left — a value that survives belongs to
   // the fastener. No survivors ⇒ it really is just a wrench listing (issue #75).
-  var NM_RANGE   = /\d+(?:[.,]\d+)?\s*-\s*\d+(?:[.,]\d+)?\s*N\s*m\b/i;      // test only (non-global: no lastIndex state)
   var NM_RANGE_G = /\d+(?:[.,]\d+)?\s*-\s*\d+(?:[.,]\d+)?\s*N\s*m\b/gi;
   var NM_SPEC_G  = /\d+(?:[.,]\d+)?\s*N\s*m\b(?:\s*\+\s*\d+\s*°)?/gi;       // keeps an angle stage ("100 Nm + 90°")
-  function isWrenchLine(line) {
-    if (!/\btorque\s+wrench\b/i.test(line)) return false;
-    TOOL_RE.lastIndex = 0;                 // TOOL_RE is /g — .test() would resume mid-string
-    var hasTool = TOOL_RE.test(line);
-    TOOL_RE.lastIndex = 0;
-    return hasTool && NM_RANGE.test(line);
-  }
+  // The signature of a wrench listing is "torque wrench" FOLLOWED BY a range — its
+  // own capacity. Order matters: a genuine range spec ("tighten to 100-120 Nm with
+  // a torque wrench") puts the range BEFORE the wrench and is left alone.
+  // Deliberately does NOT require a tool number on the line (issue #124): ELSA's
+  // "Tool list" panel puts the number on its OWN line and the name on the next, so
+  // a bare "Torque Wrench, 40-200Nm" carries no number and was read as a 200 Nm
+  // spec. Whether it's a listing or a real instruction is decided by
+  // specsBesideWrench, not by the presence of a number.
+  var WRENCH_RANGE = /\btorque\s+wrench\b[^.]*?\d+(?:[.,]\d+)?\s*-\s*\d+(?:[.,]\d+)?\s*N\s*m\b/i;
+  function isWrenchLine(line) { return WRENCH_RANGE.test(line); }
   // the fastener's own spec(s) on a wrench line — [] when the line is only a listing.
   // Tool numbers come out FIRST: "T10663 - 100 Nm" otherwise reads as a "10663-100 Nm"
   // range and the range mask would swallow the real spec with it.
@@ -601,7 +603,10 @@
   // and strip leading filler verbs (Use/With/Install/the…) so we're left with the
   // name. Returns "" when nothing name-like remains (then we just show the number).
   function toolDescBefore(before) {
-    var s = String(before).replace(/[\s\-–—:,.]+$/, "").trim();
+    // strip separators off BOTH ends: slicing between two tool numbers leaves a
+    // leading dash ("- and Counterholder"), which would block the filler-word
+    // stripper below from seeing the leading "and" (issue #125)
+    var s = String(before).replace(/^[\s\-–—:,.]+/, "").replace(/[\s\-–—:,.]+$/, "").trim();
     if (!s) return "";
     s = s.split(/[.;:]\s+/).pop();                  // the clause nearest the number
     var prev;
@@ -628,12 +633,17 @@
   function toolEntries(line) {
     var out = [];
     TOOL_RE.lastIndex = 0;
-    var m;
+    var m, prevEnd = 0;
     while ((m = TOOL_RE.exec(line))) {
       var num = m[0].replace(/\s+/g, " ").trim();
-      var desc = toolDescBefore(line.slice(0, m.index)) ||
+      // A tool's name is the text between the PREVIOUS tool number and this one —
+      // NOT the whole line before it. ELSA lists several tools per line ("Torque
+      // Wrench, 40-200Nm - V.A.G 1332A - and Counterholder - T10663 -"), so slicing
+      // from 0 gave T10663 the previous tool's name too (issue #125).
+      var desc = toolDescBefore(line.slice(prevEnd, m.index)) ||
                  toolDescAfter(line.slice(m.index + m[0].length));
       out.push({ num: num, desc: desc });
+      prevEnd = m.index + m[0].length;
     }
     return out;
   }
