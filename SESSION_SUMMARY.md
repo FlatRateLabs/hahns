@@ -5,6 +5,75 @@ permanent project reference.
 
 ---
 
+## Session close (2026-07-15) — v0.4.8-alpha bug-fix batch (5 fixes)
+
+Owner-driven bug-fix session off in-app feedback issues. **Batched into ONE version** rather than five
+patch releases — each deploy costs a hard-refresh + live-check, and techs get app updates automatically.
+App-only → **no re-drag** (`LOADER_VER` stays 2).
+
+### 1. Issues #118 + #119 — 2017 Golf Alltrack: no fluids, no torque (ONE root cause)
+Both lookups keyed on ELSA's **Model Name**, and the substring test runs *table-name inside vehicle-name*.
+The Alltrack is `GSW ALLTRACK SE 1.8T AUTO 4MO` — **contains no "GOLF"** — so `"…ALLTRACK…".indexOf("GOLF")`
+failed against the `Golf Family` tables. (The `GTI|GOLFR → +="GOLF"` hack at helper.js:2568 was the same
+wall hit twice before; Alltrack would have been hardcode #3 — hence the general fix.)
+- **Owner's call, and it was right:** pull the **Sales Code** off the Vehicle Summary and use it as a
+  backup key. The tables already stored the codes all along (`modelCode` / `platform`) — **only the
+  vehicle side was missing**, so no reparse needed.
+- `VEH_LABELS.sales` + `v.sales`; `VEH_FIELDS` entry is **`opt:true`** = shown/editable/printed but never
+  in the "Missing:" nag (unknown whether older cars print one; a blank must stay silent).
+- **`platformHit(codes, veh)`** — the platform is a **PREFIX** of the Sales Code (`BX5DQ7` → `BX5`), so
+  prefix-only, longest wins. Not substring: codes are 2–3 chars and `5C` would claim anything.
+  **Fallback only** — name match runs first and unchanged, so nothing that worked can regress.
+
+### 2. The year-label trap (why #119 needed more than the Sales Code)
+Owner initially read the `2018` on the 2017 chart's Golf table as a **typo** and said to trust the title.
+**Pushed back with the data, owner agreed** — worth keeping, since the "trust the title" instinct will recur:
+- 4 of 8 sections in `sx-2017.pdf` disagree with the title (Golf **2018**, CC **2018**, Tiguan Limited
+  **2018**, Tiguan (BW2) **2019**). Not a typo — **pull-aheads**. Trusting the title would relabel the
+  **2nd-gen BW2 Tiguan as a 2017**, a body that didn't exist yet. CLAUDE.md already documents the mirror
+  case (2018 chart = 2019+2021 tables, no 2018).
+- **No chart anywhere labels a Golf as 2017**, so the Sales Code alone still found nothing.
+- **PLATFORM is the stable identity, the printed year wobbles.** BX5 appears under 2015/2016/2018 and
+  **all three carry identical 30/120 N·m** (verified) → `sxByPlatform` searches every year, nearest wins.
+  Fluid PDFs are genuinely one-year-per-file, so they need only the in-year fallback.
+- Also: `4MO` added to the AWD regex — ELSA abbreviates 4MOTION that way, so the Alltrack read as not-AWD.
+
+### 3. The vanishing 100 Nm (owner-reported from a Stabilizer Bar dump)
+`Torque Wrench, 40-200Nm - V.A.G 1332A - and Counterholder - T10663 - 100 Nm` produced **no torque row at
+all** — the issue-#75 wrench guard (v0.3.15.4) rejected any line with wrench+tool+range wholesale, taking
+the real spec with it. Now `isWrenchLine` + **`specsBesideWrench`**: whatever survives masking is the
+fastener's; new SECTION hook **`clean(line)`** reduces the row to `100 Nm` (dedup key now uses cleaned text).
+- **⚠️ The tool-strip ORDER is load-bearing:** `T10663 - 100 Nm` *itself* matches the range pattern as
+  `10663-100 Nm`. My first version masked ranges first → swallowed the real spec → **looked right and
+  silently still failed**. Tool numbers must come out FIRST. Caught only because I re-ran the repro built
+  from the owner's dump. Same lesson as v0.3.18.2: test the RAW real string.
+
+### 4. Issue #120 — dragging by the icon makes a blank bookmark
+`<img>` is natively draggable and beats its parent `<a>`, so grabbing the button by the Hahns icon dragged
+the *picture*, not the `javascript:` href → dead bookmark, no error. One attribute: `draggable="false"`.
+**Not automatable** (bookmarks bar is native chrome) → needs a bay check.
+
+### 5. Hand-added lines were uneditable after Enter
+Row text rendered as a read-only span; only `.lbl` was editable → a typo meant delete + retype. Now
+`byHand(it)` (`src === HAND_SRC`) → `txtOpen()` emits a click-to-edit span (dotted underline), handler
+mirrors the `.lbl` editor. **Clearing is a no-op, not a delete** (a stray click+blur must never drop a
+line). Scanned rows stay read-only — that text is ELSA's.
+
+### Verified
+Both bugs driven through the **real functions using verbatim lines from the owner's two diagnostic dumps**
+(not hand-built strings). Alltrack → Golf Family both lookups, **30/120 N·m**, full fluid card;
+`6. Nut → 100 Nm` with both tools still captured; Jetta/Passat/Touareg/Tiguan still name-match (fallback
+dormant); #75 listing still rejected; plain specs + angle stages untouched. **Parser test: 0 drift / 46
+PDFs.** Browser: Sales Code row renders + editable, blank one doesn't nag, edit round-trip persists, Esc /
+clear / blur / hand-added-tool cases all pass, no console errors. Temp `__t` export used then stripped
+(confirmed absent from the build).
+
+### Open
+- **Bay check:** drag the button **by the icon**; and whether ELSA prints a Sales Code on an older car
+  (harmless if not — that's what `opt` is for).
+
+---
+
 ## Session close (2026-07-11, later) — parser regression test + v0.4.7 shop-config export/import (LIVE)
 
 Same day, second half: after the bug-fix run (entry below), the owner asked "anything you'd add/improve?"

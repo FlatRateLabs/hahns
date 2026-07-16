@@ -9,7 +9,45 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.7-alpha — in progress
+## v0.4.8-alpha — in progress
+
+### Fixed
+- **Fluids and torque now work for cars whose name doesn’t say the family** — like the **2017 Golf
+  Alltrack**, which ELSA calls “GSW ALLTRACK”. The tables list it under **Golf Family**, so looking it
+  up by name found nothing and you got “no Alltrack” / “no listing”. Hahns now also reads the
+  **Sales Code** off the Vehicle Summary (e.g. `BX5DQ7`) and uses it as a backup to find the right
+  table when the name doesn’t match. The 2017 Alltrack now correctly shows the Golf Family fluids and
+  **30 N·m drain plug / 120 N·m wheel bolt**. (Issues #118, #119)
+- **Torque now looks across chart years when it has to.** The year printed on a Service Xpress torque
+  table isn’t always the year on the cover — the 2017 chart labels its Golf table *2018*. If nothing
+  matches for your model year, Hahns now finds the same platform on another year’s chart instead of
+  showing nothing.
+- **4MOTION is recognised when ELSA shortens it to “4MO”**, so all-wheel-drive cars are identified
+  properly for the wheel-bolt torque.
+- **Torque specs written on the same line as a torque wrench are no longer missed.** When ELSA writes
+  a component like *“Torque Wrench, 40-200Nm - V.A.G 1332A - and Counterholder - T10663 - 100 Nm”*,
+  Hahns was throwing the whole line away and the **100 Nm never showed up**. It now tells the wrench’s
+  *range* (40-200Nm — that’s the tool’s size, not your spec) apart from the fastener’s *actual* spec,
+  and the row now reads a clean **100 Nm**. The wrench and counterholder are still listed under
+  Special Tools as before.
+- **Dragging the install button by the Hahns icon no longer makes a blank bookmark.** Grabbing the
+  button by the picture used to drag the picture instead of the link. Any part of the button works
+  now. (Issue #120)
+
+- **Lines you add by hand can now be edited.** Previously, once you typed a line and hit Enter it was
+  stuck — a typo meant deleting it and starting over. Click any line you added (they have a dotted
+  underline) to fix it in place; **Enter** saves, **Esc** cancels. Lines scanned from ELSA stay as the
+  manual wrote them.
+
+### Added
+- **Sales Code is shown in the green vehicle bar**, alongside VIN and engine code — and you can click
+  to correct it by hand like the other fields.
+
+This ships as a normal app update, so **no re-drag needed**.
+
+---
+
+## v0.4.7-alpha — 2026-07-11
 
 ### Added
 - **Copy your setup to another shop computer.** ⚙ Settings has a new **“Copy setup to another computer”**

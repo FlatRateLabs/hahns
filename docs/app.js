@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.4.7-alpha · 2026-07-11 17:01 UTC";
+var BUILD = "v0.4.8-alpha · 2026-07-16 03:16 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -348,20 +348,21 @@ title: "Torque",
 label: true,
 autoPart: true,
 icon: "M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 2 2 6-6a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3z",
+// strip a wrench listing's tool noise so the row reads "100 Nm", not the whole
+// "Torque Wrench, 40-200Nm - V.A.G 1332A - …" line (the tools are already
+// captured by the tools bucket). Non-wrench lines pass through untouched.
+clean: function (line) {
+if (!isWrenchLine(line)) return line;
+var specs = specsBesideWrench(line);
+return specs.length ? specs.join(" + ") : line;
+},
 // a number immediately followed by Nm, OR an angle/stage line near torque wording
 test: function (line) {
-// a torque WRENCH is a special tool, not a torque spec. Only skip it when
-// the line is clearly a wrench LISTING: it carries a tool number AND has
-// "torque wrench" directly followed by an Nm RANGE (the tool's capacity,
-// e.g. "VAG 1331A, Torque Wrench 6-50 Nm"). A real tightening instruction
-// that merely mentions a torque wrench (a single target value) is KEPT.
-if (/\btorque\s+wrench\b/i.test(line)) {
-TOOL_RE.lastIndex = 0;
-var wrenchListing = TOOL_RE.test(line) &&
-/\btorque\s+wrench\b[^.]*?\d+(?:[.,]\d+)?\s*-\s*\d+(?:[.,]\d+)?\s*N\s*m\b/i.test(line);
-TOOL_RE.lastIndex = 0;
-if (wrenchListing) return false;
-}
+// a torque WRENCH is a special tool, not a torque spec — but the same line
+// may still carry the fastener's real value. Drop it ONLY when nothing
+// survives masking the wrench's capacity range (issue #75); a line like
+// "Torque Wrench, 40-200Nm - V.A.G 1332A - … - 100 Nm" keeps its 100 Nm.
+if (isWrenchLine(line) && !specsBesideWrench(line).length) return false;
 if (/\d+(?:[.,]\d+)?\s*N\s*m\b/i.test(line)) return true;
 if (/\b(stage|step)\b/i.test(line) && /(\d+\s*°|\d+\s*degrees?|turn\s+(?:a\s+)?(?:further\s+)?\d+)/i.test(line)) return true;
 if (/\btighten\b/i.test(line) && /(\d+\s*°|\d+\s*degrees?)/i.test(line)) return true;
@@ -510,6 +511,35 @@ return "warning";
 //                                 the trailing letter is REQUIRED here so plain
 //                                 ranges like "6-50 Nm" / "40-200 Nm" don't match)
 var TOOL_RE = /\b(?:T\d{3,5}[A-Z]?(?:\/\d+)?|VAS\s?\d{3,5}(?:\s\d{2,4}){0,2}[A-Z]?(?:\/\d+)?|V\.?A\.?[SG]\.?\s?\d{3,4}(?:\s\d{2,4}){0,2}\s?[A-Z]?(?:\/\d+)?|\d{1,3}-\d{2,3}\s?[A-Z](?:\/\d+)?)\b/gi;
+// `src` marker for a line the tech typed via "+ add" — doubles as the page-group
+// heading in a multi-page job AND as the flag that makes the row editable (v0.4.8)
+var HAND_SRC = "Added by hand";
+function byHand(it) { return !!it && it.src === HAND_SRC; }
+// ---- torque wrench lines (issue #75, corrected v0.4.8) ----------------------
+// A torque WRENCH is a special tool and its "40-200Nm" is the tool's CAPACITY
+// RANGE, never a fastener's spec. But ELSA also writes the wrench, a counterhold
+// tool AND the real spec on ONE line:
+//   "Torque Wrench, 40-200Nm - V.A.G 1332A - and Counterholder - T10663 - 100 Nm"
+// v0.3.15.4 rejected any such line outright, which silently dropped the 100 Nm.
+// So: mask the RANGE, then look at what's left — a value that survives belongs to
+// the fastener. No survivors ⇒ it really is just a wrench listing (issue #75).
+var NM_RANGE   = /\d+(?:[.,]\d+)?\s*-\s*\d+(?:[.,]\d+)?\s*N\s*m\b/i;      // test only (non-global: no lastIndex state)
+var NM_RANGE_G = /\d+(?:[.,]\d+)?\s*-\s*\d+(?:[.,]\d+)?\s*N\s*m\b/gi;
+var NM_SPEC_G  = /\d+(?:[.,]\d+)?\s*N\s*m\b(?:\s*\+\s*\d+\s*°)?/gi;       // keeps an angle stage ("100 Nm + 90°")
+function isWrenchLine(line) {
+if (!/\btorque\s+wrench\b/i.test(line)) return false;
+TOOL_RE.lastIndex = 0;                 // TOOL_RE is /g — .test() would resume mid-string
+var hasTool = TOOL_RE.test(line);
+TOOL_RE.lastIndex = 0;
+return hasTool && NM_RANGE.test(line);
+}
+// the fastener's own spec(s) on a wrench line — [] when the line is only a listing.
+// Tool numbers come out FIRST: "T10663 - 100 Nm" otherwise reads as a "10663-100 Nm"
+// range and the range mask would swallow the real spec with it.
+function specsBesideWrench(line) {
+var rest = String(line).replace(TOOL_RE, " ").replace(NM_RANGE_G, " ");
+return rest.match(NM_SPEC_G) || [];
+}
 // ELSA writes tools as "<Tool Name> - <number> -". Pull the tool name out of the
 // text BEFORE the number: drop a trailing separator, keep the nearest clause,
 // and strip leading filler verbs (Use/With/Install/the…) so we're left with the
@@ -2294,7 +2324,12 @@ inp.click();
 function sxForVehicle(r) {
 var st = loadSx(); if (!(st && st.byYear)) return null;
 var v = fluidVeh(r); if (!v.year) return null;
-var list = st.byYear[v.year]; if (!list || !list.length) return null;
+// no chart tables this year at all → the cross-year platform match is the only shot
+var list = st.byYear[v.year] || [];
+if (!list.length) {
+var only = sxByPlatform(st, v);
+return only ? { entry: only, drain: only.drain, wheel: only.wheel, year: only.year, veh: v } : null;
+}
 // MODEL NAME is the reliable key — torque is per-model, and engine codes are
 // SHARED across models (CCTA is in Eos/Golf/Jetta/Tiguan), so a code can only
 // DISAMBIGUATE among model matches, never pick the model on its own.
@@ -2322,7 +2357,27 @@ if (!hit) hit = matches[0].e;
 var uniq = list.filter(function (e) { return e.codes && e.codes.indexOf(v.engineCode) >= 0; });
 if (uniq.length === 1) hit = uniq[0];
 }
-return hit ? { entry: hit, drain: hit.drain, wheel: hit.wheel, year: v.year, veh: v } : null;
+if (!hit) hit = sxByPlatform(st, v);
+return hit ? { entry: hit, drain: hit.drain, wheel: hit.wheel, year: hit.year || v.year, veh: v } : null;
+}
+// Last resort: match the Sales Code's platform ACROSS EVERY YEAR.
+// The year printed on a chart's torque table is not a reliable index — the 2017
+// chart labels its Golf table 2018 (and its Tiguan 2019), so no chart lists a
+// "2017" Golf at all. The PLATFORM is the stable identity: a 2017 Alltrack is BX5,
+// and every BX5 Golf entry (2015/2016/2018) carries the same 30/120 N·m. Prefer
+// the nearest year, so a genuine mid-platform spec change resolves to the closest
+// chart rather than an arbitrary one. Only ever runs when we'd show nothing.
+function sxByPlatform(st, v) {
+var best = null, bestScore = 0, bestGap = Infinity, vy = +v.year || 0;
+Object.keys(st.byYear).forEach(function (y) {
+var gap = vy ? Math.abs((+y || 0) - vy) : 0;
+st.byYear[y].forEach(function (e) {
+var s = platformHit(e.platform, v);
+if (!s) return;
+if (s > bestScore || (s === bestScore && gap < bestGap)) { best = e; bestScore = s; bestGap = gap; }
+});
+});
+return best;
 }
 // ---- display text for the two specs (N·m). Wheel: if the value splits by
 // drivetrain AND the vehicle is known-AWD, show that one; otherwise show both
@@ -2352,11 +2407,14 @@ var veh = {
 year: String(v.year || ""), model: String(v.model || ""),
 engine: String(v.engine || "").toUpperCase(), trans: String(v.trans || "").toUpperCase()
 };
+// "BX5DQ7" → "BX5DQ7": the table's platform code is a PREFIX of this (see platformHit)
+veh.sales = String(v.sales || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 // a vehicle can carry more than one trans code — EVs list front + rear
 // drive units ("0MH / 0MK"); ICE is one ("09PA - AQ450-8A"). Keep them all.
 veh.transCodes = veh.trans.split(/[^A-Z0-9]/).filter(function (s) { return /^[A-Z0-9]{3,6}$/.test(s); });
 veh.transCode = veh.transCodes[0] || "";
-veh.awd = /\bAWD\b|4 ?MOTION|4MOT/i.test(veh.model);
+// ELSA abbreviates 4MOTION down to a bare "4MO" ("GSW ALLTRACK SE 1.8T AUTO 4MO")
+veh.awd = /\bAWD\b|4 ?MOTION|4MOT?\b/i.test(veh.model);
 // displacement in litres, for the Parser 06-10 nearest-cc oil/coolant match.
 // Prefer the exact "#### ccm" from the Engine Code field ("BPY - 1984 ccm");
 // fall back to a "N.NL" printed in the engine or model text. 0 = unknown.
@@ -2405,6 +2463,20 @@ return String(text || "").toUpperCase().split(/[\/,]/).map(function (s) { return
 // normalise a model name for comparison: "ID.4" ↔ "ID.4 AWD PRO S",
 // "Atlas Family" ↔ "ATLAS SEL AWD"
 function modelNorm(s) { return String(s || "").toUpperCase().replace(/\bFAMILY\b/g, " ").replace(/[^A-Z0-9]/g, ""); }
+// Score a table's platform cell ("AU1 / BX5 / 5G1", "5C") against the vehicle's
+// Sales Code ("BX5DQ7"): the platform is the code's PREFIX. Codes vary in length
+// (2–3 chars), so a plain substring test would let "5C" claim "5C..."-anything —
+// hence prefix-only, longest match wins, mirroring the model-name scoring above.
+// Returns the matched code's length, or 0 for no match.
+function platformHit(codes, veh) {
+if (!veh.sales) return 0;
+var best = 0;
+String(codes || "").toUpperCase().split("/").forEach(function (tok) {
+var t = tok.replace(/[^A-Z0-9]/g, "");
+if (t && veh.sales.indexOf(t) === 0 && t.length > best) best = t.length;
+});
+return best;
+}
 function pickFluidModel(models, veh) {
 var vm = modelNorm(veh.model);
 if (/GTI|GOLFR/.test(vm)) vm += "GOLF";   // GTI / Golf R live under "Golf Family"
@@ -2415,7 +2487,16 @@ var t = modelNorm(tok);
 if (t && vm.indexOf(t) >= 0 && t.length > score) { score = t.length; best = m; }
 });
 });
-return best;
+if (best) return best;
+// No name match — fall back to the Sales Code's platform. ELSA's Model Name
+// doesn't always name the family ("GSW ALLTRACK …" is a Golf), but the Sales
+// Code always leads with the platform the table is keyed by.
+var pBest = null, pScore = 0;
+(models || []).forEach(function (m) {
+var s = platformHit(m.modelCode, veh);
+if (s > pScore) { pScore = s; pBest = m; }
+});
+return pBest;
 }
 // trans codes from an Application cell — parenthesised "(09P)" and bare
 // "Single Speed 0MH" (EV reduction gears are often written without parens)
@@ -2943,14 +3024,16 @@ if (!s.test(line)) return;
 // auto part names only flow into torque/replace; fluids keeps the manual
 // chip but won't grab a stray legend name (capacities aren't callout parts)
 var part = s.autoPart ? currentPart || "" : "";
+var text = s.clean ? s.clean(line) : line;
 // dedup on part + text, so the SAME wording under different components
 // (e.g. "Always replace after removing" on two separate bolts) is kept.
 // For figure-aware sections, scope the key to the figure too, so an
 // identical spec that legitimately repeats on a 2nd diagram isn't dropped.
-var key = ((s.autoPart ? figIdx + "::" : "") + part + "||" + line).toLowerCase();
+// Keyed on the CLEANED text so two wordings of the same spec collapse.
+var key = ((s.autoPart ? figIdx + "::" : "") + part + "||" + text).toLowerCase();
 if (seen[s.key][key]) return;
 seen[s.key][key] = 1;
-var rec = { text: line, part: part, loc: registerLoc(seg.el) };
+var rec = { text: text, part: part, loc: registerLoc(seg.el) };
 if (s.autoPart) rec.fig = figIdx;
 results[s.key].push(rec);
 });
@@ -2988,7 +3071,8 @@ var VEH_LABELS = {
 year:   /^model\s*year\b/i,
 model:  /^model\s*name\b/i,
 engine: /^engine\s*code\b/i,
-trans:  /^trans(?:mission)?\s*type\b|^gearbox\s*type\b/i
+trans:  /^trans(?:mission)?\s*type\b|^gearbox\s*type\b/i,
+sales:  /^sales\s*(?:model\s*)?code\b/i
 };
 // Electric vehicles' Vehicle Summary has NO single "Engine Code" / "Trans Type" —
 // it lists Front/Rear motor and transaxle codes instead. Match those so EVs load
@@ -3048,7 +3132,7 @@ return hits >= 2 || (hasHeader && hits >= 1);
 // Only meaningful when isVehicleSummaryPage() is true for the same page.
 function extractVehicle(segments) {
 var lines = vehLines(segments);
-var v = { vin: "", year: "", model: "", engine: "", trans: "" };
+var v = { vin: "", year: "", model: "", engine: "", trans: "", sales: "" };
 // VIN — prefer a line that names it; fall back to any VIN-shaped token
 for (var i = 0; i < lines.length && !v.vin; i++) {
 if (/\bVIN\b|chassis|vehicle\s*identification/i.test(lines[i])) {
@@ -3075,23 +3159,30 @@ var ccm = vehField(lines, VEH_LABELS.engine, null).match(/(\d{3,5})\s*ccm/i);
 if (ccm) v.engine += " - " + ccm[1] + " ccm";
 }
 v.trans  = vehField(lines, VEH_LABELS.trans, null);
+// The Sales Code ("BX5DQ7") leads with the platform the fluid/torque tables are
+// keyed by ("AU1 / BX5 / 5G1"). It's the fallback identity for cars whose Model
+// Name doesn't name its family — a "GSW ALLTRACK …" never says "Golf".
+v.sales  = vehField(lines, VEH_LABELS.sales, null);
 // EV summaries have no single Engine Code / Trans Type — collect the Front/Rear
 // motor + transaxle codes instead (joined "FRONT / REAR" for display + lookup).
 if (!v.engine) v.engine = vehFieldAll(lines, VEH_LABELS_EV.engine, ENG_VAL).join(" / ");
 if (!v.trans)  v.trans  = vehFieldAll(lines, VEH_LABELS_EV.trans, null).join(" / ");
 return v;
 }
-// the five fields in display order — shared by the panel, copy, print, dump
+// the fields in display order — shared by the panel, copy, print, dump.
+// `opt` = nice-to-have: shown and hand-editable, but never listed as "missing"
+// (not every summary prints a Sales Code, and a blank one isn't a problem).
 var VEH_FIELDS = [
 { k: "vin",    label: "VIN" },
 { k: "year",   label: "Model Year" },
 { k: "model",  label: "Model Name" },
+{ k: "sales",  label: "Sales Code", opt: true },
 { k: "engine", label: "Engine Code" },
 { k: "trans",  label: "Trans Type" }
 ];
 function vehLoaded(r) { return !!(r && r.__vehicle && r.__vehicle.vin); }
 function vehMissing(v) {
-return VEH_FIELDS.filter(function (f) { return !(v && v[f.k]); }).map(function (f) { return f.label; });
+return VEH_FIELDS.filter(function (f) { return !f.opt && !(v && v[f.k]); }).map(function (f) { return f.label; });
 }
 // (the fluid lookup used to open a page on our website; since v0.3.13 the
 // data lives on this computer and the window is built locally — see the
@@ -3481,6 +3572,9 @@ var CSS = "" +
 ".st .confirm{text-transform:none;margin-left:7px}" +
 ".item{display:flex;gap:7px;align-items:flex-start;font-size:13px;line-height:1.45;padding:5px 0 5px 10px;border-left:2px solid #e3e3e3;margin:3px 0;color:#222}" +
 ".txt{flex:1;min-width:0}" +
+// a hand-typed line is editable — a dotted underline hints at it without shouting
+".txt.edit{cursor:text;border-bottom:1px dashed #cfcfcf}" +
+".txt.edit:hover{border-bottom-color:#001e50;color:#001e50}" +
 ".del{flex-shrink:0;appearance:none;-webkit-appearance:none;background:transparent;border:0;cursor:pointer;padding:1px;margin-top:1px;color:#c3c7cf;display:flex;align-items:center}" +
 ".del svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}" +
 ".del:hover{color:#c0392b}" +
@@ -3498,6 +3592,9 @@ var CSS = "" +
 ".addrow{appearance:none;-webkit-appearance:none;background:transparent;border:1px dashed #cfcfcf;color:#5a6b8c;cursor:pointer;font-family:inherit;font-weight:600;font-size:11px;padding:4px 9px;border-radius:6px;margin-top:7px}" +
 ".addrow:hover{border-color:#001e50;color:#001e50}" +
 ".addin{width:100%;font:13px inherit;padding:6px 8px;border:1px solid #001e50;border-radius:6px;outline:none;margin-top:7px}" +
+// same input reused INSIDE a row (editing a hand-typed line) — sit inline
+// instead of claiming a full-width block below the list
+".addin.rowin{flex:1;min-width:0;width:auto;margin-top:0;padding:3px 6px}" +
 ".empty{font-size:12px;color:#9a9a9a;font-style:italic}" +
 ".srch{width:100%;font-family:inherit;font-weight:600;font-size:11px;letter-spacing:.02em;color:#5f6b80;background:#eef1f6;border:1px solid transparent;border-radius:6px;padding:5px 8px;outline:none;margin:9px 0 4px}" +
 ".srch:hover{border-color:#cfd6e4}" +
@@ -3832,6 +3929,14 @@ html += vehLoaded(r)
 }
 // group items under a per-page header once 2+ pages have been scanned
 var multiSrc = srcCount(r) >= 2;
+// A line the tech typed is their own text, so let them correct a typo in place
+// instead of deleting and retyping it. Scanned rows stay read-only — that text
+// is ELSA's, and the part label (.lbl) is the editable bit there.
+function txtOpen(s, it, idx) {
+return byHand(it)
+? '<span class="txt edit" data-tk="' + s.key + '" data-ti="' + idx + '" title="Click to edit this line">'
+: '<span class="txt">';
+}
 function itemRow(s, it, idx) {
 var del = '<button class="del" data-del="' + s.key + '" data-i="' + idx + '" title="Remove this line" aria-label="Remove this line">' + svg(TRASH) + "</button>";
 // the locate-on-page magnifier (left side). Only items with a source
@@ -3847,7 +3952,7 @@ find = '<button class="find' + (live ? "" : " off") + '" data-loc="' + esc(it.lo
 // tools show the number in bold, then the description (when we found one)
 if (s.key === "tools") {
 var t = it.num ? "<b>" + esc(it.num) + "</b>" + (it.desc ? " — " + esc(it.desc) : "") : esc(it.text);
-return '<div class="item tool">' + find + '<span class="txt">' + t + toolBadge(it) + "</span>" + del + "</div>";
+return '<div class="item tool">' + find + txtOpen(s, it, idx) + t + toolBadge(it) + "</span>" + del + "</div>";
 }
 var lbl = "";
 if (s.label) {
@@ -3861,7 +3966,7 @@ if (s.key === "warnings" && it.sev) {
 sevCls = " sev-" + it.sev;
 sevTag = '<span class="sevtag">' + esc(it.sev.toUpperCase()) + "</span>";
 }
-return '<div class="item' + sevCls + '">' + find + lbl + '<span class="txt">' + sevTag + esc(it.text) + "</span>" + del + "</div>";
+return '<div class="item' + sevCls + '">' + find + lbl + txtOpen(s, it, idx) + sevTag + esc(it.text) + "</span>" + del + "</div>";
 }
 SECTIONS.forEach(function (s) {
 var items = r[s.key] || [];
@@ -4744,6 +4849,36 @@ else if (e.key === "Escape") { e.preventDefault(); commit(false); }
 inp.addEventListener("blur", function () { commit(true); });
 });
 });
+// click a hand-typed line to correct it in place (v0.4.8). Mirrors the .lbl
+// editor. Clearing it is a no-op, not a delete — the trash button is the way
+// to remove a row, so a stray click + blur can never silently drop a line.
+root.querySelectorAll(".txt.edit").forEach(function (sp) {
+sp.addEventListener("click", function () {
+var k = sp.getAttribute("data-tk");
+var i = +sp.getAttribute("data-ti");
+if (!r[k] || !r[k][i]) return;
+var inp = document.createElement("input");
+inp.type = "text";
+inp.className = "addin rowin";
+inp.value = r[k][i].text || "";
+sp.replaceWith(inp);
+inp.focus();
+inp.select();
+var done = false;
+var commit = function (save) {
+if (done) return;
+done = true;
+var v = inp.value.trim();
+if (save && v) { r[k][i].text = v; persist(); }
+renderInto(host, r, options);
+};
+inp.addEventListener("keydown", function (e) {
+if (e.key === "Enter") { e.preventDefault(); commit(true); }
+else if (e.key === "Escape") { e.preventDefault(); commit(false); }
+});
+inp.addEventListener("blur", function () { commit(true); });
+});
+});
 // manual "+ add" — type a line the helper missed; added to this view only
 root.querySelectorAll(".addrow").forEach(function (btn) {
 btn.addEventListener("click", function () {
@@ -4759,7 +4894,7 @@ var commit = function (save) {
 if (done) return;
 done = true;
 var v = inp.value.trim();
-if (save && v) { r[k].push({ text: v, part: "", src: "Added by hand" }); persist(); }
+if (save && v) { r[k].push({ text: v, part: "", src: HAND_SRC }); persist(); }
 renderInto(host, r, options);
 };
 inp.addEventListener("keydown", function (e) {
