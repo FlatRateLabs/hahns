@@ -9,7 +9,38 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.8.1-alpha — in progress
+## v0.4.8.2-alpha — in progress
+
+### Fixed
+- **The Drivetrain card now shows YOUR transmission, not every transmission** (issue #126). On a 2017
+  Golf Alltrack the card listed all five gearboxes instead of the one in the car. The tables write a
+  long application across two lines — *“6 Speed Direct Shift Gearbox”* then *“0D9 (FWD)”* underneath —
+  and Hahns was reading the second line as a separate entry. That left the gearbox with no code to match
+  against, so it fell back to showing everything. The two lines are now read as one entry.
+  - This also **reunites capacities that had drifted onto the wrong line**: the Refill and Mechatronic
+    amounts were being split away from their Initial Fill, and on the **Touareg** the transfer-case
+    capacities were parked under a footnote instead of the transmission.
+  - Fixes the same split on **Eos, Jetta, Passat, CC, Beetle, Routan, Atlas and Touareg** across
+    2006–2022 — the Alltrack was just where it showed up first.
+- **AWD and FWD versions of the same gearbox are no longer both shown** when we know which one the car
+  has. If the Model Name says 4MOTION / 4MO / AWD, you get that one. If it says nothing, **both are
+  shown and labelled** rather than guessing — the name doesn't always carry the marker, and guessing FWD
+  would give you the wrong capacity.
+- **A Golf R, Touareg or Alltrack now counts as AWD on its name alone** — none of the three was ever
+  built in front-wheel drive, so there's nothing to guess even when the Model Name carries no 4MOTION
+  marker. They now get the AWD gearbox straight away, and the **wheel-bolt torque** on the Service Xpress
+  card resolves to the AWD figure instead of showing you both. (An *R-Line* is a trim, not an R — it's
+  still read as whatever the name actually says.)
+- **Rear Final Drive no longer shows another model’s section** (issue #126). An Alltrack was listing the
+  **Golf R** final drive alongside its own; the tables keep a separate section per variant. Each car now
+  sees only its own.
+
+Saved fluid PDFs re-read themselves after this update — nothing to re-upload. Ships as a normal app
+update, so **no re-drag needed**.
+
+---
+
+## v0.4.8.1-alpha — 2026-07-16
 
 ### Fixed
 - **“Torque Wrench, 40-200Nm” no longer shows up as a torque spec** (issue #124). When a page’s **Tool

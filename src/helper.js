@@ -1030,8 +1030,8 @@
   // Three parsers, named by the model-year range each one owns. Bump a range's
   // version string in ONE place → every stored PDF of that range auto-re-parses
   // on the next load (the other ranges are untouched). See familyForYear below.
-  var PARSER_1126_VER = "1.3.5";   // Parser 11-26 — engine-code layout (1.3.5: A/C compressor-oil unit typo cm→cc, 2023/25/26 Jetta)
-  var PARSER_0610_VER = "2.0.0";   // Parser 06-10 — same layout, engines keyed by DISPLACEMENT ("2.0L") + nearest-cc match
+  var PARSER_1126_VER = "1.3.6";   // Parser 11-26 — engine-code layout (1.3.6: merge wrapped applications so the trans code isn't orphaned, #126)
+  var PARSER_0610_VER = "2.0.1";   // Parser 06-10 — same layout, engines keyed by DISPLACEMENT ("2.0L") + nearest-cc match (2.0.1: shares the #126 wrap merge)
   var PARSER_0005_VER = "1.1.0";   // Parser 00-05 — old two-column layout (1.1.0: stitch wrapped A/C labels)
   var FLUID_YEAR_MIN = 2000, FLUID_YEAR_MAX = 2026;  // span for "Years installed: N/M"
   var fluidsData = null;      // sync projection: null=unread, false=none, obj={updated,count,years:{Y:{models,file}}}
@@ -1905,6 +1905,11 @@
       };
     });
   }
+  // Does this text name a transmission in its own right? Used both to spot a
+  // complete application (vs. a wrapped fragment) while parsing, and to tell
+  // transmissions from sub-components when rendering the Drivetrain card.
+  var TRANS_RE = /\d+\s*-?\s*speed|single\s*(?:gear|speed)|direct shift|gearbox|automatic|manual|dsg|tiptronic/i;
+
   // COMPONENT/APPLICATION/CAPACITY tables (coolant, A/C, drivetrain)
   function parseCAC(lines, hdrIdx) {
     var idx = null, rows = [], cur = null, lastComp = "";
@@ -1938,8 +1943,28 @@
       var vals = valuesIn(capCell);
       var label = capCell.replace(VAL_RE, "").replace(/\s+/g, " ").trim();
       var codeOnly = /^\([A-Z0-9/\s]+\)$/.test(app);
+      // A WRAPPED application — the cell continues the row above rather than
+      // starting a new one. Signature: an Application with NO Component and NO
+      // Capacity of its own ("6 Speed Direct Shift Gearbox" / "0D9 (FWD)", and
+      // the hyphenated "6 Speed Automatic Transmis-" / "sion 09D"). A real new
+      // application always carries its first capacity on the same line — that's
+      // what separates the 2017 Golf's "Alltrack" row (own capacity → new row)
+      // from its "0D9 (AWD)" continuation (no capacity → wrap).
+      // Left unmerged the code is orphaned into its own row, so the parent
+      // matches no trans code (→ "all transmissions shown") AND the orphan
+      // steals the parent's remaining fills. (issue #126)
+      // A continuation is a FRAGMENT. A cell that names a transmission outright
+      // is a sibling application sharing the capacity above, NOT a wrap — the
+      // 2024 Atlas stacks "8-Speed Automatic (09S)" / "(09U)" under one capacity
+      // exactly this way, and merging those two would invent a transmission.
+      var isWrap = !comp && !capCell.trim() && app && cur && !codeOnly && !TRANS_RE.test(app);
       var madeRow = false;
       if (codeOnly && cur) { cur.application += " " + app; }
+      else if (isWrap) {
+        cur.application = /-$/.test(cur.application)
+          ? cur.application.replace(/-$/, "") + app   // word-wrap: "Transmis-" + "sion 09D"
+          : cur.application + " " + app;
+      }
       else if (app && (comp || /[A-Za-z]/.test(app)) && !/^(Fill|Refill|Initial|Approximately)/i.test(app)) {
         cur = { component: comp || lastComp, application: app, fills: [] };
         rows.push(cur); madeRow = true;
@@ -2584,7 +2609,15 @@
     veh.transCodes = veh.trans.split(/[^A-Z0-9]/).filter(function (s) { return /^[A-Z0-9]{3,6}$/.test(s); });
     veh.transCode = veh.transCodes[0] || "";
     // ELSA abbreviates 4MOTION down to a bare "4MO" ("GSW ALLTRACK SE 1.8T AUTO 4MO")
-    veh.awd = /\bAWD\b|4 ?MOTION|4MOT?\b/i.test(veh.model);
+    // ...but the name can also come through with NO marker at all, so a model that
+    // was never built in FWD counts as AWD on its name alone (owner-confirmed:
+    // there is no FWD Golf R, Touareg or Alltrack). This can only ever ADD
+    // confidence — an AWD-only model missing from the list just falls back to
+    // "show both, labeled", which is safe. A WRONG entry is not: it would hide the
+    // FWD spec from a car that has one. So only list models known to have no FWD
+    // version, and mind that "R-Line" is a TRIM (sold FWD) — not an R.
+    var AWD_ONLY = /\bGOLF\s*R\b(?!\s*-?\s*LINE)|\bTOUAREG\b|\bALLTRACK\b/i;
+    veh.awd = /\bAWD\b|4 ?MOTION|4MOT?\b/i.test(veh.model) || AWD_ONLY.test(veh.model);
     // displacement in litres, for the Parser 06-10 nearest-cc oil/coolant match.
     // Prefer the exact "#### ccm" from the Engine Code field ("BPY - 1984 ccm");
     // fall back to a "N.NL" printed in the engine or model text. 0 = unknown.
@@ -2682,7 +2715,6 @@
       return veh.transCodes.some(function (t) { return t && (t.indexOf(c) === 0 || c.indexOf(t) === 0); });
     });
   }
-  var TRANS_RE = /\d+\s*-?\s*speed|single\s*(?:gear|speed)|direct shift|gearbox|automatic|manual|dsg|tiptronic/i;
 
   /* ---- 4. the Fluids & Capacities window (ported from the old lookup
    *         page, now built LOCALLY from the stored data — no network) ---- */
@@ -2759,6 +2791,46 @@
     }).join("");
     return fCard("ac", FL_ICON.ac, "Air Conditioning", inner);
   }
+  // The tables mark a drivetrain-specific row "(FWD)" / "(AWD)" — the only two
+  // designators they ever use (verified across every 2000–2026 table). The
+  // VEHICLE side also says 4MOTION / 4MO, which fluidVeh already folds into
+  // veh.awd.
+  var ROW_AWD = /\bAWD\b/i, ROW_FWD = /\bFWD\b/i;
+  // One transmission code can list a FWD row and an AWD row (the Golf's 0D9).
+  // Narrow to the vehicle's drivetrain ONLY when we actually know it: a missing
+  // AWD marker is NOT proof of FWD — ELSA can print an AWD-only model (a Golf R,
+  // a Touareg) with no marker at all, and guessing FWD there would hand the tech
+  // the wrong capacity. Unknown → show both, labeled, and let the tech pick.
+  // (Same rule the Service Xpress torque card uses.)
+  function pickDrivetrain(rows, veh) {
+    if (!veh.awd) return rows;
+    var fwdOnly = function (r) { return ROW_FWD.test(r.application) && !ROW_AWD.test(r.application); };
+    if (!rows.some(function (r) { return ROW_AWD.test(r.application); }) || !rows.some(fwdOnly)) return rows;
+    return rows.filter(function (r) { return !fwdOnly(r); });
+  }
+  // A sub-component row is normally qualified by drivetrain ("Only AWD"), a
+  // transmission code ("0BR"), or a feature ("With EDL"). A few name a MODEL
+  // VARIANT instead — the Golf table carries one Rear Final Drive for "Golf R"
+  // and another for "Alltrack". Those are separate sections in the source, so
+  // listing both on one car is wrong (issue #126).
+  var SUB_QUAL = /\bAWD\b|\bFWD\b|\bEDL\b|^only\b|^all\b|^with(out)?\b|^\*|^\(?[0-9][A-Z0-9]{2}\b|capacity|final drive|maintenance|dependant|chamber|clutch|hypoid/i;
+  function variantOf(r) {
+    var a = String(r.application || "").trim();
+    return !a || SUB_QUAL.test(a) ? "" : a;
+  }
+  // Keep only the variant rows that name THIS vehicle. If it matches none we
+  // know nothing, so everything stays — never empty the card on a guess.
+  function filterVariants(rows, veh) {
+    var vm = modelNorm(veh.model || ""), drop = [], byComp = {};
+    rows.forEach(function (r) { (byComp[r.component] = byComp[r.component] || []).push(r); });
+    Object.keys(byComp).forEach(function (k) {
+      var vs = byComp[k].filter(variantOf);
+      if (!vs.length || !vm) return;
+      var hit = vs.filter(function (r) { return vm.indexOf(modelNorm(variantOf(r))) >= 0; });
+      if (hit.length) vs.forEach(function (r) { if (hit.indexOf(r) < 0) drop.push(r); });
+    });
+    return rows.filter(function (r) { return drop.indexOf(r) < 0; });
+  }
   function fluidDriveHTML(m, veh) {
     var all = m.drivetrain || [];
     var trans = all.filter(function (r) { return TRANS_RE.test(r.application); });
@@ -2766,8 +2838,10 @@
     var matched = trans.filter(function (r) { return transHit(r.application, veh); });
     var noMatch = !matched.length && trans.length;
     if (noMatch) matched = trans;                       // fallback: show all transmissions
+    matched = pickDrivetrain(matched, veh);
     // hide "only AWD" sub-components on a FWD vehicle
     subs = subs.filter(function (r) { return veh.awd || !/AWD/i.test(r.application); });
+    subs = filterVariants(pickDrivetrain(subs, veh), veh);
     var rowHtml = function (r) {
       var qualOnly = /^(only\b|all\b|awd$|fwd$)/i.test(r.application || "");
       var name = qualOnly ? (r.component || r.application) : (r.application || r.component);
