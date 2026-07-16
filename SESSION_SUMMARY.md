@@ -5,6 +5,76 @@ permanent project reference.
 
 ---
 
+## Session close (2026-07-15, later) — v0.4.8.1-alpha: wrench-capacity + tool-name (PR #127, owner merging)
+
+Immediately after the v0.4.8 deploy the owner bay-tested a **2023 ID.4 front sway bar overview** and filed
+three more (#124/#125/#126) from the in-app form. Two fixed here, one diagnosed and deliberately deferred.
+
+### ⚠️ First: #124 was NOT a v0.4.8 regression — I called that wrong
+I told the owner it looked like my regression (it's the inverse of the #116 fix, filed 11 min after that
+deploy). **Checked v0.4.7 against the same input: it emits the identical bogus row.** Pre-existing; it only
+became visible on a scan that captured the page's **Tool list** panel, which the earlier dump of the *same
+page* didn't include. **Lesson: two dumps of the same ELSA page can capture different panels** — don't treat
+one dump as the page's full surface.
+
+### #124 — "Torque Wrench, 40-200Nm" read as a torque spec
+ELSA's **Tool list panel puts a tool's NUMBER and NAME on separate lines**:
+```
+V.A.G 1332A
+Torque Wrench, 40-200Nm      <-- no tool number ON this line
+```
+`isWrenchLine` required a tool number **on the line** as evidence of a listing → bare name line didn't
+qualify → `200Nm` read as a spec. **The tool number was never the right discriminator** — just a proxy that
+held on every page seen so far. Dropped it: the signature is `WRENCH_RANGE` = "torque wrench" **FOLLOWED
+BY** a range, and listing-vs-instruction is already decided by `specsBesideWrench`. **Order is deliberate**
+— a genuine range spec puts the range first ("tighten to 100-120 Nm with a torque wrench") and survives.
+
+### #125 — a special tool inherited the previous tool's name
+`toolEntries` derived each name from `line.slice(0, m.index)` — always from the **start of the line** — so
+on `Torque Wrench, 40-200Nm - V.A.G 1332A - and Counterholder - T10663 -`, T10663 took everything before it.
+Now slices from the **end of the previous tool number**. Second layer underneath: that slice leaves a
+leading `"- "`, which blocked `toolDescBefore`'s filler-word stripper from seeing the `"and"` → also strip
+separators off the **leading** end. Now `T10663 → "Counterholder"`, `V.A.G 1332A → "Torque Wrench, 40-200Nm"`.
+
+### #126 — Alltrack drivetrain shows ALL capacities — DIAGNOSED, NOT FIXED (next session starts here)
+**Owner's read was right; my first instinct was wrong.** `0D9A` IS read correctly and `4MO`→AWD IS read
+correctly. **It's a PARSER bug, not a matching bug.** The 2017 Golf Family drivetrain parses to:
+```
+[4] "6 Speed Direct Shift Gearbox"   <-- no code
+[5] "0D9 (FWD)"                       <-- code orphaned into its own row
+[6] "6 Speed Direct Shift Gearbox"   <-- no code
+[7] "0D9 (AWD)"                       <-- code orphaned into its own row
+```
+In the PDF that's **ONE application wrapping across two lines**; the parser splits it into two entries, so
+the gearbox row loses its trans code → `0D9A` matches nothing → `fluidDriveHTML`'s deliberate
+`noMatch → show all transmissions` fallback fires. The `0D9` rows fail `TRANS_RE` so they land in `subs`
+(displayed, never matched). **I first "fixed" this by filtering `matched` by AWD — it did nothing, because
+the 0D9 rows aren't in that list. Reverted rather than ship a fix that only looked like one.**
+- **Deferred on purpose:** the real fix bumps `PARSER_1126_VER` → **every saved fluid year re-parses**
+  (the machinery behind 27 years of torque/capacity). Near a usage limit + two "looked right, silently
+  wasn't" mistakes the same day = wrong moment. `tools/parser-test.js` (46 PDFs) guards it well.
+- **Full diagnosis posted as a comment on #126.** Two open questions for the owner in there:
+  1. `Rear Final Drive · Golf R` shows on an **Alltrack** (alongside `· Alltrack`) — same "all possible
+     capacities" flavour, probably also wrong.
+  2. Sub-components **already assume no-AWD-marker = FWD** (pre-existing `subs` filter) — the OPPOSITE of
+     the torque card, which never guesses. Worth aligning.
+
+### Verified
+Real 2023 ID.4 dump (incl. the Tool list panel): 3 torque rows (`160 Nm` / `50 Nm + 180°` / `6. Nut 100 Nm`),
+**no** wrench-range row, tools `T10663`+`V.A.G 1332A` with correct names. Wrench matrix extended with both
+#124 shapes **and the genuine-range case**; #75/#116 still pass. parser-test 0 drift.
+
+### Closed this session
+**#116** (= the v0.4.8 100 Nm fix) and **#121** (= the v0.4.8 editable-rows fix) — both filed versions of
+bugs the owner had reported verbally, so the v0.4.8 PR never linked them and they didn't auto-close.
+Closed with fix notes. **#118/#119/#120** auto-closed by PR #123.
+
+### Open at session end
+- **PR #127** (v0.4.8.1: #124 + #125) — verified, owner said he'd merge it.
+- **#126** — diagnosed above, fix deferred to next session.
+
+---
+
 ## Session close (2026-07-15) — v0.4.8-alpha bug-fix batch (5 fixes) — LIVE + owner bay-verified
 
 Owner-driven bug-fix session off in-app feedback issues. **Batched into ONE version** rather than five
