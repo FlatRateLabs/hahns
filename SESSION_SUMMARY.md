@@ -5,6 +5,40 @@ permanent project reference.
 
 ---
 
+## Session close (2026-08-16, later) — Repo hygiene / cleanup (no code changes)
+
+Housekeeping session, no feature work. Started against a **6-commit-stale local `main`** (was at PR #134 /
+v0.4.9.2 while origin had shipped v0.4.9.3 + merged the maintenance-parser WIP) — `git pull --rebase` synced
+it. Live release confirmed **v0.4.9.3-alpha** (`version.json`: `v0.4.9.3-alpha · 2026-08-16 18:48 UTC`).
+
+Done:
+- **Issue #130 closed** (remove-list confirmation — already shipped in v0.4.9 via `confirmRemove`, live in
+  v0.4.9.3; sibling #129 was already closed, #130 just got left open).
+- **12 stale LOCAL branches deleted** (0.4.9→0.4.9.3, loader-production, maintenance-parser-wip, v0.4.6.1–.4,
+  v0.4.7, updater-poc). Local is now `main`-only.
+- **`fork` remote removed** (`senditbro/hahns.git`, old). The fork REPO on GitHub was left intact — only the
+  local remote ref was dropped. `origin` (FlatRateLabs/hahns) is now the sole remote.
+- Health: `node --check src/helper.js` OK, `node tools/build.js` runs clean.
+
+Deliberately NOT done:
+- **Remote branch prune (~36 stale `origin/*`) — skipped by owner** ("cosmetic, don't worry about it"). The
+  bulk `git push origin --delete` was also blocked by the auto-mode classifier anyway. Recovery record of all
+  36 tip SHAs was saved to the session scratchpad (incl. the one branch with unmerged content —
+  `docs-wrap-0718` tip `e72604e`, a v0.3.18 session-summary paragraph; its CHANGELOG dating is already in main).
+- **Build drift left frozen (KNOWN STATE):** PR #136 merged the maintenance-parser plumbing into
+  `src/helper.js` (`pdfPages`/`pdfPageRuns(...,rulesOut)`) but **did NOT rebuild the artifacts** — shipped
+  `docs/app.js` has 0 copies of `pdfPages`, source has 2. **Live impact: none** (nothing in the live path calls
+  it yet; fluids/SX verified 0-drift). Left frozen at v0.4.9.3 on purpose — the maintenance-feature PR will
+  rebuild. ⚠️ Whoever next runs `node tools/build.js` will see a ~200-line diff appear; that's this plumbing,
+  expected, not a regression.
+
+Next session: resume v0.5.0-beta — port `parseMaintenance`/`msFromPdf` from `tools/wip-maintenance/` into
+`src/helper.js` (uses the now-shipped `pdfPages`), then `MS_PARSER_VER` + `ms_*` IDB stores (bump
+`APP_DB_VER` 2→3), Settings section, mileage/delivery vehicle-bar fields, and the "Possible NNK service due"
+popup. See [[maintenance-schedule-feature]].
+
+---
+
 ## Session close (2026-08-16) — Maintenance-schedule parser (WIP, on branch `maintenance-parser-wip`) + shipped 0.4.9→0.4.9.3
 
 **First half (shipped, all LIVE):** three small releases off in-app feedback, each its own PR (owner
