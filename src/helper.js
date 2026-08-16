@@ -2965,11 +2965,14 @@
   /* ---- 5. loading the PDFs through Settings -------------------------- */
   // pick the year PDFs (several at once is fine) and convert each LOCALLY.
   // Reading a picked file via FileReader is a LOCAL read — NO network.
-  function pickFluidFiles(host, r, options, root) {
+  // `target` (a year) is set when REPLACING one existing table via the Update flow:
+  // the picker goes single-file and the save is scoped to that year (see
+  // openFluidsConfirm). Left undefined for the normal multi-file "Add" flow.
+  function pickFluidFiles(host, r, options, root, target) {
     var inp = document.createElement("input");
     inp.type = "file";
     inp.accept = ".pdf,application/pdf";
-    inp.multiple = true;
+    inp.multiple = !target;
     inp.style.display = "none";
     inp.addEventListener("change", function () {
       var files = Array.prototype.slice.call(inp.files || []);
@@ -2999,15 +3002,49 @@
           });
         });
       });
-      chain.then(function () { openFluidsConfirm(host, r, options, root, results); });
+      chain.then(function () { openFluidsConfirm(host, r, options, root, results, target); });
     });
     (root.querySelector(".wrap") || root).appendChild(inp);
     inp.click();
   }
 
+  // Update flow: pick WHICH loaded year to replace, then choose its new PDF. One
+  // year → straight to the picker; several → a small chooser first. (0 → add.)
+  function openFluidUpdate(host, r, options, root) {
+    var fl = loadFluids();
+    var years = fl && fl.years ? Object.keys(fl.years).sort() : [];
+    if (!years.length) { pickFluidFiles(host, r, options, root); return; }
+    if (years.length === 1) { pickFluidFiles(host, r, options, root, years[0]); return; }
+    var list = years.map(function (y) {
+      var file = (fl.years[y] && fl.years[y].file) || "";
+      return '<button class="updpick" data-y="' + esc(y) + '"><b>' + esc(y) + "</b>" +
+        (file ? '<span class="updfile">' + esc(file) + "</span>" : "") + "</button>";
+    }).join("");
+    var ov = document.createElement("div");
+    ov.className = "setc";
+    ov.innerHTML = '<div class="setbox">' +
+      '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
+      '<p class="settl">Update a fluid table</p>' +
+      '<p class="setsub">Pick the year you want to replace, then choose the new PDF. The other years stay as they are.</p>' +
+      '<div class="updlist">' + list + "</div>" +
+      '<div class="setbtns"><button class="cancel">Cancel</button></div>' +
+      "</div>";
+    root.appendChild(ov);
+    var close = function () { try { ov.remove(); } catch (e) {} };
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    ov.querySelector(".cancel").addEventListener("click", close);
+    ov.querySelector(".xclose").addEventListener("click", close);
+    Array.prototype.forEach.call(ov.querySelectorAll(".updpick"), function (b) {
+      b.addEventListener("click", function () { var y = b.getAttribute("data-y"); close(); pickFluidFiles(host, r, options, root, y); });
+    });
+  }
+
   // the eyeball step before saving: per file, the model year + the models the
   // converter found (or a plain-language error). Save merges into the store.
-  function openFluidsConfirm(host, r, options, root, results) {
+  // `target` (a year) means this is a REPLACE: after saving, if the new PDF turned
+  // out to be a different year, the old target year is dropped so the slot is
+  // genuinely replaced rather than a stray year left behind.
+  function openFluidsConfirm(host, r, options, root, results, target) {
     var ok = results.filter(function (o) { return !o.err; });
     var rows = results.map(function (o) {
       if (o.err) return '<div class="flrow bad"><b>' + esc(o.name) + "</b><span>" + esc(o.err) + "</span></div>";
@@ -3019,12 +3056,12 @@
     ov.className = "setc";
     ov.innerHTML = '<div class="setbox">' +
       '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
-      '<p class="settl">Load fluid capacity tables</p>' +
+      '<p class="settl">' + (target ? "Update " + esc(target) : "Load fluid capacity tables") + "</p>" +
       '<p class="setsub">Check each year’s models below against your PDFs, then save. Converted on this computer and kept only in this browser (so future parser fixes apply automatically) — nothing is uploaded.</p>' +
       rows +
       '<div class="maperr" style="display:none"></div>' +
       '<div class="setbtns"><button class="cancel">Cancel</button>' +
-      (ok.length ? '<button class="primary save">Save ' + ok.length + " year" + (ok.length > 1 ? "s" : "") + "</button>" : "") +
+      (ok.length ? '<button class="primary save">' + (target ? "Update " + esc(target) : "Save " + ok.length + " year" + (ok.length > 1 ? "s" : "")) + "</button>" : "") +
       "</div></div>";
     root.appendChild(ov);
     var close = function () { try { ov.remove(); } catch (e) {} };
@@ -3035,6 +3072,10 @@
     if (sv) sv.addEventListener("click", function () {
       sv.disabled = true;
       fluidsSaveYears(ok).then(function () {
+        // REPLACE: if the picked PDF was a different year than the one being
+        // updated, drop the old year so the slot is truly replaced.
+        if (target && !ok.some(function (o) { return String(o.year) === String(target); })) return removeFluidYear(target);
+      }).then(function () {
         close();
         renderInto(host, r, options);
         // if Settings is still open behind this dialog, refresh it in place so the
@@ -3051,9 +3092,11 @@
 
   // pick the yearly VW Service Xpress PDFs (multi-select), read them LOCALLY (a
   // FileReader read — NO network), parse the two torque specs, then preview/confirm.
-  function pickSxFiles(host, r, options, root) {
+  // `target` (a stored file key) is set when REPLACING one chart via the Update
+  // flow: single-file picker, save scoped to that file (see openSxConfirm).
+  function pickSxFiles(host, r, options, root, target) {
     var inp = document.createElement("input");
-    inp.type = "file"; inp.accept = ".pdf,application/pdf"; inp.multiple = true; inp.style.display = "none";
+    inp.type = "file"; inp.accept = ".pdf,application/pdf"; inp.multiple = !target; inp.style.display = "none";
     inp.addEventListener("change", function () {
       var files = Array.prototype.slice.call(inp.files || []);
       try { inp.remove(); } catch (e) {}
@@ -3078,15 +3121,46 @@
           });
         });
       });
-      chain.then(function () { openSxConfirm(host, r, options, root, results); });
+      chain.then(function () { openSxConfirm(host, r, options, root, results, target); });
     });
     (root.querySelector(".wrap") || root).appendChild(inp);
     inp.click();
   }
 
+  // Update flow: pick WHICH loaded chart (by file) to replace, then choose its new
+  // PDF. One chart → straight to the picker; several → a small chooser first.
+  function openSxUpdate(host, r, options, root) {
+    var sx = loadSx();
+    var files = sx && sx.files ? sx.files : [];
+    if (!files.length) { pickSxFiles(host, r, options, root); return; }
+    if (files.length === 1) { pickSxFiles(host, r, options, root, files[0].key); return; }
+    var list = files.map(function (f) {
+      return '<button class="updpick" data-k="' + esc(f.key) + '"><b>' + esc(f.fileName || f.key) + "</b></button>";
+    }).join("");
+    var ov = document.createElement("div");
+    ov.className = "setc";
+    ov.innerHTML = '<div class="setbox">' +
+      '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
+      '<p class="settl">Update a torque chart</p>' +
+      '<p class="setsub">Pick the chart you want to replace, then choose the new PDF. The others stay as they are.</p>' +
+      '<div class="updlist">' + list + "</div>" +
+      '<div class="setbtns"><button class="cancel">Cancel</button></div>' +
+      "</div>";
+    root.appendChild(ov);
+    var close = function () { try { ov.remove(); } catch (e) {} };
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    ov.querySelector(".cancel").addEventListener("click", close);
+    ov.querySelector(".xclose").addEventListener("click", close);
+    Array.prototype.forEach.call(ov.querySelectorAll(".updpick"), function (b) {
+      b.addEventListener("click", function () { var k = b.getAttribute("data-k"); close(); pickSxFiles(host, r, options, root, k); });
+    });
+  }
+
   // preview per file: the model years + how many model tables were found (or a
   // plain error). Save writes them to IndexedDB, keeping the PDF for auto-reparse.
-  function openSxConfirm(host, r, options, root, results) {
+  // `target` (a stored file key) means REPLACE: after saving, if the new PDF has a
+  // different file name than the one being updated, the old file is dropped.
+  function openSxConfirm(host, r, options, root, results, target) {
     var ok = results.filter(function (o) { return !o.err; });
     var rows = results.map(function (o) {
       if (o.err) return '<div class="flrow bad"><b>' + esc(o.name) + "</b><span>" + esc(o.err) + "</span></div>";
@@ -3097,12 +3171,12 @@
     ov.className = "setc";
     ov.innerHTML = '<div class="setbox">' +
       '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
-      '<p class="settl">Load Service Xpress charts</p>' +
+      '<p class="settl">' + (target ? "Update chart" : "Load Service Xpress charts") + "</p>" +
       '<p class="setsub">Check the model years below, then save. Read on this computer and kept only in this browser (so future parser fixes apply automatically) — nothing is uploaded.</p>' +
       rows +
       '<div class="maperr" style="display:none"></div>' +
       '<div class="setbtns"><button class="cancel">Cancel</button>' +
-      (ok.length ? '<button class="primary save">Save ' + ok.length + " file" + (ok.length > 1 ? "s" : "") + "</button>" : "") +
+      (ok.length ? '<button class="primary save">' + (target ? "Update chart" : "Save " + ok.length + " file" + (ok.length > 1 ? "s" : "")) + "</button>" : "") +
       "</div></div>";
     root.appendChild(ov);
     var close = function () { try { ov.remove(); } catch (e) {} };
@@ -3113,6 +3187,9 @@
     if (sv) sv.addEventListener("click", function () {
       sv.disabled = true;
       sxSaveFiles(ok).then(function () {
+        // REPLACE: if the new chart has a different file name, drop the old one.
+        if (target && !ok.some(function (o) { return o.name === target; })) return removeSxFile(target);
+      }).then(function () {
         close();
         renderInto(host, r, options);
         // refresh Settings in place if it's still open behind this dialog
@@ -4037,6 +4114,11 @@
     ".siremove{appearance:none;-webkit-appearance:none;border:0;background:#f0f4f1;color:#a32d2d;border-radius:5px;cursor:pointer;font-size:12px;line-height:1;padding:3px 6px;font-family:inherit}" +
     ".siremove:hover{background:#fdeaea}" +
     ".setitem .confirm{margin:0}" +
+    ".updlist{display:flex;flex-direction:column;gap:7px;margin:10px 0}" +
+    ".updpick{display:flex;align-items:baseline;gap:9px;text-align:left;width:100%;appearance:none;-webkit-appearance:none;font-family:inherit;font-size:13px;padding:10px 12px;border:1px solid #cce6cf;border-radius:8px;background:#fff;color:#13502a;cursor:pointer}" +
+    ".updpick:hover{background:#edf7ee;border-color:#2fb84d}" +
+    ".updpick b{color:#13502a}" +
+    ".updfile{font-weight:400;color:#3f7a52;font-size:12px;word-break:break-all}" +
     ".setmeta{margin-top:2px;font-size:11.5px;color:#3f7a52}" +
     ".setstat.none{background:#eef1f6;border-color:#dfe4ee;color:#3a4a63}" +
     ".dbinfo{background:#f4f7fc;border:1px solid #dfe4ee;border-radius:8px;padding:4px 11px;margin-bottom:12px}" +
@@ -4909,8 +4991,9 @@
     var sxCount = sxYears.length ? String(sxYears.length) + " year" + (sxYears.length > 1 ? "s" : "") : "not loaded";
     var sxFiles = sx && sx.files ? sx.files : [];
     var sxItems = sxFiles.map(function (f) {
-      var yy = (f.years && f.years.length) ? " · " + f.years.join(", ") : "";
-      return '<span class="setitem"><span class="siyr">' + esc(f.fileName || f.key) + esc(yy) + "</span>" +
+      // the PDF file name already carries the year — showing the parsed years after
+      // it just confused the tech, so the chip is the file name alone.
+      return '<span class="setitem"><span class="siyr">' + esc(f.fileName || f.key) + "</span>" +
         '<button class="siremove" data-sxrmkey="' + esc(f.key) + '" title="Remove this chart" aria-label="Remove this chart">&#10005;</button></span>';
     }).join("");
     var sxStatus = sxYears.length
@@ -4960,7 +5043,8 @@
           flStatus +
           '<div class="setbtns">' +
             (flYears.length > 1 ? '<button class="danger flremove">Remove all</button>' : "") +
-            '<button class="primary flupload">' + (flYears.length ? "Add / replace PDFs" : "Load PDFs") + "</button>" +
+            (flYears.length ? '<button class="primary flupdate">Update</button>' : "") +
+            '<button class="primary flupload">' + (flYears.length ? "Add PDFs" : "Load PDFs") + "</button>" +
           "</div>" +
         "</div>" +
       "</details>" +
@@ -4972,7 +5056,8 @@
           sxStatus +
           '<div class="setbtns">' +
             (sxFiles.length > 1 ? '<button class="danger sxremove">Remove all</button>' : "") +
-            '<button class="primary sxupload">' + (sxYears.length ? "Add / replace PDFs" : "Load PDFs") + "</button>" +
+            (sxFiles.length ? '<button class="primary sxupdate">Update</button>' : "") +
+            '<button class="primary sxupload">' + (sxFiles.length ? "Add PDFs" : "Load PDFs") + "</button>" +
           "</div>" +
         "</div>" +
       "</details>" +
@@ -5053,6 +5138,8 @@
     });
     var flup = ov.querySelector(".flupload");
     if (flup) flup.addEventListener("click", function () { pickFluidFiles(host, r, options, root); });
+    var flud = ov.querySelector(".flupdate");
+    if (flud) flud.addEventListener("click", function () { openFluidUpdate(host, r, options, root); });
     var flrm = ov.querySelector(".flremove");
     if (flrm) flrm.addEventListener("click", function () {
       confirmRemove(flrm, "Remove ALL fluid tables?", function () {
@@ -5064,6 +5151,8 @@
     });
     var sxup = ov.querySelector(".sxupload");
     if (sxup) sxup.addEventListener("click", function () { pickSxFiles(host, r, options, root); });
+    var sxud = ov.querySelector(".sxupdate");
+    if (sxud) sxud.addEventListener("click", function () { openSxUpdate(host, r, options, root); });
     var sxrm = ov.querySelector(".sxremove");
     if (sxrm) sxrm.addEventListener("click", function () {
       confirmRemove(sxrm, "Remove ALL torque charts?", function () {
