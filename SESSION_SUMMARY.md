@@ -5,6 +5,56 @@ permanent project reference.
 
 ---
 
+## Session close (2026-08-16) — Maintenance-schedule parser (WIP, on branch `maintenance-parser-wip`) + shipped 0.4.9→0.4.9.3
+
+**First half (shipped, all LIVE):** three small releases off in-app feedback, each its own PR (owner
+merged), app-only (no re-drag):
+- **v0.4.9-alpha (PR #132, issues #129/#130):** ⚙ Settings — remove ONE loaded list at a time (per-year
+  fluid chips, per-file SX chips) + a Remove/Cancel confirm on every remove.
+- **v0.4.9.1-alpha (PR #133):** SX chips show file name only; split "Add / replace" into **Add PDFs** +
+  **Update** (Update opens a chooser to pick which year/chart to replace).
+- **v0.4.9.2-alpha (PR #134):** SX lists by YEAR (not file name); Update **sanity-checks** the picked file
+  (right TYPE + right YEAR, with a retry). **Gotcha caught:** the fluid parser is LENIENT (reads an SX
+  chart as garbage "models"), so the type guard keys off `sxFromPdf` being STRICT — "does it parse as SX?"
+  not "does it parse as fluid?".
+- **v0.4.9.3-alpha (PR #135):** the v0.4.9.2 `looksSx` guard was in src but the **build was skipped**, so
+  the shipped `app.js` still had the old code → reshipped. Lesson saved: [[rebuild-before-commit-verify-artifact]]
+  (rebuild + grep the artifact + bump VERSION before every commit that touches helper.js).
+
+**Second half (WIP — the big one): the 4th PDF type, VW Maintenance Schedules (→ v0.5.0-beta).** Owner
+supplied the 2019 PDF + a real Tiguan Vehicle Summary dump. Built the parser to a **working, exact** state
+in a prototype (`tools/wip-maintenance/`, ported from the session scratchpad so it survives). **Not wired
+into the app yet; `main` and the live app are unchanged.**
+- **Reader change in `src/helper.js` (on the WIP branch, NOT main):** `pdfTextLines` refactored into
+  **`pdfPages(buf)`** → `Array<{lines, runs, rules}>` per page; `pdfPageRuns` extended to also collect
+  horizontal **border lines** (`rulesOut`, from vector ops `m`/`l`/`re`). **Purely additive — all 46 fluid+
+  SX PDFs verified 0-drift.**
+- **Parser (`tools/wip-maintenance/parse-maint.js`):** parses ICE + BEV schedules — the Service Intervals
+  grid, the Minor/Standard/Extended lists (perfect), and the dense 3-column **Additional Items** table with
+  **EXACT model↔interval pairing**. The breakthrough: read the table's drawn **border lines** for exact
+  item boundaries (uniform row spacing + centered checkboxes made text-position boundaries drift). **Key
+  discriminator: item-boundary rules are FULL-WIDTH (start in the name column); inner sub-row dividers are
+  partial → filtered out.** Also: checkbox glyph U+F0A8, wrap-hyphen U+2010 (glue AFTER joining rows),
+  page-stacking for page-spanning items.
+- **Matching + due (`tools/wip-maintenance/preview-ui.js`), per owner's requirements:** header
+  "Possible NNK service due (Standard/Extended…)"; from Minor/Std/Ext show only **Replace** items; focus on
+  **Additional Items** (All Vehicles + model-matched). **EXACT model-code matching** off the Sales-Code
+  prefix — verified **BW2 Tiguan @80K → Spark Plugs 80K (NOT the 5N Tiguan's 40/60K)**, Transmission via
+  trans-code 09P. `Tiguan(5N)` correctly excluded.
+- **Owner preview (no commit, tests locally):** `~/Downloads/HAHNS-maintenance-preview.html` — self-
+  contained (reader+parser+UI inlined), local FileReader, pick any maintenance PDF, edit the vehicle row.
+  Owner reviewed and approved.
+- **Tiny nit left:** a model name can split across an interval-VARIANT boundary (Spark Plugs "Passat (A3*
+  6Cyl)") — sub-row pairing, not item boundary; could use the partial inner-divider rules if it matters.
+- **Next session:** port `parseMaintenance`/`msFromPdf` into `src/helper.js` (own `MS_PARSER_VER`,
+  `ms_pdfs`/`ms_parsed`/`ms_meta` IDB stores) + Settings section (mirror Service Xpress) + mileage & delivery
+  vehicle-bar fields (read from ELSA Vehicle Summary — delivery date confirmed `Delivery Date`→next line ISO;
+  need a dump with the **odometer** entered to finalize the mileage read) + the "Possible services due!"
+  popup. See the [[maintenance-schedule-feature]] memory for full design/gotchas. **Continue from branch
+  `maintenance-parser-wip`.**
+
+---
+
 ## Session close (2026-07-16) — v0.4.8.2-alpha: issue #126 — LIVE
 
 Picked up #126 exactly where the last session parked it. **The previous diagnosis was right** (parser

@@ -1579,11 +1579,18 @@
 
   // interpret one content stream: track ctm (q/Q/cm) + text matrix (BT/Tm/Td/
   // TD/T*/TL), decode Tj/TJ/'/" through the current font, emit positioned runs
-  function pdfPageRuns(content, fontsByName, out) {
+  // `rulesOut` (optional) collects HORIZONTAL line/rectangle edges as {y,x1,x2} in
+  // device space — the maintenance parser uses the table's drawn row borders to pin
+  // exact cell boundaries. Purely additive; text extraction is unchanged when it's
+  // omitted (fluids/SX pass nothing).
+  function pdfPageRuns(content, fontsByName, out, rulesOut) {
     var i = 0, n = content.length;
     var stack = [], ctm = [1, 0, 0, 1, 0, 0];
     var tm = null, tlm = null, tl = 0, fsize = 10, font = null;
     var ops = [];
+    var lastPt = null;
+    function devpt(x, y) { return [ctm[0] * x + ctm[2] * y + ctm[4], ctm[1] * x + ctm[3] * y + ctm[5]]; }
+    function hseg(a, b) { if (rulesOut && a && b && Math.abs(a[1] - b[1]) < 0.8 && Math.abs(a[0] - b[0]) > 8) rulesOut.push({ y: (a[1] + b[1]) / 2, x1: Math.min(a[0], b[0]), x2: Math.max(a[0], b[0]) }); }
     function isWS(c) { return c === " " || c === "\n" || c === "\r" || c === "\t" || c === "\f" || c === "\u0000"; }
     function isDelim(c) { return c === "/" || c === "[" || c === "]" || c === "<" || c === ">" || c === "(" || c === ")" || c === "{" || c === "}" || c === "%"; }
     function nums(count) {
@@ -1693,6 +1700,19 @@
             });
           }
         }
+        // ---- vector paths → horizontal rules (only when rulesOut is present) ----
+        else if (rulesOut && op === "m") { var pm2 = nums(2); lastPt = pm2.length === 2 ? devpt(pm2[0], pm2[1]) : null; }
+        else if (rulesOut && op === "l") { var pl = nums(2); if (pl.length === 2) { var np = devpt(pl[0], pl[1]); hseg(lastPt, np); lastPt = np; } }
+        else if (rulesOut && (op === "c" || op === "v" || op === "y")) { var pc = nums(2); lastPt = pc.length === 2 ? devpt(pc[0], pc[1]) : lastPt; }
+        else if (rulesOut && op === "re") {
+          var pr = nums(4);
+          if (pr.length === 4) {
+            var x = pr[0], y = pr[1], w = pr[2], h = pr[3];
+            hseg(devpt(x, y), devpt(x + w, y));           // bottom edge
+            hseg(devpt(x, y + h), devpt(x + w, y + h));   // top edge
+            lastPt = null;
+          }
+        }
       } catch (e) {}
       ops = [];
     }
@@ -1748,13 +1768,22 @@
 
   // whole PDF → Promise<layout text> (pages in order, lines top to bottom)
   function pdfTextLines(buf) {
+    return pdfPages(buf).then(function (pages) {
+      return pages.map(function (p) { return p.lines.join("\n"); }).join("\n");
+    });
+  }
+  // whole PDF → Promise<Array<{lines, runs}>>, one entry per page. `runs` are the
+  // positioned text runs ({x,y,s,end}); `lines` is runsToText(runs). The maintenance
+  // parser needs the raw runs to pair a dense 3-column table by true x/y — the
+  // flattened `lines` lose the vertical alignment. Fluids/SX use `lines` only.
+  function pdfPages(buf) {
     var bytes = new Uint8Array(buf);
     if (bstr(bytes.subarray(0, 5)) !== "%PDF-") return Promise.reject(new Error("that file isn't a PDF"));
     var objs = pdfObjects(bytes);
-    return expandObjStms(objs).then(function () { return pdfTextLinesFrom(objs); });
+    return expandObjStms(objs).then(function () { return pdfPagesFrom(objs); });
   }
-  // second half of pdfTextLines, after any PDF 1.5 object streams are unpacked
-  function pdfTextLinesFrom(objs) {
+  // second half of pdfPages, after any PDF 1.5 object streams are unpacked
+  function pdfPagesFrom(objs) {
     var pages = pdfPageOrder(objs);
     if (!pages.length) return Promise.reject(new Error("couldn't read that PDF"));
     var jobs = [], fontByObj = {}, contentText = {}, pageInfo = [];
@@ -1797,14 +1826,14 @@
       });
     });
     return Promise.all(jobs).then(function () {
-      var all = [];
+      var out = [];
       pageInfo.forEach(function (pi) {
-        var runs = [], byName = {};
+        var runs = [], rules = [], byName = {};
         Object.keys(pi.fonts).forEach(function (nm) { byName[nm] = fontByObj[pi.fonts[nm]]; });
-        pi.contents.forEach(function (cn) { try { pdfPageRuns(contentText[cn] || "", byName, runs); } catch (e) {} });
-        all = all.concat(runsToText(runs));
+        pi.contents.forEach(function (cn) { try { pdfPageRuns(contentText[cn] || "", byName, runs, rules); } catch (e) {} });
+        out.push({ runs: runs, lines: runsToText(runs), rules: rules });
       });
-      return all.join("\n");
+      return out;
     });
   }
 
@@ -5925,7 +5954,7 @@
     isVehicleSummaryPage: isVehicleSummaryPage,
     // fluid-table pipeline, exposed so new-year PDFs can be sanity-checked
     // from a dev harness (PDF bytes → layout text → parsed models)
-    fluidsFromPdf: fluidsFromPdf, pdfTextLines: pdfTextLines, parseFluidModels: parseFluidModels,
+    fluidsFromPdf: fluidsFromPdf, pdfTextLines: pdfTextLines, pdfPages: pdfPages, parseFluidModels: parseFluidModels,
     // fluid-store internals, exposed for dev harnesses (IndexedDB layer)
     fluidsBoot: fluidsBoot, loadFluids: loadFluids, fluidsSaveYears: fluidsSaveYears,
     reparseYear: reparseYear, fluidsInfoHTML: fluidsInfoHTML, removeFluidYear: removeFluidYear,
