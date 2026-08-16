@@ -9,7 +9,24 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.9.1-alpha — in progress
+## v0.4.9.2-alpha — in progress
+
+### Changed
+- **Service Xpress charts now list by year**, exactly like the fluid tables — the file name is gone from
+  the list and the Update chooser. You only pick a file (and see its name) at the point of choosing the
+  PDF to add or update.
+
+### Added
+- **The Update button now checks the file you pick.** When you replace a year, Hahns makes sure the PDF
+  is the **right kind** and the **right year** before saving:
+  - Pick a Service Xpress chart while updating a Fluid Capacities year (or vice-versa) → it tells you
+    it’s the wrong kind and asks for the correct one.
+  - Pick the wrong year (a 2014 file to update 2013) → it tells you and asks for the 2013 file.
+  - Either way you can choose another file without starting over.
+
+---
+
+## v0.4.9.1-alpha — 2026-08-16
 
 ### Changed
 - **Service Xpress charts now show just the file name** in ⚙ Settings — the extra model years listed

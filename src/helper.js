@@ -2993,7 +2993,8 @@
                   // silently re-parsed later when the parser improves
                   results.push({ name: f.name, year: out.year, models: out.models, buf: buf, hash: hash, size: (f.size || (buf && buf.byteLength) || 0) }); res();
                 }).catch(function (err) {
-                  results.push({ name: f.name, err: (err && err.message) || "could not read that PDF" }); res();
+                  // keep buf so an Update can tell WHY it failed (e.g. it's an SX chart)
+                  results.push({ name: f.name, err: (err && err.message) || "could not read that PDF", buf: buf }); res();
                 });
               });
             };
@@ -3002,7 +3003,11 @@
           });
         });
       });
-      chain.then(function () { openFluidsConfirm(host, r, options, root, results, target); });
+      chain.then(function () {
+        // Update flow: validate the picked file is the right TYPE + YEAR before saving.
+        if (target) { validateFluidUpdate(host, r, options, root, results[0], target); return; }
+        openFluidsConfirm(host, r, options, root, results);
+      });
     });
     (root.querySelector(".wrap") || root).appendChild(inp);
     inp.click();
@@ -3015,10 +3020,10 @@
     var years = fl && fl.years ? Object.keys(fl.years).sort() : [];
     if (!years.length) { pickFluidFiles(host, r, options, root); return; }
     if (years.length === 1) { pickFluidFiles(host, r, options, root, years[0]); return; }
+    // show only the year (the tech asked not to see file names here — the file
+    // name only matters at the OS picker when choosing the replacement)
     var list = years.map(function (y) {
-      var file = (fl.years[y] && fl.years[y].file) || "";
-      return '<button class="updpick" data-y="' + esc(y) + '"><b>' + esc(y) + "</b>" +
-        (file ? '<span class="updfile">' + esc(file) + "</span>" : "") + "</button>";
+      return '<button class="updpick" data-y="' + esc(y) + '"><b>' + esc(y) + "</b></button>";
     }).join("");
     var ov = document.createElement("div");
     ov.className = "setc";
@@ -3039,11 +3044,63 @@
     });
   }
 
+  // a small "wrong file" overlay for the Update flow: says what's wrong and offers
+  // to pick another file (retry) or cancel. Keeps a mis-pick from silently doing
+  // nothing or saving the wrong thing.
+  function updateFileError(host, r, options, root, msg, retry) {
+    var ov = document.createElement("div");
+    ov.className = "setc";
+    ov.innerHTML = '<div class="setbox">' +
+      '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
+      '<p class="settl">Wrong file</p>' +
+      '<p class="setsub uperr">' + esc(msg) + "</p>" +
+      '<div class="setbtns"><button class="cancel">Cancel</button>' +
+      (retry ? '<button class="primary retry">Choose another file</button>' : "") +
+      "</div></div>";
+    root.appendChild(ov);
+    var close = function () { try { ov.remove(); } catch (e) {} };
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    ov.querySelector(".cancel").addEventListener("click", close);
+    ov.querySelector(".xclose").addEventListener("click", close);
+    var rt = ov.querySelector(".retry");
+    if (rt) rt.addEventListener("click", function () { close(); if (retry) retry(); });
+  }
+
+  // does a PDF parse as a Service Xpress chart? Resolves true/false. Used as the
+  // reliable TYPE test: sxFromPdf is strict (rejects fluid PDFs), whereas the fluid
+  // parser is lenient and will happily read an SX chart as garbage "models" — so we
+  // can't trust "it parsed as fluid" alone. "It parses as SX" is the solid signal.
+  function looksSx(buf, name) {
+    if (!buf) return Promise.resolve(false);
+    return sxFromPdf(buf, name).then(function () { return true; }, function () { return false; });
+  }
+  // Update sanity check (fluids): the replacement must be a Fluid Capacities PDF
+  // (not a Service Xpress chart or junk) AND the year the tech is replacing.
+  function validateFluidUpdate(host, r, options, root, only, targetYear) {
+    if (!only) return;
+    var retry = function () { pickFluidFiles(host, r, options, root, targetYear); };
+    // FIRST rule out a Service Xpress chart (the fluid parser can't be trusted to).
+    looksSx(only.buf, only.name).then(function (isSx) {
+      if (isSx) {
+        updateFileError(host, r, options, root, "That looks like a Service Xpress chart, not a Fluid Capacities table. Please select the " + targetYear + " Fluid Capacities PDF.", retry);
+        return;
+      }
+      if (only.err) {
+        updateFileError(host, r, options, root, "This doesn’t look like a Fluid Capacities PDF. Please select the " + targetYear + " Fluid Capacities PDF.", retry);
+        return;
+      }
+      if (String(only.year) !== String(targetYear)) {
+        updateFileError(host, r, options, root, "You picked a " + only.year + " file, but you’re updating " + targetYear + ". Please select the " + targetYear + " Fluid Capacities PDF.", retry);
+        return;
+      }
+      openFluidsConfirm(host, r, options, root, [only], targetYear);
+    });
+  }
+
   // the eyeball step before saving: per file, the model year + the models the
   // converter found (or a plain-language error). Save merges into the store.
-  // `target` (a year) means this is a REPLACE: after saving, if the new PDF turned
-  // out to be a different year, the old target year is dropped so the slot is
-  // genuinely replaced rather than a stray year left behind.
+  // `target` (a year) is set on the Update flow (the year is already validated to
+  // match, so the save just overwrites that year in place) — used here for labels.
   function openFluidsConfirm(host, r, options, root, results, target) {
     var ok = results.filter(function (o) { return !o.err; });
     var rows = results.map(function (o) {
@@ -3072,10 +3129,8 @@
     if (sv) sv.addEventListener("click", function () {
       sv.disabled = true;
       fluidsSaveYears(ok).then(function () {
-        // REPLACE: if the picked PDF was a different year than the one being
-        // updated, drop the old year so the slot is truly replaced.
-        if (target && !ok.some(function (o) { return String(o.year) === String(target); })) return removeFluidYear(target);
-      }).then(function () {
+        // (Update keys by year and the year is validated to match the slot, so the
+        // save just overwrites it — no stray year to clean up.)
         close();
         renderInto(host, r, options);
         // if Settings is still open behind this dialog, refresh it in place so the
@@ -3094,7 +3149,9 @@
   // FileReader read — NO network), parse the two torque specs, then preview/confirm.
   // `target` (a stored file key) is set when REPLACING one chart via the Update
   // flow: single-file picker, save scoped to that file (see openSxConfirm).
-  function pickSxFiles(host, r, options, root, target) {
+  // `target` (a stored file key) + `targetYear` (the year shown for that chart) are
+  // set on the Update flow: single-file picker + type/year validation before save.
+  function pickSxFiles(host, r, options, root, target, targetYear) {
     var inp = document.createElement("input");
     inp.type = "file"; inp.accept = ".pdf,application/pdf"; inp.multiple = !target; inp.style.display = "none";
     inp.addEventListener("change", function () {
@@ -3113,7 +3170,7 @@
               sha256Hex(buf).then(function (hash) {
                 sxFromPdf(buf, f.name).then(function (out) {
                   results.push({ name: f.name, entries: out.entries, years: out.years, buf: buf, hash: hash, size: (f.size || (buf && buf.byteLength) || 0) }); res();
-                }).catch(function (err) { results.push({ name: f.name, err: (err && err.message) || "could not read that PDF" }); res(); });
+                }).catch(function (err) { results.push({ name: f.name, err: (err && err.message) || "could not read that PDF", buf: buf }); res(); });
               });
             };
             fr.onerror = function () { results.push({ name: f.name, err: "could not read that file" }); res(); };
@@ -3121,28 +3178,38 @@
           });
         });
       });
-      chain.then(function () { openSxConfirm(host, r, options, root, results, target); });
+      chain.then(function () {
+        if (target) { validateSxUpdate(host, r, options, root, results[0], target, targetYear); return; }
+        openSxConfirm(host, r, options, root, results);
+      });
     });
     (root.querySelector(".wrap") || root).appendChild(inp);
     inp.click();
   }
 
-  // Update flow: pick WHICH loaded chart (by file) to replace, then choose its new
-  // PDF. One chart → straight to the picker; several → a small chooser first.
+  // the year shown for a stored chart file (from its file name, like the fluid
+  // tables; fallback = the earliest model year the chart covers).
+  function sxFileYear(f) {
+    return fluidYearOf(f.fileName || f.key) || ((f.years || []).slice().sort()[0]) || "?";
+  }
+  // Update flow: pick WHICH loaded chart (shown by year) to replace, then choose
+  // its new PDF. One chart → straight to the picker; several → a small chooser.
   function openSxUpdate(host, r, options, root) {
     var sx = loadSx();
     var files = sx && sx.files ? sx.files : [];
     if (!files.length) { pickSxFiles(host, r, options, root); return; }
-    if (files.length === 1) { pickSxFiles(host, r, options, root, files[0].key); return; }
-    var list = files.map(function (f) {
-      return '<button class="updpick" data-k="' + esc(f.key) + '"><b>' + esc(f.fileName || f.key) + "</b></button>";
+    var items = files.map(function (f) { return { key: f.key, year: sxFileYear(f) }; })
+      .sort(function (a, b) { return a.year < b.year ? -1 : a.year > b.year ? 1 : 0; });
+    if (items.length === 1) { pickSxFiles(host, r, options, root, items[0].key, items[0].year); return; }
+    var list = items.map(function (o) {
+      return '<button class="updpick" data-k="' + esc(o.key) + '" data-y="' + esc(o.year) + '"><b>' + esc(o.year) + "</b></button>";
     }).join("");
     var ov = document.createElement("div");
     ov.className = "setc";
     ov.innerHTML = '<div class="setbox">' +
       '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
       '<p class="settl">Update a torque chart</p>' +
-      '<p class="setsub">Pick the chart you want to replace, then choose the new PDF. The others stay as they are.</p>' +
+      '<p class="setsub">Pick the year you want to replace, then choose the new PDF. The others stay as they are.</p>' +
       '<div class="updlist">' + list + "</div>" +
       '<div class="setbtns"><button class="cancel">Cancel</button></div>' +
       "</div>";
@@ -3152,8 +3219,30 @@
     ov.querySelector(".cancel").addEventListener("click", close);
     ov.querySelector(".xclose").addEventListener("click", close);
     Array.prototype.forEach.call(ov.querySelectorAll(".updpick"), function (b) {
-      b.addEventListener("click", function () { var k = b.getAttribute("data-k"); close(); pickSxFiles(host, r, options, root, k); });
+      b.addEventListener("click", function () { var k = b.getAttribute("data-k"), y = b.getAttribute("data-y"); close(); pickSxFiles(host, r, options, root, k, y); });
     });
+  }
+
+  // Update sanity check (Service Xpress): the replacement must be a Service Xpress
+  // PDF (not a fluid table or junk) AND the year the tech is replacing.
+  function validateSxUpdate(host, r, options, root, only, targetKey, targetYear) {
+    if (!only) return;
+    var retry = function () { pickSxFiles(host, r, options, root, targetKey, targetYear); };
+    if (only.err) {
+      var other = only.buf ? fluidsFromPdf(only.buf, only.name) : Promise.reject();
+      other.then(function () {
+        updateFileError(host, r, options, root, "That looks like a Fluid Capacities table, not a Service Xpress chart. Please select the " + targetYear + " Service Xpress PDF.", retry);
+      }, function () {
+        updateFileError(host, r, options, root, "This doesn’t look like a Service Xpress PDF. Please select the " + targetYear + " Service Xpress PDF.", retry);
+      });
+      return;
+    }
+    var gotYear = fluidYearOf(only.name) || ((only.years || []).slice().sort()[0]) || "";
+    if (targetYear && String(gotYear) !== String(targetYear)) {
+      updateFileError(host, r, options, root, "You picked a " + (gotYear || "different-year") + " chart, but you’re updating " + targetYear + ". Please select the " + targetYear + " Service Xpress PDF.", retry);
+      return;
+    }
+    openSxConfirm(host, r, options, root, [only], targetKey);
   }
 
   // preview per file: the model years + how many model tables were found (or a
@@ -4119,6 +4208,7 @@
     ".updpick:hover{background:#edf7ee;border-color:#2fb84d}" +
     ".updpick b{color:#13502a}" +
     ".updfile{font-weight:400;color:#3f7a52;font-size:12px;word-break:break-all}" +
+    ".setsub.uperr{color:#a32d2d;font-weight:600}" +
     ".setmeta{margin-top:2px;font-size:11.5px;color:#3f7a52}" +
     ".setstat.none{background:#eef1f6;border-color:#dfe4ee;color:#3a4a63}" +
     ".dbinfo{background:#f4f7fc;border:1px solid #dfe4ee;border-radius:8px;padding:4px 11px;margin-bottom:12px}" +
@@ -4986,18 +5076,19 @@
     var toolCount = st ? String(st.count || 0) + " tool" + ((st.count || 0) === 1 ? "" : "s") : "not loaded";
     var flCount = flYears.length ? String(flYears.length) + " year" + (flYears.length > 1 ? "s" : "") : "not loaded";
     // ---- Service Xpress torque status (v0.4.1) ----
+    // Show each loaded chart by its YEAR (like the fluid tables), not the file name.
+    // Each chart is stored/removed by its file; sxFileYear() gives the display year.
     var sx = loadSx();
-    var sxYears = sx && sx.years ? sx.years : [];
-    var sxCount = sxYears.length ? String(sxYears.length) + " year" + (sxYears.length > 1 ? "s" : "") : "not loaded";
     var sxFiles = sx && sx.files ? sx.files : [];
-    var sxItems = sxFiles.map(function (f) {
-      // the PDF file name already carries the year — showing the parsed years after
-      // it just confused the tech, so the chip is the file name alone.
-      return '<span class="setitem"><span class="siyr">' + esc(f.fileName || f.key) + "</span>" +
-        '<button class="siremove" data-sxrmkey="' + esc(f.key) + '" title="Remove this chart" aria-label="Remove this chart">&#10005;</button></span>';
+    var sxCount = sxFiles.length ? String(sxFiles.length) + " year" + (sxFiles.length > 1 ? "s" : "") : "not loaded";
+    var sxByYear = sxFiles.map(function (f) { return { key: f.key, year: sxFileYear(f) }; })
+      .sort(function (a, b) { return a.year < b.year ? -1 : a.year > b.year ? 1 : 0; });
+    var sxItems = sxByYear.map(function (o) {
+      return '<span class="setitem"><span class="siyr">' + esc(o.year) + "</span>" +
+        '<button class="siremove" data-sxrmkey="' + esc(o.key) + '" title="Remove ' + esc(o.year) + '" aria-label="Remove ' + esc(o.year) + '">&#10005;</button></span>';
     }).join("");
-    var sxStatus = sxYears.length
-      ? '<div class="setstat">Torque charts loaded: <b>' + esc(String(sxYears.length)) + "</b> year" + (sxYears.length > 1 ? "s" : "") +
+    var sxStatus = sxFiles.length
+      ? '<div class="setstat">Torque charts loaded: <b>' + esc(String(sxFiles.length)) + "</b> year" + (sxFiles.length > 1 ? "s" : "") +
           '<div class="setitems">' + sxItems + "</div>" +
           (sx && sx.updated ? '<div class="setmeta">updated ' + esc(sx.updated) + "</div>" : "") + "</div>"
       : '<div class="setstat none">No Service Xpress charts loaded yet. Load the yearly VW Service Xpress PDFs to show oil drain plug &amp; wheel bolt torque for the loaded vehicle.</div>';
