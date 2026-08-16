@@ -1,7 +1,10 @@
-# Maintenance Schedule parser — WORK IN PROGRESS (not shipped)
+# Maintenance Schedule parser — PROTOTYPE (now ported into the app, kept as the reference baseline)
 
-Dev prototype for the 4th PDF type: **VW Maintenance Schedules** (v0.5.0-beta target).
-This is **not** wired into the app yet — `main` and the live app are unchanged.
+Dev prototype for the 4th PDF type: **VW Maintenance Schedules**. **As of v0.5.0-beta this is
+PORTED into `src/helper.js`** (the `MS` closure + `msFromPdf` + IDB `ms_*` stores + Settings +
+the due window). This directory is kept as the **verified reference**: `node parse-maint.js` must
+keep producing the same dump the in-app `window.VWJB.msFromPdf` does — if you change the app parser,
+re-run this and diff. `tools/parser-test.js` now also snapshots the maintenance PDF automatically.
 
 ## Files
 - **`parse-maint.js`** — the maintenance parser prototype. Run: `node parse-maint.js`

@@ -5,6 +5,73 @@ permanent project reference.
 
 ---
 
+## Session close (2026-08-17) — v0.5.0-beta: Maintenance schedules ported into the app (branch `v0.5.0-maintenance`, NOT yet merged)
+
+The big one landed: the **4th PDF type (VW Maintenance Schedules)** is now fully wired into `src/helper.js`,
+built into the artifacts, and **verified end-to-end in a real browser**. This moves Hahns alpha→beta.
+Built on a fresh branch **`v0.5.0-maintenance`** off `main` (the reader plumbing `pdfPages`/`rules` was
+already on `main` via PR #136). **Not committed/merged yet — awaiting owner review/PR.** App-only →
+`LOADER_VER` stays **2**, no re-drag; stored PDFs auto-reparse on the `MS_PARSER_VER` bump.
+
+### What shipped (8 milestones, each verified)
+1. **Parser port** — the whole prototype (`tools/wip-maintenance/parse-maint.js`) is now the **`MS` closure**
+   in helper.js (wrapped so its generic helper names — tidy/finalize/joinRuns/… — can't collide) +
+   `msFromPdf(buf,name)` + `MS_PARSER_VER="1.0.0"`. **Verified 0-drift**: in-app `msFromPdf` output is
+   byte-identical to the prototype's blessed dump (ICE+BEV, 15 additional items). The only deliberate
+   generality change: the footer-date junk filter now matches any `MM.YYYY`, not hardcoded `11.2025`.
+2. **Storage** — `APP_DB_VER` 2→3, stores `ms_pdfs`/`ms_parsed`/`ms_meta` (keyed by file), `msData`
+   projection + `hydrateMs`/`reconcileMs`/`reparseMsFile` folded into `fluidsBoot`, `vwjb_ms_v1` localStorage
+   fallback. Mirrors Service Xpress exactly.
+3. **Matching + due** — `msDueForVehicle`/`msServicesDue`/`msApplies`/`msCodeFits`, wired to the app's
+   `fluidVeh()` object. **EXACT Sales-Code/trans-code prefix** matching (a BW2 Tiguan @80K → Spark Plugs
+   80K, **5N excluded** — the whole point). Replace-only from Minor/Std/Ext; Additional = All-Vehicles +
+   this-vehicle. Uses `transCodes` array (EV multi-codes) + `veh.liters` for engine-size codes.
+4. **Settings section** — collapsible "Maintenance schedules" (Add PDFs / Update-with-year-sanity-check /
+   Remove-all-with-confirm / per-year ✕), mirroring the SX section.
+5. **Vehicle bar** — editable **Mileage** field + **Delivery Date** (read from ELSA `Delivery Date`→ISO;
+   Odometer best-effort). Both `opt` VEH_FIELDS (shown/editable/printed, never "missing").
+6. **Due window** — `msBar(r)` under the fluids bar (amber "Possible NNK service due (levels)" when due) →
+   `openMsWindow`/`buildMsWindowHTML` (named `hahns_maint`, printable): vehicle grid + hero + Replace /
+   Additional-all / Additional-this-vehicle cards.
+7. **Copy-setup** — `ms_*` added to `SHOP_STORES`; import re-hydrates `hydrateMs`. Round-trip verified.
+8. **Build/test/docs** — VERSION→`0.5.0-beta`; `tools/parser-test.js` extended to snapshot the maintenance
+   PDF (`$HAHNS_MS_DIR`, default `~/Downloads/*Maintenance Schedule*.pdf`) → **47 files, 0 drift**;
+   CHANGELOG + CLAUDE.md (+ the wip-maintenance README) updated.
+
+### Browser verification (real IndexedDB, built app.js, DB v3)
+Drove the real panel via `renderInto` in a throwaway repo-root harness (`_mstest.html` + a gitignored PDF
+copy, both deleted after). Confirmed: PDF → IDB (blob **78,299 B** kept, parsed **15** additional items,
+meta ok) → **hydrate-on-reload** (`?noload` path proved it reads from IDB, not the save) → amber
+**"Possible 80K service due (Standard + Extended)"** bar → due window shows Engine Oil (Replace),
+Panorama/Sunroof-Drains/Spark-Plugs/Transmission for the **BW2** Tiguan → Settings section renders with the
+2019 chip → **export/import round-trip** restores `msYears:1` with the blob base64-perfect → `removeMsFile`
+clears. **No console errors.** (The named-`window.open` popup isn't drivable in the in-app browser, so the
+window was verified by rendering `buildMsWindowHTML` into an iframe — same code path the popup writes.)
+
+### Notes / carry-forward
+- **Not merged.** `git status`: `src/helper.js`, `tools/build.js`, `tools/parser-test.js`,
+  `tools/wip-maintenance/{parse-maint.js,README.md}`, CHANGELOG, CLAUDE.md, and the rebuilt `docs/`+`dist/`.
+  Deploy per the usual flow (branch-protected `main` → PR → `gh pr merge --admin`). Tell techs: after it's
+  live, load the yearly Maintenance PDF once per computer in ⚙ Settings; app-only, no re-drag.
+- **Fixed a stale path** in `tools/wip-maintenance/parse-maint.js` (its `require` of helper.js had a broken
+  relative path from when it was ported out of the scratchpad) → now `../../src/helper.js`.
+- **Mileage read — SOLVED with a real 2023 Tiguan dump the owner supplied mid-session.** The dump proved
+  the current mileage is **NOT in the page text** — ELSA keeps it in the "Mileage" INPUT box (by "Launch
+  UPG"), and the "Odometer" rows on the summary are per-WARRANTY-KEY odometers (the wrong number; my first
+  draft's `/^odometer/` text read would have grabbed those — fixed). Replaced with **`readVehMileage(document)`**:
+  reads the live-DOM input value whose context says mileage/odometer but not warranty, recursing frames;
+  wired into `scan()`; blank → hand-typed bar fallback. **Verified** on a DOM mimicking the dump (picks the
+  `24,680` Mileage input, skips both warranty Odometer inputs + a ZIP decoy). **Delivery Date text read also
+  confirmed by the same dump** (`2023-08-31`). Still wants one real-ELSA bay test to confirm the live input's
+  surrounding context matches the heuristic.
+- **Deferred (low impact):** engine-conditional applicability ("Engines W/ toothed belts") still matches as "all".
+- **Only the 2019 PDF exists** as a corpus. A second model year would be the best next validation (the
+  footer-date generalization + section regexes are written to be year-agnostic, but unproven on a 2nd file).
+- CHANGELOG: flipped the stale `v0.4.9.3-alpha — in progress` heading to its release date (it's live) and
+  added the `v0.5.0-beta — in progress` entry on top.
+
+---
+
 ## Session close (2026-08-16, later) — Repo hygiene / cleanup (no code changes)
 
 Housekeeping session, no feature work. Started against a **6-commit-stale local `main`** (was at PR #134 /
