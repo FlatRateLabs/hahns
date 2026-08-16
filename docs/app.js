@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.4.9.2-alpha · 2026-08-16 18:31 UTC";
+var BUILD = "v0.4.9.3-alpha · 2026-08-16 18:48 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -2895,19 +2895,27 @@ ov.querySelector(".xclose").addEventListener("click", close);
 var rt = ov.querySelector(".retry");
 if (rt) rt.addEventListener("click", function () { close(); if (retry) retry(); });
 }
+// does a PDF parse as a Service Xpress chart? Resolves true/false. Used as the
+// reliable TYPE test: sxFromPdf is strict (rejects fluid PDFs), whereas the fluid
+// parser is lenient and will happily read an SX chart as garbage "models" — so we
+// can't trust "it parsed as fluid" alone. "It parses as SX" is the solid signal.
+function looksSx(buf, name) {
+if (!buf) return Promise.resolve(false);
+return sxFromPdf(buf, name).then(function () { return true; }, function () { return false; });
+}
 // Update sanity check (fluids): the replacement must be a Fluid Capacities PDF
 // (not a Service Xpress chart or junk) AND the year the tech is replacing.
 function validateFluidUpdate(host, r, options, root, only, targetYear) {
 if (!only) return;
 var retry = function () { pickFluidFiles(host, r, options, root, targetYear); };
-if (only.err) {
-// failed to parse as fluids — is it actually a Service Xpress chart? (nicer msg)
-var other = only.buf ? sxFromPdf(only.buf, only.name) : Promise.reject();
-other.then(function () {
+// FIRST rule out a Service Xpress chart (the fluid parser can't be trusted to).
+looksSx(only.buf, only.name).then(function (isSx) {
+if (isSx) {
 updateFileError(host, r, options, root, "That looks like a Service Xpress chart, not a Fluid Capacities table. Please select the " + targetYear + " Fluid Capacities PDF.", retry);
-}, function () {
+return;
+}
+if (only.err) {
 updateFileError(host, r, options, root, "This doesn’t look like a Fluid Capacities PDF. Please select the " + targetYear + " Fluid Capacities PDF.", retry);
-});
 return;
 }
 if (String(only.year) !== String(targetYear)) {
@@ -2915,6 +2923,7 @@ updateFileError(host, r, options, root, "You picked a " + only.year + " file, bu
 return;
 }
 openFluidsConfirm(host, r, options, root, [only], targetYear);
+});
 }
 // the eyeball step before saving: per file, the model year + the models the
 // converter found (or a plain-language error). Save merges into the store.

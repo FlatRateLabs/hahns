@@ -9,7 +9,17 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.9.2-alpha — in progress
+## v0.4.9.3-alpha — in progress
+
+### Fixed
+- **Updating a Fluid Capacities year now correctly rejects a Service Xpress chart.** The wrong-file check
+  shipped in v0.4.9.2 wasn’t actually in the delivered app (a build was missed), so a Service Xpress PDF
+  of the matching year could still be used to update a fluid table. It’s now blocked with the right
+  message. (Right file type **and** right year are both required.)
+
+---
+
+## v0.4.9.2-alpha — 2026-08-16
 
 ### Changed
 - **Service Xpress charts now list by year**, exactly like the fluid tables — the file name is gone from
