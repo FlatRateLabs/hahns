@@ -9,7 +9,18 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.9-alpha — in progress
+## v0.4.9.1-alpha — in progress
+
+### Changed
+- **Service Xpress charts now show just the file name** in ⚙ Settings — the extra model years listed
+  after the file name were confusing, and the file name already has the year in it.
+- **Separate “Add PDFs” and “Update” buttons** for fluid tables and Service Xpress charts (they used to
+  share one “Add / replace” button). **Update** now opens a small chooser so you pick exactly which year
+  (or which chart) you want to replace, then select its new PDF — the rest stay untouched.
+
+---
+
+## v0.4.9-alpha — 2026-08-16
 
 ### Added
 - **Remove one loaded list at a time** (issue #129). In ⚙ Settings each loaded fluid year and each
