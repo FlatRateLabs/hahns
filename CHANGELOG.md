@@ -9,7 +9,21 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.8.2-alpha — in progress
+## v0.4.9-alpha — in progress
+
+### Added
+- **Remove one loaded list at a time** (issue #129). In ⚙ Settings each loaded fluid year and each
+  Service Xpress chart now has its own **×** button, so you can drop a single year or a single chart
+  without wiping the rest. A **Remove all** button still appears when more than one is loaded.
+
+### Changed
+- **Removing a list now asks first** (issue #130). Every remove — the tool list, a fluid year, a torque
+  chart, or “Remove all” — shows a **Remove / Cancel** confirmation, so an accidental click can’t erase a
+  list you meant to keep.
+
+---
+
+## v0.4.8.2-alpha — 2026-07-16
 
 ### Fixed
 - **The Drivetrain card now shows YOUR transmission, not every transmission** (issue #126). On a 2017

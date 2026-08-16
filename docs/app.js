@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.4.8.2-alpha · 2026-07-16 05:58 UTC";
+var BUILD = "v0.4.9-alpha · 2026-08-16 17:42 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -1004,6 +1004,14 @@ recs.forEach(function (rc) { tx.objectStore(rc.store).put(rc.val); });
 return idbTxDone(tx);
 } catch (e) { return Promise.reject(e); }
 }
+// delete the same key from several stores in one atomic tx (per-item removal)
+function idbDelMany(stores, key) {
+try {
+var tx = appDB.transaction(stores, "readwrite");
+stores.forEach(function (s) { tx.objectStore(s).delete(key); });
+return idbTxDone(tx);
+} catch (e) { return Promise.reject(e); }
+}
 // build the sync projection from `parsed` records (skips blobs entirely)
 function buildProjection(parsedRecs) {
 var years = {}, latest = "";
@@ -1154,6 +1162,24 @@ var tx = appDB.transaction(["pdfs", "parsed", "meta"], "readwrite");
 tx.objectStore("pdfs").clear(); tx.objectStore("parsed").clear(); tx.objectStore("meta").clear();
 } catch (e) {}
 }
+}
+// remove a SINGLE fluid year (its parsed data + source PDF), keeping the rest.
+// Years are stored as strings (see fluidYearOf), so the key matches directly.
+function removeFluidYear(year) {
+year = String(year);
+if (!appIdbOk || !appDB) {
+var st = null; try { st = JSON.parse(localStorage.getItem(FLUIDS_KEY) || "null"); } catch (e) {}
+if (st && st.years && st.years[year]) {
+delete st.years[year]; st.count = Object.keys(st.years).length; st.updated = todayISO();
+if (st.count) { try { localStorage.setItem(FLUIDS_KEY, JSON.stringify(st)); } catch (e) {} fluidsData = st; }
+else { try { localStorage.removeItem(FLUIDS_KEY); } catch (e) {} fluidsData = false; }
+}
+return Promise.resolve();
+}
+return idbDelMany(["pdfs", "parsed", "meta"], year)
+.then(function () { return Promise.all([idbGetAll("parsed"), idbGetAll("meta")]); })
+.then(function (out) { buildProjection(out[0]); fluidsMetaList = out[1] || []; })
+.catch(function () {});
 }
 // SHA-256 hex of the PDF bytes (integrity / future dedupe). Optional — resolves
 // to "" if the browser lacks crypto.subtle (secure context; ELSA + Pages https).
@@ -2203,6 +2229,23 @@ function removeSx() {
 sxData = false; sxMetaList = [];
 try { localStorage.removeItem(SX_KEY); } catch (e) {}
 if (appIdbOk && appDB) { try { var tx = appDB.transaction(["sx_pdfs", "sx_parsed", "sx_meta"], "readwrite"); tx.objectStore("sx_pdfs").clear(); tx.objectStore("sx_parsed").clear(); tx.objectStore("sx_meta").clear(); } catch (e) {} }
+}
+// remove a SINGLE Service Xpress chart (keyed by source file — one chart can
+// bundle several model years, so the file is the unit of removal, not the year).
+function removeSxFile(key) {
+if (!appIdbOk || !appDB) {
+var st = null; try { st = JSON.parse(localStorage.getItem(SX_KEY) || "null"); } catch (e) {}
+if (st && st.recs) {
+st.recs = st.recs.filter(function (rc) { return rc.key !== key && rc.fileName !== key; });
+if (st.recs.length) { try { localStorage.setItem(SX_KEY, JSON.stringify(st)); } catch (e) {} buildSxProjection(st.recs); }
+else { try { localStorage.removeItem(SX_KEY); } catch (e) {} sxData = false; }
+}
+return Promise.resolve();
+}
+return idbDelMany(["sx_pdfs", "sx_parsed", "sx_meta"], key)
+.then(function () { return Promise.all([idbGetAll("sx_parsed"), idbGetAll("sx_meta")]); })
+.then(function (out) { buildSxProjection(out[0]); sxMetaList = out[1] || []; })
+.catch(function () {});
 }
 // hydrate the sync projection at boot (called from fluidsBoot so the DB opens once)
 function hydrateSx() {
@@ -3734,6 +3777,12 @@ var CSS = "" +
 ".setstat{background:#edf7ee;border:1px solid #cce6cf;border-radius:8px;padding:9px 11px;font-size:12.5px;color:#1e6b34;line-height:1.4;margin-bottom:12px}" +
 ".setstat b{color:#13502a}" +
 ".setfile{margin-top:4px;font-weight:700;color:#13502a;word-break:break-all}" +
+".setitems{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}" +
+".setitem{display:inline-flex;align-items:center;gap:5px;max-width:100%;background:#fff;border:1px solid #cce6cf;border-radius:7px;padding:3px 4px 3px 9px;font-size:12px;font-weight:700;color:#13502a}" +
+".siyr{word-break:break-word}" +
+".siremove{appearance:none;-webkit-appearance:none;border:0;background:#f0f4f1;color:#a32d2d;border-radius:5px;cursor:pointer;font-size:12px;line-height:1;padding:3px 6px;font-family:inherit}" +
+".siremove:hover{background:#fdeaea}" +
+".setitem .confirm{margin:0}" +
 ".setmeta{margin-top:2px;font-size:11.5px;color:#3f7a52}" +
 ".setstat.none{background:#eef1f6;border-color:#dfe4ee;color:#3a4a63}" +
 ".dbinfo{background:#f4f7fc;border:1px solid #dfe4ee;border-radius:8px;padding:4px 11px;margin-bottom:12px}" +
@@ -4553,9 +4602,13 @@ var status = st
 // ---- fluid capacity tables status (v0.3.13) ----
 var fl = loadFluids();
 var flYears = fl && fl.years ? Object.keys(fl.years).sort() : [];
+var flItems = flYears.map(function (y) {
+return '<span class="setitem"><span class="siyr">' + esc(y) + "</span>" +
+'<button class="siremove" data-flrmyear="' + esc(y) + '" title="Remove ' + esc(y) + '" aria-label="Remove ' + esc(y) + '">&#10005;</button></span>';
+}).join("");
 var flStatus = flYears.length
 ? '<div class="setstat">Fluid tables loaded: <b>' + esc(String(flYears.length)) + "</b> year" + (flYears.length > 1 ? "s" : "") +
-'<div class="setfile">' + esc(flYears.join(", ")) + "</div>" +
+'<div class="setitems">' + flItems + "</div>" +
 (fl.updated ? '<div class="setmeta">updated ' + esc(fl.updated) + "</div>" : "") + "</div>"
 : '<div class="setstat none">No fluid tables loaded yet. Load the yearly “VW Fluid Capacity Tables” PDFs (you can pick several at once) to enable the Fluids &amp; Capacities lookup.</div>';
 // one-line status shown right in each section's header so the tech sees state
@@ -4566,9 +4619,15 @@ var flCount = flYears.length ? String(flYears.length) + " year" + (flYears.lengt
 var sx = loadSx();
 var sxYears = sx && sx.years ? sx.years : [];
 var sxCount = sxYears.length ? String(sxYears.length) + " year" + (sxYears.length > 1 ? "s" : "") : "not loaded";
+var sxFiles = sx && sx.files ? sx.files : [];
+var sxItems = sxFiles.map(function (f) {
+var yy = (f.years && f.years.length) ? " · " + f.years.join(", ") : "";
+return '<span class="setitem"><span class="siyr">' + esc(f.fileName || f.key) + esc(yy) + "</span>" +
+'<button class="siremove" data-sxrmkey="' + esc(f.key) + '" title="Remove this chart" aria-label="Remove this chart">&#10005;</button></span>';
+}).join("");
 var sxStatus = sxYears.length
 ? '<div class="setstat">Torque charts loaded: <b>' + esc(String(sxYears.length)) + "</b> year" + (sxYears.length > 1 ? "s" : "") +
-'<div class="setfile">' + esc(sxYears.join(", ")) + "</div>" +
+'<div class="setitems">' + sxItems + "</div>" +
 (sx && sx.updated ? '<div class="setmeta">updated ' + esc(sx.updated) + "</div>" : "") + "</div>"
 : '<div class="setstat none">No Service Xpress charts loaded yet. Load the yearly VW Service Xpress PDFs to show oil drain plug &amp; wheel bolt torque for the loaded vehicle.</div>';
 // The manual update button drives the self-updating loader's popup. The hook
@@ -4610,7 +4669,7 @@ status +
 '<p class="setsub">Load the yearly <b>VW Fluid Capacity Tables</b> PDFs. Hahns converts them on this computer — kept only in this browser, never uploaded — and shows the values matched to the loaded vehicle.</p>' +
 flStatus +
 '<div class="setbtns">' +
-(flYears.length ? '<button class="danger flremove">Remove tables</button>' : "") +
+(flYears.length > 1 ? '<button class="danger flremove">Remove all</button>' : "") +
 '<button class="primary flupload">' + (flYears.length ? "Add / replace PDFs" : "Load PDFs") + "</button>" +
 "</div>" +
 "</div>" +
@@ -4622,7 +4681,7 @@ flStatus +
 '<p class="setsub">Load the yearly <b>VW Service Xpress</b> charts (PDF). Hahns reads the <b>oil drain plug</b> and <b>wheel bolt</b> torque and shows them for the loaded vehicle — everything else in the chart is ignored. Kept only on this computer, never uploaded.</p>' +
 sxStatus +
 '<div class="setbtns">' +
-(sxYears.length ? '<button class="danger sxremove">Remove charts</button>' : "") +
+(sxFiles.length > 1 ? '<button class="danger sxremove">Remove all</button>' : "") +
 '<button class="primary sxupload">' + (sxYears.length ? "Add / replace PDFs" : "Load PDFs") + "</button>" +
 "</div>" +
 "</div>" +
@@ -4677,33 +4736,75 @@ flash(root, "Opening the setup page — re-drag the bookmark from there.");
 // "Report a bug / send feedback" — close Settings and open the report popup
 var fb = ov.querySelector(".fbbtn");
 if (fb) fb.addEventListener("click", function () { close(); openReport(root); });
+// inline "Remove? [Remove] [Cancel]" so a stray click never wipes a list (#130).
+// Swaps the clicked control for a confirm bar; Cancel rebuilds Settings in place.
+function confirmRemove(btn, msg, onYes) {
+var cf = document.createElement("span");
+cf.className = "confirm";
+cf.innerHTML = '<span class="ctxt">' + esc(msg) + "</span>" +
+'<button class="cyes">Remove</button><button class="cno">Cancel</button>';
+btn.replaceWith(cf);
+cf.querySelector(".cyes").addEventListener("click", onYes);
+cf.querySelector(".cno").addEventListener("click", refresh);
+}
 // upload buttons DON'T close Settings — the tech may have more to do here
 var up = ov.querySelector(".upload");
 if (up) up.addEventListener("click", function () { pickToolFile(host, r, options, root); });
 var rm = ov.querySelector(".remove");
 if (rm) rm.addEventListener("click", function () {
+confirmRemove(rm, "Remove the tool list?", function () {
 removeShopTools();
 renderInto(host, r, options);
 refresh();
 flash(root, "Tool list removed");
 });
+});
 var flup = ov.querySelector(".flupload");
 if (flup) flup.addEventListener("click", function () { pickFluidFiles(host, r, options, root); });
 var flrm = ov.querySelector(".flremove");
 if (flrm) flrm.addEventListener("click", function () {
+confirmRemove(flrm, "Remove ALL fluid tables?", function () {
 removeFluids();
 renderInto(host, r, options);
 refresh();
 flash(root, "Fluid tables removed");
 });
+});
 var sxup = ov.querySelector(".sxupload");
 if (sxup) sxup.addEventListener("click", function () { pickSxFiles(host, r, options, root); });
 var sxrm = ov.querySelector(".sxremove");
 if (sxrm) sxrm.addEventListener("click", function () {
+confirmRemove(sxrm, "Remove ALL torque charts?", function () {
 removeSx();
 renderInto(host, r, options);
 refresh();
-flash(root, "Service Xpress charts removed");
+flash(root, "Torque charts removed");
+});
+});
+// per-item removal (#129) — one year of fluids, or one Service Xpress chart file
+Array.prototype.forEach.call(ov.querySelectorAll("[data-flrmyear]"), function (btn) {
+btn.addEventListener("click", function () {
+var y = btn.getAttribute("data-flrmyear");
+confirmRemove(btn, "Remove " + y + "?", function () {
+removeFluidYear(y).then(function () {
+renderInto(host, r, options);
+refresh();
+flash(root, y + " removed");
+});
+});
+});
+});
+Array.prototype.forEach.call(ov.querySelectorAll("[data-sxrmkey]"), function (btn) {
+btn.addEventListener("click", function () {
+var k = btn.getAttribute("data-sxrmkey");
+confirmRemove(btn, "Remove this chart?", function () {
+removeSxFile(k).then(function () {
+renderInto(host, r, options);
+refresh();
+flash(root, "Chart removed");
+});
+});
+});
 });
 // backup / transfer: export the whole shop config to a file, or import one
 var cex = ov.querySelector(".cfgexport");
@@ -5314,12 +5415,12 @@ isVehicleSummaryPage: isVehicleSummaryPage,
 fluidsFromPdf: fluidsFromPdf, pdfTextLines: pdfTextLines, parseFluidModels: parseFluidModels,
 // fluid-store internals, exposed for dev harnesses (IndexedDB layer)
 fluidsBoot: fluidsBoot, loadFluids: loadFluids, fluidsSaveYears: fluidsSaveYears,
-reparseYear: reparseYear, fluidsInfoHTML: fluidsInfoHTML,
+reparseYear: reparseYear, fluidsInfoHTML: fluidsInfoHTML, removeFluidYear: removeFluidYear,
 // shop tool-list store (IndexedDB v0.3.16), exposed for dev harnesses
 loadShopTools: loadShopTools, saveShopTools: saveShopTools, removeShopTools: removeShopTools,
 // Service Xpress torque (v0.4.1), exposed for dev harnesses
 parseServiceXpress: parseServiceXpress, sxFromPdf: sxFromPdf, loadSx: loadSx,
-sxSaveFiles: sxSaveFiles, removeSx: removeSx, sxForVehicle: sxForVehicle,
+sxSaveFiles: sxSaveFiles, removeSx: removeSx, removeSxFile: removeSxFile, sxForVehicle: sxForVehicle,
 sxDrainText: sxDrainText, sxWheelText: sxWheelText,
 buildFluidsWindowHTML: buildFluidsWindowHTML,
 exportShopConfig: exportShopConfig, importShopConfig: importShopConfig };
