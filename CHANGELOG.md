@@ -9,7 +9,38 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.0-beta — in progress
+## v0.5.1-beta — in progress
+
+### Changed
+- **Maintenance “services due” — smarter about what a service actually includes** (from bay feedback on a
+  2023 Tiguan at 27,651 mi):
+  - **The oil change is always listed.** Every gas vehicle gets an engine oil & filter change at its
+    service interval, so Hahns now always shows **“Engine Oil and Filter”** under *Replace* — even on the
+    newer (2022+) schedules where the service-level table doesn’t come through the PDF cleanly. (Hahns now
+    works out the service level — Minor / Standard / Extended — from the mileage using VW’s standard
+    cadence when the PDF’s own grid is unreadable.) Electric vehicles don’t get an oil line.
+  - **Time-based items follow the ~10,000 mile/year schedule.** A brake-fluid flush (every 3 years, then
+    every 2) now lands on the **30K and 50K services** and skips 40K, and the AWD/Haldex fluid (every 3
+    years) lands on **30K and 60K** — matching how these actually come due at ~10K mi/yr, using the U.S.
+    intervals. An older low-mileage car still gets its first flush flagged from the delivery date.
+  - **You can cross items off.** Every item in the maintenance window has a checkbox — tick anything
+    already done or not needed (e.g. a cabin filter or sunroof clean done last visit) to strike it out
+    before printing.
+
+### Changed (Settings)
+- **Each PDF section now shows how many years you’ve loaded out of what’s available** — e.g. *Fluid
+  capacity tables **12 / 27 yrs***, *Service Xpress **8 / 19 yrs***, *Maintenance schedules **1 / 18 yrs***
+  — right in the section header, so you can see at a glance what’s still missing on this computer.
+  (Maintenance is 18 for now — 2010–2027; it grows to 28 once the 2000–2009 format is supported.)
+- **Renamed “Fluid database” → “Database & parser versions”** since it now covers all three PDF types. Each
+  category (fluid capacities, Service Xpress, maintenance) is its own drop-down showing its parser
+  version(s), **PDF storage, last auto-update, and health status** — Service Xpress and maintenance now
+  report the same info fluid capacities always did. The old “years installed” line was removed from here
+  (that count now lives in the section headers above).
+
+---
+
+## v0.5.0-beta — 2026-08-16
 
 ### Added
 - **Maintenance schedules — a brand-new 4th kind of PDF.** Load the yearly **VW Maintenance Schedules**

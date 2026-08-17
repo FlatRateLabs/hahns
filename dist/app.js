@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.0-beta · 2026-08-17 00:38 UTC";
+var BUILD = "v0.5.1-beta · 2026-08-17 04:03 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -1050,11 +1050,13 @@ return migrateLegacyFluids();
 }).then(function () {
 return migrateLegacyTools();   // v0.3.16: one-time localStorage → IDB for the tool list
 }).then(function () {
-return Promise.all([idbGetAll("parsed"), idbGetAll("meta"), idbGet("kv", "lastBgUpdate"), hydrateShopTools(), hydrateSx(), hydrateMs()]);
+return Promise.all([idbGetAll("parsed"), idbGetAll("meta"), idbGet("kv", "lastBgUpdate"), hydrateShopTools(), hydrateSx(), hydrateMs(), idbGet("kv", "sxLastBgUpdate"), idbGet("kv", "msLastBgUpdate")]);
 }).then(function (out) {
 buildProjection(out[0]);
 fluidsMetaList = out[1] || [];
 fluidsBgUpdate = (out[2] && out[2].v) || 0;
+sxBgUpdate = (out[6] && out[6].v) || 0;
+msBgUpdate = (out[7] && out[7].v) || 0;
 fluidsReady = true;
 if (onReady) onReady();
 reconcileFluids();   // background, non-blocking
@@ -1231,21 +1233,39 @@ if (stale) return { cls: "dbwarn", txt: "⚠ Re-upload " + stale + " to enable a
 if (!installed) return { cls: "dbnone", txt: "No tables yet" };
 return { cls: "dbok", txt: "✓ Healthy" };
 }
+// Settings › "Database & parser versions" — one collapsible per PDF category,
+// each showing its parser version(s). The "years installed" counter used to
+// live here; it now shows in each upload section's header (N / M loaded).
 function fluidsInfoHTML() {
-var installed = fluidsData && fluidsData.years ? Object.keys(fluidsData.years).length : 0;
-var total = FLUID_YEAR_MAX - FLUID_YEAR_MIN + 1;
 var bytes = 0; fluidsMetaList.forEach(function (m) { if (m && m.hasBlob) bytes += (m.size || 0); });
 var h = fluidsHealth();
 function row(k, v, cls) { return '<div class="dbrow"><span class="k">' + k + '</span><span class="v' + (cls ? " " + cls : "") + '">' + v + "</span></div>"; }
+function cat(title, inner) { return '<details class="dbcat"><summary>' + esc(title) + "</summary>" + '<div class="dbcatbody">' + inner + "</div></details>"; }
+var sxBytes = 0; sxMetaList.forEach(function (m) { if (m && m.hasBlob) sxBytes += (m.size || 0); });
+var msBytes = 0; msMetaList.forEach(function (m) { if (m && m.hasBlob) msBytes += (m.size || 0); });
+var sh = sxHealth(), mh = msHealth();
+var fluidsBody =
+row("Parser 2011–2026", esc(PARSER_1126_VER)) +
+row("Parser 2006–2010", esc(PARSER_0610_VER)) +
+row("Parser 2000–2005", esc(PARSER_0005_VER)) +
+row("PDF storage", fmtBytesMB(bytes)) +
+row("Last auto-update", esc(fmtWhen(fluidsBgUpdate))) +
+row("Status", h.txt, h.cls);
+var sxBody =
+row("Parser", esc(SX_PARSER_VER)) +
+row("PDF storage", fmtBytesMB(sxBytes)) +
+row("Last auto-update", esc(fmtWhen(sxBgUpdate))) +
+row("Status", sh.txt, sh.cls);
+var msBody =
+row("Parser", esc(MS_PARSER_VER)) +
+row("PDF storage", fmtBytesMB(msBytes)) +
+row("Last auto-update", esc(fmtWhen(msBgUpdate))) +
+row("Status", mh.txt, mh.cls);
 return '<div class="dbinfo">' +
 row("Storage", appIdbOk ? "IndexedDB" : "Local storage (fallback)") +
-row("Parser 11-26", esc(PARSER_1126_VER)) +
-row("Parser 06-10", esc(PARSER_0610_VER)) +
-row("Parser 00-05", esc(PARSER_0005_VER)) +
-row("Years installed", installed + " / " + total) +
-row("PDF storage", fmtBytesMB(bytes)) +
-row("Last background update", esc(fmtWhen(fluidsBgUpdate))) +
-row("Status", h.txt, h.cls) +
+cat("Fluid capacities", fluidsBody) +
+cat("Service Xpress torque", sxBody) +
+cat("Maintenance schedules", msBody) +
 "</div>";
 }
 // bytes → 1:1 byte string (indexes match the byte offsets; NOT TextDecoder
@@ -2129,6 +2149,7 @@ var SX_KEY = "vwjb_sx_v1";                 // localStorage fallback (IDB-unavail
 var sxData = null;      // sync projection: null=unread, false=none, obj={byYear,files,years,count,updated}
 var sxMetaList = [];    // sync mirror of sx_meta (info panel + reconcile)
 var sxReady = false;    // projection hydrated
+var sxBgUpdate = 0;     // ms timestamp of the last successful background re-parse
 // ---- parser: layout text → [{year, model, platform, isEV, codes, drain, wheel}]
 // Values are classified by MAGNITUDE (drain <=85 N·m, wheel >=100 N·m — a gap
 // verified across every 2008-2026 chart), so the scrambled old-file layout is
@@ -2262,7 +2283,7 @@ return chain.then(function () { return Promise.all([idbGetAll("sx_parsed"), idbG
 .then(function (out) { buildSxProjection(out[0]); sxMetaList = out[1] || []; });
 }
 function removeSx() {
-sxData = false; sxMetaList = [];
+sxData = false; sxMetaList = []; sxBgUpdate = 0;
 try { localStorage.removeItem(SX_KEY); } catch (e) {}
 if (appIdbOk && appDB) { try { var tx = appDB.transaction(["sx_pdfs", "sx_parsed", "sx_meta"], "readwrite"); tx.objectStore("sx_pdfs").clear(); tx.objectStore("sx_parsed").clear(); tx.objectStore("sx_meta").clear(); } catch (e) {} }
 }
@@ -2295,6 +2316,21 @@ buildSxProjection(out[0]); sxMetaList = out[1] || []; sxReady = true;
 }
 // background: any stored file whose parser version differs → re-read its Blob and
 // re-parse. Non-destructive (a failed re-parse keeps the last good data).
+function setSxBgUpdate() { sxBgUpdate = Date.now(); return idbPut("kv", { k: "sxLastBgUpdate", v: sxBgUpdate }).catch(function () {}); }
+// Status for the Settings "Database & parser versions" panel — mirrors fluidsHealth.
+function sxHealth() {
+if (!sxReady) return { cls: "dbwait", txt: "Loading…" };
+var err = 0, pending = 0, installed = sxData && sxData.files ? sxData.files.length : 0;
+sxMetaList.forEach(function (m) {
+if (!m) return;
+if (m.status === "reparse-error") err++;
+else if (m.hasBlob && m.parserVersion !== SX_PARSER_VER) pending++;
+});
+if (err) return { cls: "dbwarn", txt: "⚠ " + err + " chart" + (err > 1 ? "s" : "") + " need attention" };
+if (pending) return { cls: "dbwait", txt: "⟳ Updating…" };
+if (!installed) return { cls: "dbnone", txt: "No charts yet" };
+return { cls: "dbok", txt: "✓ Healthy" };
+}
 function reconcileSx() {
 if (!appIdbOk || !appDB) return;
 var todo = sxMetaList.filter(function (m) { return m && m.hasBlob && m.parserVersion !== SX_PARSER_VER; }).map(function (m) { return m.key; });
@@ -2315,7 +2351,7 @@ return idbPutMany(["sx_parsed", "sx_meta"], [
 { store: "sx_parsed", val: { key: key, parserVersion: SX_PARSER_VER, entries: out.entries, fileName: pdf.fileName || "", years: out.years, parsedDate: now } },
 { store: "sx_meta", val: { key: key, parserVersion: SX_PARSER_VER, hash: pdf.hash || "", fileName: pdf.fileName || "", size: pdf.size || 0, years: out.years, count: out.entries.length, hasBlob: true, status: "ok", importDate: pdf.importDate || now, lastParsedDate: now, appBuild: BUILD } }
 ]).then(function () { return Promise.all([idbGetAll("sx_parsed"), idbGetAll("sx_meta")]); })
-.then(function (o) { buildSxProjection(o[0]); sxMetaList = o[1] || []; });
+.then(function (o) { buildSxProjection(o[0]); sxMetaList = o[1] || []; }).then(function () { return setSxBgUpdate(); });
 });
 });
 }).catch(function (e) {
@@ -2324,10 +2360,15 @@ return idbGet("sx_meta", key).then(function (m) { m = m || { key: key }; m.statu
 });
 }
 var MS_PARSER_VER = "1.1.0";        // bump → stored Maintenance PDFs auto-re-parse (1.1.0: 2022–2027 layout — tier-bleed fix, footnote filter, flexible Additional section #, 2000–2009 gate)
+// span for the "N / M loaded" counter. 2010–2027 = 18 (2000–2009 use the old
+// mileage-indexed layout that isn't supported yet — see msFromPdf gate; when it
+// lands, drop MS_YEAR_MIN to 2000 → 28).
+var MS_YEAR_MIN = 2010, MS_YEAR_MAX = 2027;
 var MS_KEY = "vwjb_ms_v1";          // localStorage fallback (IDB down) — projection only, no blobs
 var msData = null;    // sync projection: null=unread, false=none, obj={byYear,files,years,count,updated}
 var msMetaList = [];  // sync mirror of ms_meta (info panel + reconcile)
 var msReady = false;  // projection hydrated
+var msBgUpdate = 0;   // ms timestamp of the last successful background re-parse
 // The parser is wrapped in its own closure so its many generic helper names
 // (tidy/finalize/joinRuns/rowsByY/…) stay private and can never collide in
 // this large file. It exposes just parseMaintenance(text) + additionalFromPages(pages,…).
@@ -2670,7 +2711,7 @@ return chain.then(function () { return Promise.all([idbGetAll("ms_parsed"), idbG
 .then(function (out) { buildMsProjection(out[0]); msMetaList = out[1] || []; });
 }
 function removeMs() {
-msData = false; msMetaList = [];
+msData = false; msMetaList = []; msBgUpdate = 0;
 try { localStorage.removeItem(MS_KEY); } catch (e) {}
 if (appIdbOk && appDB) { try { var tx = appDB.transaction(["ms_pdfs", "ms_parsed", "ms_meta"], "readwrite"); tx.objectStore("ms_pdfs").clear(); tx.objectStore("ms_parsed").clear(); tx.objectStore("ms_meta").clear(); } catch (e) {} }
 }
@@ -2702,6 +2743,21 @@ buildMsProjection(out[0]); msMetaList = out[1] || []; msReady = true;
 }
 // background: any stored file whose parser version differs → re-read its Blob and
 // re-parse. Non-destructive (a failed re-parse keeps the last good data).
+function setMsBgUpdate() { msBgUpdate = Date.now(); return idbPut("kv", { k: "msLastBgUpdate", v: msBgUpdate }).catch(function () {}); }
+// Status for the Settings "Database & parser versions" panel — mirrors fluidsHealth.
+function msHealth() {
+if (!msReady) return { cls: "dbwait", txt: "Loading…" };
+var err = 0, pending = 0, installed = msData && msData.files ? msData.files.length : 0;
+msMetaList.forEach(function (m) {
+if (!m) return;
+if (m.status === "reparse-error") err++;
+else if (m.hasBlob && m.parserVersion !== MS_PARSER_VER) pending++;
+});
+if (err) return { cls: "dbwarn", txt: "⚠ " + err + " schedule" + (err > 1 ? "s" : "") + " need attention" };
+if (pending) return { cls: "dbwait", txt: "⟳ Updating…" };
+if (!installed) return { cls: "dbnone", txt: "No schedules yet" };
+return { cls: "dbok", txt: "✓ Healthy" };
+}
 function reconcileMs() {
 if (!appIdbOk || !appDB) return;
 var todo = msMetaList.filter(function (m) { return m && m.hasBlob && m.parserVersion !== MS_PARSER_VER; }).map(function (m) { return m.key; });
@@ -2722,7 +2778,7 @@ return idbPutMany(["ms_parsed", "ms_meta"], [
 { store: "ms_parsed", val: { key: key, parserVersion: MS_PARSER_VER, year: out.year, schedules: out.schedules, fileName: pdf.fileName || "", parsedDate: now } },
 { store: "ms_meta", val: { key: key, parserVersion: MS_PARSER_VER, hash: pdf.hash || "", fileName: pdf.fileName || "", size: pdf.size || 0, year: out.year, hasBlob: true, status: "ok", importDate: pdf.importDate || now, lastParsedDate: now, appBuild: BUILD } }
 ]).then(function () { return Promise.all([idbGetAll("ms_parsed"), idbGetAll("ms_meta")]); })
-.then(function (o) { buildMsProjection(o[0]); msMetaList = o[1] || []; });
+.then(function (o) { buildMsProjection(o[0]); msMetaList = o[1] || []; }).then(function () { return setMsBgUpdate(); });
 });
 });
 }).catch(function (e) {
@@ -2773,31 +2829,81 @@ return { ok: false };
 // ---- due logic
 function msIntMiles(t) { var m = String(t).match(/([\d,]+)\s*miles/i); if (m) return parseInt(m[1].replace(/,/g, ""), 10); m = String(t).match(/(\d+)K\s*miles/i); if (m) return parseInt(m[1], 10) * 1000; return null; }
 function msIntYears(t) { var m = String(t).match(/(\d+)\s*year/i); return m ? parseInt(m[1], 10) : null; }
+// Time-based interval → {first, every} in YEARS on the US schedule. Handles the
+// compound "N years aft. registration, then every M years -USA … -Canada" (this
+// is a US-shop tool, so we read the USA clause), plain "Every N years", and
+// "or N years". Brake fluid USA = {first:3, every:2}; AWD clutch = {first:3, every:3}.
+function msTimePattern(t) {
+t = String(t || "");
+var usa = /-\s*USA/i.test(t) ? t.split(/-\s*USA/i)[0] : t;
+var m = usa.match(/(\d+)\s*years?\b[\s\S]*?then\s*every\s*(\d+)\s*years?/i);
+if (m) return { first: +m[1], every: +m[2] };
+m = usa.match(/(?:every|or)\s*(\d+)\s*years?/i);
+if (m) return { first: +m[1], every: +m[1] };
+m = usa.match(/(\d+)\s*years?/i);
+if (m) return { first: +m[1], every: +m[1] };
+return null;
+}
+// Interval text for display: trim the "-USA … -Canada" tail to just the USA clause.
+function msIntervalUSA(t) { t = String(t || ""); return /-\s*USA/i.test(t) ? t.split(/-\s*USA/i)[0].replace(/[\s,;-]+$/, "").trim() : t; }
 function msAgeYears(deliv) { if (!deliv) return null; var d = new Date(deliv); if (isNaN(d)) return null; return (Date.now() - d.getTime()) / (365.25 * 24 * 3600 * 1000); }
 function msGridHits(arr, rounded) { if (!arr || arr.length < 2 || rounded <= 0) return false; var first = arr[0], per = arr[1] - arr[0]; return per > 0 && rounded >= first && (rounded - first) % per === 0; }
 function msIsEV(veh) { return /\bID\.?\s*\d|ID\.?\s*BUZZ|\bE-?GOLF\b|\bELECTRIC\b/i.test(veh.model || ""); }
 function msServicesDue(sched, veh, mileage, deliv) {
-var rounded = Math.round((mileage || 0) / 10000) * 10000, age = msAgeYears(deliv);
+var rounded = Math.round((mileage || 0) / 10000) * 10000;
+var actualAge = msAgeYears(deliv);
+// Owner rule (v0.5.1): assume the vehicle runs ~10K mi/yr, so its mileage
+// IMPLIES an age — a 30K car is treated as 3 years old. Time-based items are
+// scheduled on that mileage grid below (see the additional-items loop).
+var impliedAge = rounded > 0 ? rounded / 10000 : null;
+var isEV = msIsEV(veh);
 var levels = [], g = sched.grid || {};
+var haveGrid = (g.minor && g.minor.length) || (g.standard && g.standard.length) || (g.extended && g.extended.length);
+if (haveGrid) {
 if (msGridHits(g.standard, rounded)) levels.push("Standard"); else if (msGridHits(g.minor, rounded)) levels.push("Minor");
 if (msGridHits(g.extended, rounded)) levels.push("Extended");
+} else if (rounded > 0) {
+// The 2022+ schedules don't parse the grid's X-marks (empty arrays), but
+// VW's service cadence is fixed: Minor 10/30/50/70/90K, Standard
+// 20/40/60/80/100K, Extended 40/80K. Derive the level from the mileage so
+// Minor/Standard classification (and the guaranteed oil change) still work.
+var k = rounded / 10000;
+if (k % 2 === 0) levels.push("Standard"); else levels.push("Minor");
+if (k % 4 === 0) levels.push("Extended");
+}
 var replaceItems = [];
 function addReplace(name, arr) { (arr || []).forEach(function (r) { if (/\breplace\b/i.test(r.item) && msApplies(r.applic, veh).ok) replaceItems.push({ item: r.item, from: name }); }); }
 if (levels.indexOf("Minor") >= 0 || levels.indexOf("Standard") >= 0) addReplace("Minor", sched.minor);
 if (levels.indexOf("Standard") >= 0) addReplace("Standard", sched.standard);
 if (levels.indexOf("Extended") >= 0) addReplace("Extended", sched.extended);
+// Every ICE vehicle gets an oil & filter change at its service interval —
+// guarantee it even when the (2022+ two-column) Minor tier didn't parse the
+// "Replace Engine Oil" line. EVs don't get one. Owner rule (v0.5.1).
+if (!isEV && levels.length && !replaceItems.some(function (x) { return /\boil\b/i.test(x.item); }))
+replaceItems.unshift({ item: "Engine Oil and Filter", from: "Service interval", assumed: true });
 var all = [], model = [];
 (sched.additional || []).forEach(function (it) {
 (it.variants || []).forEach(function (v) {
 var ap = msApplies(v.applic, veh); if (!ap.ok) return;
-var mi = msIntMiles(v.interval), yr = msIntYears(v.interval), why = [];
-if (mi && rounded > 0 && rounded % mi === 0) why.push("at " + rounded.toLocaleString() + " mi");
-if (yr && age != null && age >= yr) why.push("~" + age.toFixed(1) + " yrs old (every " + yr + " yr)");
-if (!why.length) return;
-(ap.scope === "all" ? all : model).push({ item: it.item, interval: v.interval, why: why.join(" · "), applic: v.applic });
+if (rounded <= 0) return;                         // no mileage entered → nothing to schedule
+var mi = msIntMiles(v.interval), tp = msTimePattern(v.interval), due = false;
+// mileage interval: due when the odometer is a multiple of it
+if (mi && rounded % mi === 0) due = true;
+// time interval on the ~10K mi/yr assumption: first service at `first`
+// years, then every `every` years → due mileages first*10K, then +every*10K.
+// Brake fluid USA (3-then-2) → 30K, 50K, 70K, 90K; AWD clutch (every 3) →
+// 30K, 60K, 90K. The delivery date only catches an OLD low-mileage car
+// whose odometer hasn't reached the first service yet.
+if (tp) {
+var firstMi = tp.first * 10000, everyMi = (tp.every || tp.first) * 10000;
+if (rounded >= firstMi && (rounded - firstMi) % everyMi === 0) due = true;
+else if (actualAge != null && actualAge >= tp.first && impliedAge < tp.first) due = true;
+}
+if (!due) return;
+(ap.scope === "all" ? all : model).push({ item: it.item, interval: msIntervalUSA(v.interval), applic: v.applic });
 });
 });
-return { rounded: rounded, age: age, levels: levels, replaceItems: replaceItems, all: all, model: model };
+return { rounded: rounded, actualAge: actualAge, impliedAge: impliedAge, levels: levels, replaceItems: replaceItems, all: all, model: model };
 }
 // Top-level: given the running job (vehicle) + a mileage, compute what's due.
 // Returns null when there's no maintenance data for the vehicle's model year.
@@ -3343,13 +3449,17 @@ var MS_WIN_CSS =
 ".hero h2{margin:0;font-size:18px;color:#7a4d00}" +
 ".hero .lvl{font-size:13px;color:#8a6a2f;font-weight:700}" +
 ".hero .sub{font-size:12px;color:#7a6a4a;margin-top:3px}" +
+".hero .note{font-size:11.5px;color:#7a5a12;margin-top:7px;line-height:1.4}" +
 ".card{background:#fff;border:1px solid #e3e3e3;border-radius:12px;margin:12px 0;overflow:hidden}" +
 ".chd{padding:11px 14px;border-left:5px solid #5a6b8c;font-weight:700;font-size:14px}" +
 ".cbody{padding:2px 14px 10px}" +
-"ul{margin:6px 0;padding-left:20px}" +
+"ul{margin:6px 0;padding-left:4px;list-style:none}" +
 "li{padding:4px 0;font-size:13.5px;line-height:1.35}" +
+"li label{display:flex;align-items:flex-start;gap:9px;cursor:pointer}" +
+"li input.cb{margin:2px 0 0;flex:0 0 auto;width:16px;height:16px;cursor:pointer}" +
+"li input.cb:checked~.lbl{text-decoration:line-through;color:#a7a7a7}" +
+"li input.cb:checked~.lbl b{color:#a7a7a7}" +
 "li .iv{color:#0f6e56;font-weight:700}" +
-"li .why{color:#8a6a2f;font-weight:600}" +
 "li .from{color:#8792a6;font-size:11.5px}" +
 ".none{color:#8a93a5;font-style:italic;font-size:13px;padding:4px 0}" +
 ".foot{color:#7a8394;font-size:11px;margin-top:20px;border-top:1px solid #d9dfea;padding-top:10px;line-height:1.5}";
@@ -3369,13 +3479,14 @@ var hero;
 if (mileage > 0) {
 hero = '<div class="hero"><h2>Possible ' + esc(svc) + ' service due <span class="lvl">(' + esc(lvlTxt) + ")</span></h2>" +
 '<div class="sub">' + esc(veh.model || "") + " · " + due.rounded.toLocaleString() + " mi" +
-(due.age != null ? " · ~" + due.age.toFixed(1) + " yrs old" : "") + (due.isEV ? " · Electric" : "") + "</div></div>";
+(due.actualAge != null ? " · ~" + due.actualAge.toFixed(1) + " yrs old" : "") + (due.isEV ? " · Electric" : "") + "</div>" +
+'<div class="note">Assumes ~10,000 miles/year for time-based items. Tick anything already done or not needed to cross it off before printing.</div></div>';
 } else {
 hero = '<div class="hero"><h2>Enter the mileage to check what’s due</h2>' +
 '<div class="sub">Type the odometer reading into the <b>Mileage</b> field of the green vehicle bar in Hahns, then reopen this. The ' + esc(veh.year) + " schedule is loaded.</div></div>";
 }
-function liReplace(x) { return "<li>" + esc(x.item) + ' <span class="from">(' + esc(x.from) + " Maintenance)</span></li>"; }
-function liAdd(x) { return "<li><b>" + esc(x.item) + '</b> — <span class="iv">' + esc(x.interval) + '</span> <span class="why">(' + esc(x.why) + ")</span></li>"; }
+function liReplace(x) { return '<li><label><input type="checkbox" class="cb"><span class="lbl">' + esc(x.item) + (x.assumed ? "" : ' <span class="from">(' + esc(x.from) + " Maintenance)</span>") + "</span></label></li>"; }
+function liAdd(x) { return '<li><label><input type="checkbox" class="cb"><span class="lbl"><b>' + esc(x.item) + '</b> — <span class="iv">' + esc(x.interval) + "</span></span></label></li>"; }
 function card(title, inner) { return '<div class="card"><div class="chd">' + esc(title) + '</div><div class="cbody">' + inner + "</div></div>"; }
 var repl = due.replaceItems.length ? "<ul>" + due.replaceItems.map(liReplace).join("") + "</ul>" : '<div class="none">nothing to replace at this service</div>';
 var allA = due.all.length ? "<ul>" + due.all.map(liAdd).join("") + "</ul>" : '<div class="none">none due</div>';
@@ -3398,7 +3509,7 @@ return '<!doctype html><html><head><meta charset="utf-8">' +
 '<div class="meta">from the ' + esc(veh.year || "?") + " VW Maintenance Schedules on this computer" + (due && due.file ? " (" + esc(due.file) + ")" : "") + "</div>" +
 '<div class="veh"><div class="t">Vehicle</div><div class="grid">' + vehGrid + "</div></div>" +
 body +
-'<div class="foot">A GUIDE only — always confirm against ELSA’s Maintenance Procedures. Mileage items round to the nearest 10,000 mi; time-based items use the delivery date.<br>H.A.H.N.S ' + esc(BUILD) + " · matched to your vehicle, nothing saved online.</div>" +
+'<div class="foot">A GUIDE only — always confirm against ELSA’s Maintenance Procedures. Mileage items round to the nearest 10,000 mi; time-based items assume ~10,000 mi/yr (or the delivery date, whichever is further along).<br>H.A.H.N.S ' + esc(BUILD) + " · matched to your vehicle, nothing saved online.</div>" +
 "</body></html>";
 }
 function openMsWindow(r) { return openDocWindow("hahns_maint", 620, 820, buildMsWindowHTML(r)); }
@@ -4755,6 +4866,13 @@ var CSS = "" +
 ".dbrow .v.dbwarn{color:#a35a00}" +
 ".dbrow .v.dbwait{color:#12508a}" +
 ".dbrow .v.dbnone{color:#7a7a7a}" +
+".dbcat{border-top:1px solid #e7ebf3}" +
+".dbcat>summary{list-style:none;cursor:pointer;padding:8px 0;font-size:12.5px;font-weight:700;color:#001e50;display:flex;align-items:center;gap:7px}" +
+".dbcat>summary::-webkit-details-marker{display:none}" +
+".dbcat>summary::before{content:'\\25B8';color:#5a6b8c;font-size:10px}" +
+".dbcat[open]>summary::before{content:'\\25BE'}" +
+".dbcatbody{padding:0 0 4px 17px}" +
+".dbcatbody .dbrow{font-size:12px}" +
 ".setdiv{border-top:1px solid #e3e6ee;margin:16px 0 12px}" +
 // top "Check for Update" button — full width, neutral
 ".setupd{margin:2px 0 14px;padding-right:26px}" +
@@ -5610,13 +5728,15 @@ var flStatus = flYears.length
 // one-line status shown right in each section's header so the tech sees state
 // without expanding
 var toolCount = st ? String(st.count || 0) + " tool" + ((st.count || 0) === 1 ? "" : "s") : "not loaded";
-var flCount = flYears.length ? String(flYears.length) + " year" + (flYears.length > 1 ? "s" : "") : "not loaded";
+// "N / M loaded" so the tech sees at a glance how many of the available years
+// are on this computer (fluids 27, Service Xpress 19, maintenance 18).
+var flCount = flYears.length + " / " + (FLUID_YEAR_MAX - FLUID_YEAR_MIN + 1) + " yrs";
 // ---- Service Xpress torque status (v0.4.1) ----
 // Show each loaded chart by its YEAR (like the fluid tables), not the file name.
 // Each chart is stored/removed by its file; sxFileYear() gives the display year.
 var sx = loadSx();
 var sxFiles = sx && sx.files ? sx.files : [];
-var sxCount = sxFiles.length ? String(sxFiles.length) + " year" + (sxFiles.length > 1 ? "s" : "") : "not loaded";
+var sxCount = sxFiles.length + " / " + (SX_YEAR_MAX - SX_YEAR_MIN + 1) + " yrs";
 var sxByYear = sxFiles.map(function (f) { return { key: f.key, year: sxFileYear(f) }; })
 .sort(function (a, b) { return a.year < b.year ? -1 : a.year > b.year ? 1 : 0; });
 var sxItems = sxByYear.map(function (o) {
@@ -5631,7 +5751,7 @@ var sxStatus = sxFiles.length
 // ---- Maintenance schedules status (v0.5.0) ----
 var ms = loadMs();
 var msFilesL = ms && ms.files ? ms.files : [];
-var msCount = msFilesL.length ? String(msFilesL.length) + " year" + (msFilesL.length > 1 ? "s" : "") : "not loaded";
+var msCount = msFilesL.length + " / " + (MS_YEAR_MAX - MS_YEAR_MIN + 1) + " yrs";
 var msByYear = msFilesL.map(function (f) { return { key: f.key, year: msFileYear(f) }; })
 .sort(function (a, b) { return a.year < b.year ? -1 : a.year > b.year ? 1 : 0; });
 var msItems = msByYear.map(function (o) {
@@ -5714,11 +5834,12 @@ msStatus +
 "</div>" +
 "</div>" +
 "</details>" +
-// fluid database (info only)
-'<details class="setacc" data-sec="fluiddb">' +
-'<summary>Fluid database</summary>' +
+// database & parser versions (info only) — was "Fluid database"; now covers
+// all three PDF types, each in its own dropdown showing the parser version(s)
+'<details class="setacc" data-sec="db">' +
+'<summary>Database &amp; parser versions</summary>' +
 '<div class="setbody">' +
-'<p class="setsub">The parsed tables and their source PDFs live in this browser’s database. When the parser is improved, saved PDFs are re-read automatically — no re-upload needed.</p>' +
+'<p class="setsub">The parsed data and its source PDFs live in this browser’s database. When a parser is improved, saved PDFs are re-read automatically — no re-upload needed. Open a category for its parser version(s).</p>' +
 fluidsInfoHTML() +
 "</div>" +
 "</details>" +

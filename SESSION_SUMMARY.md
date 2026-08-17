@@ -5,6 +5,78 @@ permanent project reference.
 
 ---
 
+## Session (2026-08-16) — v0.5.1-beta: maintenance "services due" refinements from first bay test (built, NOT yet deployed)
+
+Owner merged v0.5.0 and **bay-tested on a 2023 Tiguan @ 27,651 mi**. What worked: vehicle scan pulled the
+**exact 27,651** (mileage read confirmed on real ELSA ✓), the Maintenance PDF loaded/stored in Settings ✓, a
+non-maintenance PDF was correctly rejected ✓, and the amber **"Possible 30K service due"** bar showed ✓.
+Three problems reported → three fixes, **all app-logic + maintenance-window only** (no parser change → no
+`MS_PARSER_VER` bump, no reparse; no `LOADER_VER` change → no re-drag). VERSION → **0.5.1-beta**.
+
+### The fixes (all in `src/helper.js`, two feedback rounds)
+**Root cause of the empty Replace card (found in round 2 with the real 2023 PDF): the 2022+ grid's
+level X-marks don't parse — `grid.minor/standard/extended` come back EMPTY** — so no service level was
+identified, and the oil injection (gated on `levels.length`) never fired. Fixed with a **cadence fallback**:
+when the parsed grid arrays are empty, derive the level from the mileage using VW's fixed schedule
+(Minor 10/30/50/70/90K, Standard 20/40/60/80/100K, Extended 40/80K). Verified it reproduces the 2010–2021
+parsed grids EXACTLY (2019 grid = `[10,30,50,70,90]/[20,40,60,80,100]/[40,80]`), so it only kicks in for
+2022+ where the real grid is unreadable — **no parser change, no `MS_PARSER_VER` bump.**
+1. **Guarantee the oil change.** `msServicesDue` **injects "Engine Oil and Filter"** (tagged
+   `assumed:true`, ICE only) when a level is hit and no parsed oil line exists. On 2019 (grid parses) it uses
+   the real `Engine Oil, Change and Replace Oil Filter` line; on 2023 it injects the placeholder. **The green
+   "always at service" chip was REMOVED in round 2** (owner didn't like it) — the oil line renders plain.
+2. **Time-based items on the ~10K mi/yr schedule, PERIODIC (round 2 rework).** v0.5.1 round 1 used a naive
+   `age >= yr` (fires at every service forever). Round 2, from the real PDF strings: brake fluid interval is
+   `3 years aft. registration, then every 2 years -USA … -Canada`; AWD clutch is `Every 3 years`. New
+   `msTimePattern(interval)` reads the **USA clause** → `{first, every}` in years; due-points computed on the
+   10K/yr grid = `first*10K, +every*10K…`. **Result: brake fluid at 30/50/70/90K (skips 40/60K), AWD Haldex
+   at 30/60/90K (skips 40/50K)** — verified against the 2023 PDF across 20–70K. Delivery date only catches an
+   OLD low-mileage car before its first mileage due-point. **The `(30,000 mi ≈ 3 yr at 10K/yr)` rationale text
+   was REMOVED** (owner didn't like it); the item just shows its interval, and `msIntervalUSA()` trims the
+   ugly `-USA … -Canada` tail to the USA clause for display.
+3. **Cross-off checkboxes.** Every Replace/Additional item is a `<label><input type=checkbox>` with pure-CSS
+   strike-through (same as the tools "find these" window) so the tech can knock out already-done items (cabin
+   filter / sunroof) before printing. Hero note simplified to "Assumes ~10,000 miles/year for time-based items."
+
+### Verified
+- **Node harness against the REAL 2023 PDF** (`msFromPdf` → `msServicesDue`): 20K=Standard, 30K=Minor,
+  40K=Standard+Extended, each with **Engine Oil and Filter** in Replace; brake fluid at 30/50/70K only, AWD
+  Haldex at 30/60K only, interval display = clean USA clause. **2019 PDF** confirms the cadence fallback is
+  NOT triggered (grid parses) and shows the real oil line — proving the fallback matches the parsed grid.
+- **Browser screenshot** (real `MS_WIN_CSS`, real 30K data via dev server): **no green chip**, **no rationale
+  text**, brake fluid shows only "3 years aft. registration, then every 2 years", checkboxes present. No
+  console errors.
+- `node --check` clean; built; artifact grep confirms `docs/app.js` carries the new logic; `version.json` /
+  `notes.json` = 0.5.1-beta.
+
+### Round 3 — Settings quality-of-life (owner-requested, same v0.5.1-beta)
+- **"N / M loaded" counts in each PDF section header.** Each upload section now shows how many years are
+  loaded out of what's available: fluids `X / 27 yrs`, Service Xpress `X / 19 yrs`, maintenance `X / 18 yrs`.
+  Added **`MS_YEAR_MIN=2010, MS_YEAR_MAX=2027`** (18 now; → 28 when 2000–2009 lands); fluids/SX reuse their
+  existing `*_YEAR_MIN/MAX`. (SX/MS count = files.length, which = years since one file = one primary year.)
+- **Renamed "Fluid database" → "Database & parser versions"** and restructured `fluidsInfoHTML()` into one
+  **`<details class="dbcat">` dropdown per category** (Fluid capacities → the three fluid parser versions +
+  PDF storage/last-auto-update/status; Service Xpress torque → `SX_PARSER_VER`; Maintenance schedules →
+  `MS_PARSER_VER`), with a shared Storage row on top. **Removed the "Years installed" row** (moved to the
+  section headers above, per owner). New `.dbcat` CSS. Verified in-browser (screenshot): counts render, the
+  renamed section shows all three category dropdowns, each expands to its parser version, no "Years installed".
+- **Parity: SX + Maintenance now show PDF storage / Last auto-update / Status too** (owner: "add … last auto
+  update and status like we have for fluid capacities"). Added `sxBgUpdate`/`msBgUpdate` ms-timestamps (kv
+  keys `sxLastBgUpdate`/`msLastBgUpdate`, set in `reparseSxFile`/`reparseMsFile` success, hydrated at boot,
+  reset in `removeSx`/`removeMs`) + `sxHealth()`/`msHealth()` mirroring `fluidsHealth` (Loading/Updating/
+  needs-attention/Healthy, off version-mismatch + `reparse-error` metas). Each `dbcat` body now = Parser +
+  PDF storage + Last auto-update + Status. Verified in-browser (all three symmetric).
+
+### Carry-forward / deploy
+- **Built but NOT committed/deployed.** On branch `v0.5.0-maintenance` (0.5.0 already merged to main per
+  owner) — **start a fresh branch off updated `main`** for 0.5.1, then usual flow (PR → `gh pr merge
+  --admin`). App-only: **no re-drag**, and the `MS_PARSER_VER` is unchanged so nothing re-parses.
+- **Deferred / still true:** the 2022+ Minor tier list stays sparse (parser gap) — we now paper over the one
+  item that matters (oil) but individual *inspect* items still aren't enumerated for 2022+. The 2000–2009
+  mileage-indexed parser and partial-BEV-additional gaps are unchanged.
+
+---
+
 ## Session close (2026-08-17) — v0.5.0-beta: Maintenance schedules ported into the app (branch `v0.5.0-maintenance`, NOT yet merged)
 
 The big one landed: the **4th PDF type (VW Maintenance Schedules)** is now fully wired into `src/helper.js`,
