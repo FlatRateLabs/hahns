@@ -2,7 +2,7 @@
 // the real 2019 PDF, reusing helper.js's pdfTextLines. Port to helper.js once solid.
 const fs = require("fs");
 global.window = {};
-eval(fs.readFileSync(__dirname + "/../../../../../../Users/ryanvanpolen/Documents/Claude App Builds/VW Tech Helper App/src/helper.js", "utf8"));
+eval(fs.readFileSync(__dirname + "/../../src/helper.js", "utf8"));
 const V = window.VWJB;
 
 const CHECK = 61608; // U+F0A8 — the checkbox glyph, vertically CENTERED on each item cell

@@ -9,7 +9,30 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.4.9.3-alpha — in progress
+## v0.5.0-beta — in progress
+
+### Added
+- **Maintenance schedules — a brand-new 4th kind of PDF.** Load the yearly **VW Maintenance Schedules**
+  PDF once per shop computer (⚙ Settings → *Maintenance schedules* → *Load PDFs*), and Hahns shows the
+  **services that may be due** for the loaded vehicle at its mileage — in its own printable window, right
+  under the Fluids button.
+  - The vehicle bar now has an editable **Mileage** field and reads the **Delivery Date** from ELSA’s
+    Vehicle Summary (used for the “every N years” items). Type the odometer into Mileage; Hahns rounds it
+    to the nearest 10,000-mile service.
+  - When something’s due it shows an amber **“Possible NNK service due”** button naming the service level
+    (Standard / Extended). The window lists the **Replace** items for that service plus the **Additional
+    Maintenance Items** — the *all-vehicles* ones and the ones that match *this exact vehicle*.
+  - Matching is exact to your car: a 2nd-gen Tiguan (BW2) gets its own 80,000-mile spark-plug interval, not
+    the old Tiguan’s — read from the Sales Code, the same way the fluids and torque lookups work.
+  - Same as the other PDFs: read and kept **only on this computer**, never uploaded; travels in **Copy
+    setup to another computer**; re-reads itself automatically when the parser improves.
+  - **Years supported: 2010–2027.** 2000–2009 use an older, mileage-indexed format and are politely
+    declined for now (you’ll get a clear message). Electric-vehicle "additional items" are read for most
+    years but not all yet — the gas/diesel side is complete across 2010–2027.
+
+---
+
+## v0.4.9.3-alpha — 2026-08-16
 
 ### Fixed
 - **Updating a Fluid Capacities year now correctly rejects a Service Xpress chart.** The wrong-file check

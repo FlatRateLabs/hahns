@@ -19,6 +19,7 @@
  * Sources (all GITIGNORED — licensed VW data, never committed):
  *   fluids : $HAHNS_FLUID_DIR (default ~/Downloads) — any "*Fluid Capacity*.pdf", year = leading 4 digits
  *   SX     : $HAHNS_SX_DIR    (default <repo root>) — sx-YYYY.pdf
+ *   maint  : $HAHNS_MS_DIR    (default ~/Downloads) — any "*Maintenance Schedule*.pdf", year = leading 4 digits
  * Snapshots: tools/parser-snapshots/ (GITIGNORED — holds parsed VW data).
  *
  * Zero network, no dependencies. Runs only where the PDFs exist (a dev machine) — same
@@ -82,6 +83,21 @@ function sxPdfs(dir) {
   });
   return out;
 }
+// collect Maintenance Schedules PDFs ("YYYY … Maintenance Schedule[s].pdf"), keyed by year
+function msPdfs(dir) {
+  var out = {};
+  var files;
+  try { files = fs.readdirSync(dir); } catch (e) { return out; }
+  files.forEach(function (f) {
+    if (!/\.pdf$/i.test(f) || !/Maintenance Schedule/i.test(f)) return;
+    var m = f.match(/^(\d{4})\b/); if (!m) return;
+    var year = m[1];
+    if (+year < 2010) return;   // 2000–2009 use the older mileage-indexed layout, not parsed yet (gated)
+    if (out[year] && /\(\d+\)\.pdf$/i.test(f)) return;   // don't let a "(1)" copy overwrite a clean one
+    out[year] = path.join(dir, f);
+  });
+  return out;
+}
 
 // recursive diff → human-readable "path: old → new" lines (bounded)
 function diffInto(a, b, at, acc, cap) {
@@ -126,6 +142,14 @@ function diffInto(a, b, at, acc, cap) {
     jobs.push({
       id: "sx " + y, snap: path.join(SNAP_DIR, "sx-" + y + ".json"),
       parse: async function () { return stable(await V.sxFromPdf(toArrayBuffer(sx[y]), path.basename(sx[y]))); }
+    });
+  });
+  var msDir = process.env.HAHNS_MS_DIR || path.join(os.homedir(), "Downloads");
+  var ms = (typeof V.msFromPdf === "function") ? msPdfs(msDir) : {};
+  Object.keys(ms).sort().forEach(function (y) {
+    jobs.push({
+      id: "maint " + y, snap: path.join(SNAP_DIR, "maint-" + y + ".json"),
+      parse: async function () { return stable(await V.msFromPdf(toArrayBuffer(ms[y]), path.basename(ms[y]))); }
     });
   });
 
