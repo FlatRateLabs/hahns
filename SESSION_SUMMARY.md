@@ -30,6 +30,23 @@ that window the follow-up is silently left behind.** Verify the merge commit's T
 `docs/app.js` for the new symbol), not just that `version.json` says the right version string. The build
 stamp (`04:03` vs `04:19`) was the tell here.
 
+**Post-release housekeeping + issue triage (end of session):**
+- **Branch cleanup (owner asked):** deleted all today's merged feature branches (`v0.5.0-maintenance`,
+  `v0.5.1-beta`, `v0.5.2-beta`) locally + on origin, plus (owner said "delete all 7") the older merged
+  leftovers (`0.4.9`–`0.4.9.3`, `loader-production`, `maintenance-parser-wip`, `senditbro-patch-1`). Also
+  ff'd local `main` and pruned stale tracking refs. **End state: local = `main` only, remote = `origin/main`
+  only.** (The `git branch -r` list had looked huge (~40) but most were already gone on GitHub — stale local
+  tracking refs; `fetch --prune` reconciled.)
+- **Issues:** closed **#131** (maintenance schedules — fully delivered v0.5.0→v0.5.2). Created **#140**
+  (support 2000–2009 maintenance, the older mileage-indexed format that's currently gated). Created **#141
+  (bug)** from an owner bay test: a **2016 e-Golf @ 23,781 mi recommended nothing** — verified root cause is
+  the **BEV "Additional Items" table parsing to 0** (brake fluid / pollen filter / tire filler live there).
+  Audited all 18 years: **BEV additional items parse for only 2020/2022/2026/2027; zero for the rest** —
+  affects every e-Golf year (2015–2019) + ID.4 2021/2023/2024/2025 + ID.Buzz 2024/2025. ICE unaffected. This
+  is the known partial-BEV gap in `additionalFromPages`; fix = segment the small BEV table + bump
+  `MS_PARSER_VER` + parser-test assertion. **Good candidate for next session** (safety-relevant: brake
+  fluid / cabin filter silently missing on EVs). Open issues now: #140, #141, #122, #117, #11, #10.
+
 ---
 
 ## Session (2026-08-16) — v0.5.1-beta: maintenance "services due" refinements from first bay test (built, NOT yet deployed)
