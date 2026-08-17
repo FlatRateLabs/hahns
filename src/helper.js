@@ -3596,7 +3596,7 @@
   // open (or reuse) a named pop-up and write a self-contained document into it.
   // Buttons are wired from the opener too (same-origin), so Print/Close work
   // regardless of the child window's CSP. Returns false if pop-ups are blocked.
-  function openDocWindow(name, w, h, html) {
+  function openDocWindow(name, w, h, html, onReady) {
     try {
       if (screen && screen.availWidth) w = Math.min(w, screen.availWidth - 40);
       if (screen && screen.availHeight) h = Math.min(h, screen.availHeight - 80);
@@ -3620,6 +3620,7 @@
       if (pb) pb.onclick = function () { try { win.print(); } catch (e5) {} };
       var cb = win.document.getElementById("hb_close");
       if (cb) cb.onclick = function () { try { win.close(); } catch (e6) {} };
+      if (typeof onReady === "function") { try { onReady(win); } catch (e8) {} }
       win.focus();
     } catch (e7) {}
     return true;
@@ -3651,13 +3652,21 @@
     ".chd{padding:11px 14px;border-left:5px solid #5a6b8c;font-weight:700;font-size:14px}" +
     ".cbody{padding:2px 14px 10px}" +
     "ul{margin:6px 0;padding-left:4px;list-style:none}" +
-    "li{padding:4px 0;font-size:13.5px;line-height:1.35}" +
-    "li label{display:flex;align-items:flex-start;gap:9px;cursor:pointer}" +
-    "li input.cb{margin:2px 0 0;flex:0 0 auto;width:16px;height:16px;cursor:pointer}" +
-    "li input.cb:checked~.lbl{text-decoration:line-through;color:#a7a7a7}" +
-    "li input.cb:checked~.lbl b{color:#a7a7a7}" +
+    "li{padding:4px 0;font-size:13.5px;line-height:1.35;display:flex;align-items:flex-start;gap:10px}" +
+    "li .lbl{flex:1 1 auto;min-width:0}" +
     "li .iv{color:#0f6e56;font-weight:700}" +
     "li .from{color:#8792a6;font-size:11.5px}" +
+    ".msdel{flex:0 0 auto;appearance:none;-webkit-appearance:none;border:1px solid #e6c9c9;background:#fff;color:#b23b3b;border-radius:7px;padding:4px 7px;cursor:pointer;line-height:0;display:flex;align-items:center}" +
+    ".msdel:hover{background:#fbeaea;border-color:#d99}" +
+    ".msconfirm{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;flex:1 1 auto;background:#fff6f6;border:1px solid #f0d3d3;border-radius:8px;padding:7px 11px;font-size:13px}" +
+    ".msconfirm b{color:#7a1f1f}" +
+    ".msbtns{display:flex;gap:7px;flex:0 0 auto}" +
+    ".msyes,.msno{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:12px;padding:5px 14px;border-radius:7px;cursor:pointer;border:0}" +
+    ".msyes{background:#c0392b;color:#fff}" +
+    ".msyes:hover{background:#a93226}" +
+    ".msno{background:#e7ebf3;color:#1c2b3a}" +
+    ".msno:hover{background:#dbe1ec}" +
+    "@media print{.msdel{display:none}}" +
     ".none{color:#8a93a5;font-style:italic;font-size:13px;padding:4px 0}" +
     ".foot{color:#7a8394;font-size:11px;margin-top:20px;border-top:1px solid #d9dfea;padding-top:10px;line-height:1.5}";
   function buildMsWindowHTML(r) {
@@ -3677,13 +3686,16 @@
         hero = '<div class="hero"><h2>Possible ' + esc(svc) + ' service due <span class="lvl">(' + esc(lvlTxt) + ")</span></h2>" +
           '<div class="sub">' + esc(veh.model || "") + " · " + due.rounded.toLocaleString() + " mi" +
           (due.actualAge != null ? " · ~" + due.actualAge.toFixed(1) + " yrs old" : "") + (due.isEV ? " · Electric" : "") + "</div>" +
-          '<div class="note">Assumes ~10,000 miles/year for time-based items. Tick anything already done or not needed to cross it off before printing.</div></div>';
+          '<div class="note">Assumes ~10,000 miles/year for time-based items. Use the 🗑 to remove anything already done or not needed before printing.</div></div>';
       } else {
         hero = '<div class="hero"><h2>Enter the mileage to check what’s due</h2>' +
           '<div class="sub">Type the odometer reading into the <b>Mileage</b> field of the green vehicle bar in Hahns, then reopen this. The ' + esc(veh.year) + " schedule is loaded.</div></div>";
       }
-      function liReplace(x) { return '<li><label><input type="checkbox" class="cb"><span class="lbl">' + esc(x.item) + (x.assumed ? "" : ' <span class="from">(' + esc(x.from) + " Maintenance)</span>") + "</span></label></li>"; }
-      function liAdd(x) { return '<li><label><input type="checkbox" class="cb"><span class="lbl"><b>' + esc(x.item) + '</b> — <span class="iv">' + esc(x.interval) + "</span></span></label></li>"; }
+      // per-item trash button (wired from the opener in wireMsWindow — a click
+      // asks "remove <item>?" Yes/No, and Yes drops the row from the window)
+      var delBtn = '<button class="msdel" title="Remove this item" aria-label="Remove this item"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="' + TRASH + '"/></svg></button>';
+      function liReplace(x) { return '<li data-svc="' + esc(x.item) + '"><span class="lbl">' + esc(x.item) + (x.assumed ? "" : ' <span class="from">(' + esc(x.from) + " Maintenance)</span>") + "</span>" + delBtn + "</li>"; }
+      function liAdd(x) { return '<li data-svc="' + esc(x.item) + '"><span class="lbl"><b>' + esc(x.item) + '</b> — <span class="iv">' + esc(x.interval) + "</span></span>" + delBtn + "</li>"; }
       function card(title, inner) { return '<div class="card"><div class="chd">' + esc(title) + '</div><div class="cbody">' + inner + "</div></div>"; }
       var repl = due.replaceItems.length ? "<ul>" + due.replaceItems.map(liReplace).join("") + "</ul>" : '<div class="none">nothing to replace at this service</div>';
       var allA = due.all.length ? "<ul>" + due.all.map(liAdd).join("") + "</ul>" : '<div class="none">none due</div>';
@@ -3709,7 +3721,29 @@
       '<div class="foot">A GUIDE only — always confirm against ELSA’s Maintenance Procedures. Mileage items round to the nearest 10,000 mi; time-based items assume ~10,000 mi/yr (or the delivery date, whichever is further along).<br>H.A.H.N.S ' + esc(BUILD) + " · matched to your vehicle, nothing saved online.</div>" +
       "</body></html>";
   }
-  function openMsWindow(r) { return openDocWindow("hahns_maint", 620, 820, buildMsWindowHTML(r)); }
+  // Wire the maintenance window's per-item trash buttons from the opener (same
+  // same-origin technique openDocWindow uses for Print/Close, so it works
+  // regardless of the child's CSP). A click swaps the row for an inline
+  // "Are you sure you want to remove <item>?" Yes/No confirm; Yes drops the row.
+  function wireMsWindow(win) {
+    var doc; try { doc = win.document; } catch (e) { return; }
+    function wire(btn) {
+      if (!btn) return;
+      btn.onclick = function () {
+        var li = btn; while (li && li.tagName !== "LI") li = li.parentNode;
+        if (!li) return;
+        var name = li.getAttribute("data-svc") || "this item";
+        var saved = li.innerHTML;
+        li.innerHTML = '<div class="msconfirm"><span>Are you sure you want to remove <b>' + esc(name) + "</b>?</span>" +
+          '<span class="msbtns"><button class="msno">No</button><button class="msyes">Yes</button></span></div>';
+        var yes = li.querySelector(".msyes"), no = li.querySelector(".msno");
+        if (yes) yes.onclick = function () { try { li.parentNode.removeChild(li); } catch (e2) {} };
+        if (no) no.onclick = function () { li.innerHTML = saved; wire(li.querySelector(".msdel")); };
+      };
+    }
+    try { Array.prototype.forEach.call(doc.querySelectorAll(".msdel"), wire); } catch (e3) {}
+  }
+  function openMsWindow(r) { return openDocWindow("hahns_maint", 620, 820, buildMsWindowHTML(r), wireMsWindow); }
 
   /* ---- 5. loading the PDFs through Settings -------------------------- */
   // pick the year PDFs (several at once is fine) and convert each LOCALLY.
