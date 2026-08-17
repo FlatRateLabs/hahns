@@ -5,6 +5,33 @@ permanent project reference.
 
 ---
 
+## Session close (2026-08-16) — v0.5.2-beta: the trash-button change that a merge race dropped from 0.5.1
+
+**What happened:** v0.5.1-beta shipped in TWO commits on branch `v0.5.1-beta` — `a865369` (due-logic +
+Settings QoL) then `f187441` (maintenance window: checkbox → 🗑 trash + confirm). The owner merged PR #138
+while GitHub's `pulls` API head was **still lagging at `a865369`** (I'd observed `pulls/138 .head.sha =
+a865369` even after pushing `f187441`, while the authoritative branch ref was `f187441`). The merge took the
+PR at `a865369`, so **`f187441` never landed on `main`** — live 0.5.1 has the checkbox, not the trash button.
+Confirmed post-merge: `origin/main:docs/app.js` had **0** `wireMsWindow`, version.json build `04:03` (the
+`a865369` build), not `04:19`.
+
+**Fix — new PR for v0.5.2-beta:** branched off `origin/main`, brought the trash source back with
+`git checkout f187441 -- src/helper.js` (f187441's helper = main's helper + trash, since f187441's parent
+`a865369` == main's tree, so a clean pull-in), bumped VERSION → `0.5.2-beta`, rebuilt, and fixed the
+CHANGELOG (flipped `v0.5.1-beta` → its release date **keeping the checkbox bullet** since that's what 0.5.1
+actually shipped; added a `v0.5.2-beta` entry for the checkbox→trash change). The **trash + confirm** feature
+itself is unchanged from the round-4 work below (`wireMsWindow` wired via `openDocWindow`'s new `onReady(win)`
+param; `data-svc` per `<li>`; Yes removes, No restores). App-only: no `MS_PARSER_VER` bump, `LOADER_VER` still
+2, no re-drag.
+
+**LESSON (worth a memory): after pushing a follow-up commit to a PR branch, do NOT assume it's in the PR —
+GitHub's `pulls/<n>.head.sha` can lag the branch ref by more than a minute, and if the owner merges during
+that window the follow-up is silently left behind.** Verify the merge commit's TREE (grep the merged
+`docs/app.js` for the new symbol), not just that `version.json` says the right version string. The build
+stamp (`04:03` vs `04:19`) was the tell here.
+
+---
+
 ## Session (2026-08-16) — v0.5.1-beta: maintenance "services due" refinements from first bay test (built, NOT yet deployed)
 
 Owner merged v0.5.0 and **bay-tested on a 2023 Tiguan @ 27,651 mi**. What worked: vehicle scan pulled the

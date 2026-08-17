@@ -9,7 +9,17 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.1-beta — in progress
+## v0.5.2-beta — in progress
+
+### Changed
+- **Maintenance window: the cross-off checkbox is now a 🗑 trash button with a confirm.** The checkbox
+  looked like Hahns was recommending the item. Now each item has a trash button — click it and confirm
+  (*“Are you sure you want to remove …?” Yes / No*) to take that line off the list (e.g. a cabin filter or
+  sunroof clean done last visit) before printing. **Yes** removes it; **No** puts it back.
+
+---
+
+## v0.5.1-beta — 2026-08-16
 
 ### Changed
 - **Maintenance “services due” — smarter about what a service actually includes** (from bay feedback on a
