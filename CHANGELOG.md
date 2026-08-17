@@ -26,6 +26,9 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
     the old Tiguan’s — read from the Sales Code, the same way the fluids and torque lookups work.
   - Same as the other PDFs: read and kept **only on this computer**, never uploaded; travels in **Copy
     setup to another computer**; re-reads itself automatically when the parser improves.
+  - **Years supported: 2010–2027.** 2000–2009 use an older, mileage-indexed format and are politely
+    declined for now (you’ll get a clear message). Electric-vehicle "additional items" are read for most
+    years but not all yet — the gas/diesel side is complete across 2010–2027.
 
 ---
 

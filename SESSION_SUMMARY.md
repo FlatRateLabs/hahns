@@ -64,6 +64,27 @@ window was verified by rendering `buildMsWindowHTML` into an iframe — same cod
   `24,680` Mileage input, skips both warranty Odometer inputs + a ZIP decoy). **Delivery Date text read also
   confirmed by the same dump** (`2023-08-31`). Still wants one real-ELSA bay test to confirm the live input's
   surrounding context matches the heuristic.
+- **Full-corpus validation (2026-08-17, owner supplied all 28 yearly PDFs 2000–2027) → parser hardened to
+  `MS_PARSER_VER` 1.1.0.** The 2019-only parser turned out to cover only the MIDDLE era. Three layouts:
+  - **2010–2021:** the layout it was built for — clean. (Counts dropped ~1/tier after this pass because the
+    `See ⇒ Additional Maintenance Items` pointer line is now filtered — correct, it was never a service item.)
+  - **2022–2027:** same tiers but a **jumbled two-column top** — the Minor sub-header sits ABOVE its `1.x.1`
+    header and grid footnotes share item lines, so `section()`'s forward search for "Service Item…Applicability"
+    landed on the Standard header and **bled Standard+Extended+Additional into Minor** (2022 showed mi**59**,
+    incl. spark-plugs-as-a-minor-replace — a real wrong-data bug). Fixed: bound each tier by the NEXT tier
+    header FIRST, then find its sub-header only within range; added a `looksFootnote` filter; flexible
+    Additional section numbers (BEV Additional is `1.2.3` in 2022+, not `1.2.4`); `findAddHeader` now also
+    accepts the BEV table's `Labor Item … Interval … Vehicle Application` header. **ICE Additional Items —
+    the substance — verified correct for 2022–2027** (spark-plug 40/80K split, transmission by trans-code,
+    and the new-gen **`Tiguan(BJ2)`** platform that matches Sales Code `BJ23VJ`). The 2022+ Minor tier list
+    is now sparse (mi0–4) — harmless, since tiers only surface Replace items (Engine Oil) and Additional
+    carries the content.
+  - **2000–2009:** a wholly different **mileage-indexed** layout (`Service at 10,000 miles`…, no tiers) →
+    **gated** in `msFromPdf` with a clear message (never emits wrong data). A separate parser is a follow-up.
+  - **Known gaps (deferred):** 2000–2009 parser; **BEV additional items are partial** (read for ~half the
+    years — 2020/2022/2026/2027 — absent for others; the 2–3-row EV tables don't always give
+    `parseAdditionalRuns` enough column anchors); engine-conditional applicability still matches "all".
+  - `tools/parser-test.js` now snapshots **64 files** (adds 2010–2027 maintenance; filters <2010), 0 drift.
 - **Deferred (low impact):** engine-conditional applicability ("Engines W/ toothed belts") still matches as "all".
 - **Only the 2019 PDF exists** as a corpus. A second model year would be the best next validation (the
   footer-date generalization + section regexes are written to be year-agnostic, but unproven on a 2nd file).

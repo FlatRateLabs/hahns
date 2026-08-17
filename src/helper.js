@@ -2493,7 +2493,7 @@
    * (tools/wip-maintenance/parse-maint.js) — do not "tidy" the heuristics
    * without re-running that prototype's baseline.
    * ================================================================== */
-  var MS_PARSER_VER = "1.0.0";        // bump → stored Maintenance PDFs auto-re-parse
+  var MS_PARSER_VER = "1.1.0";        // bump → stored Maintenance PDFs auto-re-parse (1.1.0: 2022–2027 layout — tier-bleed fix, footnote filter, flexible Additional section #, 2000–2009 gate)
   var MS_KEY = "vwjb_ms_v1";          // localStorage fallback (IDB down) — projection only, no blobs
   var msData = null;    // sync projection: null=unread, false=none, obj={byYear,files,years,count,updated}
   var msMetaList = [];  // sync mirror of ms_meta (info panel + reconcile)
@@ -2574,6 +2574,12 @@
       };
     }
     // parse a 2-column (item | applicability) section between [start,end)
+    // grid legend / footnote prose that shares lines with items in the 2022+ two-column
+    // top layout (and never appears in a real service-item cell) — drop it so it can't
+    // become a bogus "item". No-op on the clean single-column 2010–2021 layout.
+    function looksFootnote(t) {
+      return /whichever occurs|after delivery|maintenance service|in combination|intervals of|normal conditions|severe con|only applies|based on vehicles|completed items|⇒\s*(Standard|Extended|Minor|Additional)/i.test(t);
+    }
     function parseItems(lines, start, end, appX) {
       var checks = [];
       for (var i = start; i < end; i++) if (hasCheck(lines[i] || "") && !isJunk(lines[i] || "")) checks.push(i);
@@ -2584,11 +2590,11 @@
         for (var j = rng[0]; j <= rng[1] && j < end; j++) {
           var ln = lines[j] || ""; if (isJunk(ln)) continue;
           var l = tidy(ln.slice(0, appX)), rr = tidy(ln.slice(appX));
-          if (l && !junkFrag(l)) left.push(l);
-          if (rr && !junkFrag(rr)) right.push(rr);
+          if (l && !junkFrag(l) && !looksFootnote(l)) left.push(l);
+          if (rr && !junkFrag(rr) && !looksFootnote(rr)) right.push(rr);
         }
         return { item: finalize(left.join(" ")), applic: finalize(right.join(" ")) };
-      }).filter(function (r) { return r.item; });
+      }).filter(function (r) { return r.item && !looksFootnote(r.item) && !/^1\.\d\.\d\s/.test(r.item); });
     }
     function newInterval(s) { return /^(Every\b|At\s+\d|[-–]\s*\d)/.test(tidy(s)); }
 
@@ -2681,13 +2687,19 @@
       var rows = rowsByY(runs);
       for (var i = 0; i < rows.length; i++) {
         var r = rows[i];
-        if (/Service Item/.test(r.text) && /Interval/.test(r.text) && /Applicability/.test(r.text)) {
+        // header is "Service Item … Interval … Applicability" (ICE) OR, on the BEV
+        // additional table, "Labor Item … Interval … Vehicle Application" (and in some
+        // years the third column word wraps off this row). We only need to LOCATE the
+        // header row's y — parseAdditionalRuns derives the columns from data anchors —
+        // so requiring Item + Interval is enough. The Applicability column word (when
+        // present) still fixes appX; otherwise it's left null (unused downstream).
+        if (/(?:Service|Labor) Item/.test(r.text) && /Interval/.test(r.text)) {
           var ivX = null, apX = null;
           r.runs.slice().sort(function (a, b) { return a.x - b.x; }).forEach(function (run) {
             if (ivX == null && /^Interval/.test(run.s)) ivX = run.x;
-            if (apX == null && /^(Applicability|Vehicle)/.test(run.s)) apX = run.x;
+            if (apX == null && /^(Applicab|Application|Vehicle)/.test(run.s)) apX = run.x;
           });
-          if (ivX != null && apX != null) return { y: r.y, ivX: ivX, appX: apX };
+          if (ivX != null) return { y: r.y, ivX: ivX, appX: apX };
         }
       }
       return null;
@@ -2732,8 +2744,13 @@
         var grid = parseGrid(lines, milesLine);
         function section(reHdr, reNext) {
           var h = findLine(reHdr, from); if (h < 0 || h >= to) return null;
-          var start = findLine(/Service Item\s+.*Applicability/, h);
-          var end = findLine(reNext, start + 1); if (end < 0 || end > to) end = to;
+          // bound the tier by the NEXT tier header FIRST, then find its Service-Item
+          // sub-header only WITHIN that range. In the 2022+ two-column top layout the
+          // Minor sub-header sits above its 1.x.1 header, so a naive forward search
+          // would land on the Standard header and bleed every later tier into Minor.
+          var end = findLine(reNext, h + 1); if (end < 0 || end > to) end = to;
+          var sh = findLine(/Service Item\s+.*Applicability/, h);
+          var start = (sh >= 0 && sh < end) ? sh : h;   // header out of range → start right after the tier header
           return { start: start, end: end, appX: appXof(start) };
         }
         var mi = section(/1\.\d\.1\s+Minor Maintenance/, /1\.\d\.2\s+Standard Maintenance/);
@@ -2770,11 +2787,18 @@
   function msFromPdf(buf, name) {
     return pdfPages(buf).then(function (pages) {
       var text = pages.map(function (p) { return p.lines.join("\n"); }).join("\n");
+      // 2000–2009 use a wholly different mileage-indexed layout ("Service at 10,000
+      // miles", "Service every 15,000 miles", …) with no Minor/Standard/Extended
+      // tiers — not supported yet. Refuse cleanly rather than emit wrong data.
+      if (!/1\.1\s+Maintenance Schedule/.test(text) && /Service\s+(?:at|every)\s+[\d,]+\s*miles/i.test(text))
+        throw new Error("this is a 2000–2009 (mileage-indexed) schedule — Hahns doesn’t read that older format yet");
       var r = MS.parseMaintenance(text);
       if (!r.ice || (!r.ice.minor.length && !r.ice.standard.length))
         throw new Error("no maintenance schedule found — is this a VW Maintenance Schedules PDF?");
-      r.ice.additional = MS.additionalFromPages(pages, /1\.1\.4\s+Additional Maintenance/, /1\.2\s+Maintenance Schedule/);
-      if (r.bev) r.bev.additional = MS.additionalFromPages(pages, /1\.2\.4\s+Additional Maintenance/, /ZZZ_NO_MATCH/);
+      // Section numbers vary by era (BEV Additional is 1.2.4 pre-2022, 1.2.3 in 2022+),
+      // so match 1.1.N / 1.2.N flexibly for the runs-based Additional Items table.
+      r.ice.additional = MS.additionalFromPages(pages, /1\.1\.\d+\s+Additional Maintenance/, /1\.2\s+Maintenance Schedule/);
+      if (r.bev) r.bev.additional = MS.additionalFromPages(pages, /1\.2\.\d+\s+Additional Maintenance/, /ZZZ_NO_MATCH/);
       var year = msYearOf(name, text);
       if (!year) throw new Error("couldn’t tell the model year — put it in the file name (e.g. “2019 ….pdf”)");
       return { fileName: name, year: year, schedules: r };

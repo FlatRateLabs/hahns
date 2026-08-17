@@ -92,6 +92,7 @@ function msPdfs(dir) {
     if (!/\.pdf$/i.test(f) || !/Maintenance Schedule/i.test(f)) return;
     var m = f.match(/^(\d{4})\b/); if (!m) return;
     var year = m[1];
+    if (+year < 2010) return;   // 2000–2009 use the older mileage-indexed layout, not parsed yet (gated)
     if (out[year] && /\(\d+\)\.pdf$/i.test(f)) return;   // don't let a "(1)" copy overwrite a clean one
     out[year] = path.join(dir, f);
   });
