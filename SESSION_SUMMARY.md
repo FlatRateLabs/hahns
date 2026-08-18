@@ -5,6 +5,76 @@ permanent project reference.
 
 ---
 
+## Session close (2026-08-18) — v0.5.3-beta: 7-issue maintenance/fluids/UI batch — LIVE
+
+Owner walked through seven in-app feedback issues in order (#141, #144, #145, #146, #147, #148, #149),
+one at a time, each verified before moving on. Batched into ONE release (**PR #150**, squash `--admin`,
+merge commit `614fb2b`), **live-confirmed** `version.json` = `v0.5.3-beta` (Pages flipped in ~15 s). All
+seven issues auto-closed. **App-only → no re-drag** (`LOADER_VER` stays 2); `MS_PARSER_VER` 1.1.0 →
+**1.2.0** (stored maintenance PDFs auto-reparse); `FLUID_YEAR_MAX` 2026 → **2027**. `tools/parser-test.js`
+= **65 files, 0 drift** (added 2027 fluid + re-blessed the 9 EV-year BEV changes).
+
+### The seven fixes (all in `src/helper.js` unless noted)
+1. **#141 (bug) — EVs got NO services due.** Root cause was TWO defects in the BEV "Additional Items"
+   parser: (a) the page's **copyright footer bled into the band** (BEV has no bottom-bound → the footer's
+   left-margin prose invented a phantom x≈34 column anchor and corrupted the whole read) → **footer-bound
+   the band** in `additionalFromPages` (exclude runs at/below the `©`/`Volkswagen Group of America`/
+   `All rights reserved` y); (b) the small BEV table is often **only 2 columns** (Service Item | Interval,
+   applicability omitted = implicitly all) but `parseAdditionalRuns` hard-required ≥3 anchors → added the
+   2-column path (`noApplic` → applic defaults "All Vehicles"). **Plus** 2023–2025 put country/PR-code
+   qualifiers (`(Only USA)`/`(Only Canada)`/`(only PR code KK2)`) where a vehicle column would go, so
+   `msApplies` dropped them → taught `msApplies` to strip those and treat empty/country-only as scope
+   "all". Result: BEV additional items now parse for **every EV year 2015–2027** (was only 2020/2022/
+   2026/2027). Verified 2016 e-Golf @ 23,781 → brake fluid + pollen + tire filler; ICE unchanged.
+2. **#144 (feature) — 2027 fluids.** Parsed the 2027 PDF (owner supplied it mid-session) → 7 models,
+   **value-identical to the poppler reference** (`tools/parse-fluids.js`). Bumped `FLUID_YEAR_MAX`→2027
+   (Settings counter derives "N / 28 yrs" from it). Added 2027 to the parser-test baseline.
+3. **#145 (bug) — maintenance not discoverable.** `msBar` returned "" in the no-PDF states → rewrote it
+   to mirror `fluidsBar` (greyed placeholder / loading / **clickable "load the PDF in Settings"**). Added
+   `.msbtn.off`/`.msbtn.load` CSS. Browser-verified the load bar opens Settings.
+4. **#146 (bug) — trash-can note "looked weird".** The maintenance-window hero note used a 🗑 **emoji**
+   (mismatched color/tofu on Windows/Edge next to the red SVG trash buttons) → replaced with an inline
+   SVG reusing the `TRASH` path + `.dg` style matching the `.msdel` buttons.
+5. **#147 (bug) — services off by mileage.** Level was odometer-only → an 80K-by-time car at ~50K read
+   "50K". `msServicesDue` now takes `rounded = max(odoRounded, round(actualAge)*10000)` (~10K mi/yr
+   guideline), keeps the age-fallback on the ODOMETER-implied age (so old low-mileage first-service still
+   fires), exposes `ageDriven`/`odoRounded`; hero shows "NNK reached by time". No-delivery-date → odometer
+   (no regression). Verified 5 scenarios incl. the reverse (80K odo / 2yr stays 80K).
+6. **#148 (feature) — selectable service interval.** Added **Mileage** + **Time in service** dropdowns to
+   the maintenance window (`msControls`), defaulting to scanned mileage + delivery age, with **Reset**.
+   Changing either re-renders `#msbody` in place via `wireMsWindow(win, r)` (recompute through the new
+   `msDueForVehicle(r, mileage, delivOverride)` + `msSynthDeliv(years)`). Split the window body into
+   `msWinBody(due, veh)`. Browser-verified re-render, max-of logic, trash re-wiring, Reset.
+7. **#149 (feature) — compact top row.** After the vehicle auto-collapses (reuses the existing 3-s
+   `vwjb_vehexp_v1` timer), Fluids/Maintenance/New-Vehicle/Vehicle-toggle fold into ONE icon row
+   (`quickRow`/`quickChip`, `buildHTML` branches on `compact = vehLoaded && vehExpState()==="0"`). Fluids
+   keeps the oil-drop (`DROPLET`); maintenance uses a new **`WRENCH`** icon (amber when due). **Two owner
+   iterations:** (a) moved **New Vehicle** into the row between the wrench and the Vehicle toggle + enlarged
+   chips (46×42); (b) **uniform spacing** via `justify-content:space-between` (measured 20/20/20 px gaps)
+   and the **New-Vehicle confirm drops to its own full-width 2nd line** (`.qcbar`, `flex:0 0 100%`) instead
+   of wrapping the whole row into 3 lines — the newv chip goes red (`.armed`) while pending.
+
+### Verification pattern used all session
+Browser checks that needed a loaded schedule/vehicle were done by copying a gitignored PDF to repo root
+(`*.pdf` is gitignored), `msSaveFiles`/`fluidsSaveYears` into IndexedDB via a throwaway `_*.html` harness,
+then `renderInto`/`buildMsWindowHTML` into an iframe (the `window.open` popup isn't drivable in the in-app
+browser). All temp files + PDFs deleted after; temp `_MS`/`wireMsWindow` exports added for a harness were
+removed before building. **Clean merge (no head-lag race this time):** single commit pushed, THEN PR opened
++ merged; verified the merged tree (`grep quickrow docs/app.js`), not just the version string.
+
+### Carry-forward / still-open
+- **Deferred maintenance gaps unchanged:** #140 (2000–2009 mileage-indexed schedules, still gated);
+  engine-conditional applicability ("Engines W/ toothed belts") still matches "all". Open issues now:
+  **#140, #122, #117, #11, #10.**
+- **#147 rounding note:** `round(actualAge)*10000` can overshoot at x.6 yrs (8.6→90K); the #148 Time
+  dropdown lets the tech correct it, so left as-is.
+- **#149 minor:** clicking Fluids/Maintenance (which `window.open` a popup, no re-render) while the
+  New-Vehicle confirm is open leaves the confirm until next render — harmless edge.
+- Bay-check next time one's on the hoist: the compact row + New-Vehicle confirm on a real shop screen; a
+  real EV (e-Golf/ID.4) now showing brake fluid/cabin filter.
+
+---
+
 ## Session close (2026-08-16) — v0.5.2-beta: the trash-button change that a merge race dropped from 0.5.1
 
 **What happened:** v0.5.1-beta shipped in TWO commits on branch `v0.5.1-beta` — `a865369` (due-logic +
