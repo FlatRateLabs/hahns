@@ -1033,7 +1033,7 @@
   var PARSER_1126_VER = "1.3.6";   // Parser 11-26 — engine-code layout (1.3.6: merge wrapped applications so the trans code isn't orphaned, #126)
   var PARSER_0610_VER = "2.0.1";   // Parser 06-10 — same layout, engines keyed by DISPLACEMENT ("2.0L") + nearest-cc match (2.0.1: shares the #126 wrap merge)
   var PARSER_0005_VER = "1.1.0";   // Parser 00-05 — old two-column layout (1.1.0: stitch wrapped A/C labels)
-  var FLUID_YEAR_MIN = 2000, FLUID_YEAR_MAX = 2026;  // span for "Years installed: N/M"
+  var FLUID_YEAR_MIN = 2000, FLUID_YEAR_MAX = 2027;  // span for "Years installed: N/M"
   var fluidsData = null;      // sync projection: null=unread, false=none, obj={updated,count,years:{Y:{models,file}}}
   var appDB = null;        // open IDBDatabase (null until boot resolves / on failure)
   var appIdbOk = true;     // false → IDB unavailable, using localStorage fallback
@@ -2529,7 +2529,7 @@
    * (tools/wip-maintenance/parse-maint.js) — do not "tidy" the heuristics
    * without re-running that prototype's baseline.
    * ================================================================== */
-  var MS_PARSER_VER = "1.1.0";        // bump → stored Maintenance PDFs auto-re-parse (1.1.0: 2022–2027 layout — tier-bleed fix, footnote filter, flexible Additional section #, 2000–2009 gate)
+  var MS_PARSER_VER = "1.2.0";        // bump → stored Maintenance PDFs auto-re-parse (1.2.0: BEV Additional Items now parse for all EV years — footer-bound the band + 2-column table support, issue #141; 1.1.0: 2022–2027 layout — tier-bleed fix, footnote filter, flexible Additional section #, 2000–2009 gate)
   // span for the "N / M loaded" counter. 2010–2027 = 18 (2000–2009 use the old
   // mileage-indexed layout that isn't supported yet — see msFromPdf gate; when it
   // lands, drop MS_YEAR_MIN to 2000 → 28).
@@ -2676,8 +2676,14 @@
     function parseAdditionalRuns(inBand, borders) {
       if (!inBand.length) return [];
       var anchors = columnAnchors(inBand.filter(function (r) { return !hasCheck(r.s); }).map(function (r) { return r.x; }));
-      if (anchors.length < 3) return [];
-      var ivX = (anchors[0] + anchors[1]) / 2, appX = (anchors[1] + anchors[2]) / 2;
+      if (anchors.length < 2) return [];
+      // The small BEV additional table is often only TWO columns — Service Item |
+      // Interval — with the applicability column omitted because every EV row is
+      // implicitly "All Vehicles". Detect that (2 anchors) and default applicability
+      // accordingly, instead of bailing on the 3-column assumption (issue #141).
+      var noApplic = anchors.length < 3;
+      var ivX = (anchors[0] + anchors[1]) / 2;
+      var appX = noApplic ? 1e9 : (anchors[1] + anchors[2]) / 2;
       var rows = rowsByY(inBand);
       var by = (borders || []).filter(function (b) { return b.x1 < ivX; }).map(function (b) { return b.y; }).sort(function (a, b) { return b - a; });
       var B = []; by.forEach(function (y) { if (!B.length || B[B.length - 1] - y > 4) B.push(y); });
@@ -2718,8 +2724,8 @@
         });
         return {
           item: finalize(name.join(" ")),
-          variants: variants.map(function (v) { return { interval: finalize(v.iv.join(" ")), applic: finalize(v.ap.join(" ")) }; })
-                            .filter(function (v) { return v.interval || v.applic; })
+          variants: variants.map(function (v) { return { interval: finalize(v.iv.join(" ")), applic: noApplic ? "All Vehicles" : finalize(v.ap.join(" ")) }; })
+                            .filter(function (v) { return v.interval || (!noApplic && v.applic); })
         };
       }).filter(function (r) { return r && r.item; });
     }
@@ -2760,7 +2766,14 @@
         if (!hdr) { if (isEnd) break; continue; }
         var topY = hdr.y - 2;
         var botY = isEnd ? rowY(runs, endRe) : -1e9;
-        var band = runs.filter(function (r) { return r.y < topY && r.y > botY && (hasCheck(r.s) || !junkFrag(r.s)); });
+        // The page's copyright footer sits BELOW the table but still inside [topY, botY]
+        // (BEV has no endRe, so botY = -∞). Its left-margin prose lands at an x that
+        // otherwise invents a bogus column anchor and corrupts the whole table read —
+        // so bound the band just above the footer's topmost line.
+        var footY = -1e9;
+        runs.forEach(function (r) { if (/Volkswagen Group of America|All rights reserved|^\s*©/.test(r.s) && r.y > footY) footY = r.y; });
+        var effBot = Math.max(botY, footY);
+        var band = runs.filter(function (r) { return r.y < topY && r.y > effBot && (hasCheck(r.s) || !junkFrag(r.s)); });
         if (band.length) {
           var maxY = Math.max.apply(null, band.map(function (r) { return r.y; }));
           var minY = Math.min.apply(null, band.map(function (r) { return r.y; }));
@@ -2989,6 +3002,17 @@
   function msApplies(applic, veh) {
     applic = String(applic || "");
     if (/All Vehicles|All Applicable/i.test(applic)) return { ok: true, scope: "all" };
+    // BEV "Additional Items" tables carry country / PR-code qualifiers ("(Only USA)",
+    // "(Only Canada)", "(only PR code KK2)") in place of a vehicle column, or leave it
+    // blank — the schedule is already EV-specific, so every row applies. Strip those
+    // qualifiers; if nothing that could name a model remains, treat as "all" so safety
+    // items (brake fluid, cabin filter) aren't silently dropped (issue #141). The
+    // ORIGINAL `applic` is still used for real model/code matching below.
+    var noCountry = applic.replace(/\(?\s*only\s+(?:usa|canada)\s*\)?/ig, "")
+                          .replace(/-\s*(?:usa|canada)\s+only/ig, "")
+                          .replace(/\(\s*only\s+pr\s*code[^)]*\)/ig, "")
+                          .replace(/[\s(),;.\-]/g, "");
+    if (!noCountry) return { ok: true, scope: "all" };
     // a pure powertrain qualifier (no model named) — the schedule pick already
     // separates ICE vs BEV, and we don't reliably know PHEV/HEV, so skip these.
     if (/^\s*(PHEV|BEV|HEV|BEV and PHEV|PHEV,\s*BEV|HEV,\s*PHEV|PHEV,?\s*BEV)\s*$/i.test(applic)) return { ok: false };
@@ -3036,12 +3060,22 @@
   function msIsEV(veh) { return /\bID\.?\s*\d|ID\.?\s*BUZZ|\bE-?GOLF\b|\bELECTRIC\b/i.test(veh.model || ""); }
 
   function msServicesDue(sched, veh, mileage, deliv) {
-    var rounded = Math.round((mileage || 0) / 10000) * 10000;
+    var odoRounded = Math.round((mileage || 0) / 10000) * 10000;
     var actualAge = msAgeYears(deliv);
-    // Owner rule (v0.5.1): assume the vehicle runs ~10K mi/yr, so its mileage
-    // IMPLIES an age — a 30K car is treated as 3 years old. Time-based items are
-    // scheduled on that mileage grid below (see the additional-items loop).
-    var impliedAge = rounded > 0 ? rounded / 10000 : null;
+    // Issue #147: a vehicle can be due for a HIGHER service by TIME than by odometer —
+    // e.g. an 80K-service car sitting at ~50K miles but ~8 years old. Convert age to a
+    // mileage-equivalent at the ~10K mi/yr guideline and take whichever service
+    // milestone is higher. (No delivery date → age unknown → falls back to odometer,
+    // exactly as before.)
+    var ageRounded = actualAge != null ? Math.round(actualAge) * 10000 : 0;
+    var rounded = Math.max(odoRounded, ageRounded);
+    var ageDriven = ageRounded > odoRounded;
+    // Owner rule (v0.5.1): assume the vehicle runs ~10K mi/yr, so its mileage IMPLIES
+    // an age — a 30K car is treated as 3 years old. The time-based additional-items
+    // fallback below keys off the ODOMETER-implied age (not `rounded`) so an old,
+    // low-mileage car hitting its FIRST time-based service is still caught even when
+    // `rounded` has jumped ahead by time.
+    var impliedAge = odoRounded > 0 ? odoRounded / 10000 : null;
     var isEV = msIsEV(veh);
     var levels = [], g = sched.grid || {};
     var haveGrid = (g.minor && g.minor.length) || (g.standard && g.standard.length) || (g.extended && g.extended.length);
@@ -3089,18 +3123,21 @@
         (ap.scope === "all" ? all : model).push({ item: it.item, interval: msIntervalUSA(v.interval), applic: v.applic });
       });
     });
-    return { rounded: rounded, actualAge: actualAge, impliedAge: impliedAge, levels: levels, replaceItems: replaceItems, all: all, model: model };
+    return { rounded: rounded, odoRounded: odoRounded, ageDriven: ageDriven, actualAge: actualAge, impliedAge: impliedAge, levels: levels, replaceItems: replaceItems, all: all, model: model };
   }
   // Top-level: given the running job (vehicle) + a mileage, compute what's due.
   // Returns null when there's no maintenance data for the vehicle's model year.
-  function msDueForVehicle(r, mileage) {
+  // `delivOverride` (issue #148): when the maintenance window's Time dropdown is set,
+  // pass a synthetic delivery date to drive the age instead of the scanned one. When
+  // omitted (null/undefined), the vehicle's scanned Delivery Date is used as before.
+  function msDueForVehicle(r, mileage, delivOverride) {
     var st = loadMs(); if (!(st && st.byYear)) return null;
     var veh = fluidVeh(r); if (!veh.year) return null;
     var yd = st.byYear[veh.year]; if (!yd || !yd.schedules) return null;
     var isEV = msIsEV(veh);
     var sched = isEV && yd.schedules.bev ? yd.schedules.bev : yd.schedules.ice;
     if (!sched) return null;
-    var deliv = (r && r.__vehicle && r.__vehicle.delivery) || "";
+    var deliv = delivOverride != null ? delivOverride : ((r && r.__vehicle && r.__vehicle.delivery) || "");
     var due = msServicesDue(sched, veh, mileage, deliv);
     due.veh = veh; due.year = veh.year; due.isEV = isEV; due.mileage = mileage || 0; due.file = yd.file || "";
     return due;
@@ -3643,11 +3680,21 @@
     ".veh .grid{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:13px}" +
     ".veh .k{color:#5a6b8c;font-weight:600;white-space:nowrap}" +
     ".veh .v{font-weight:700;color:#001e50;word-break:break-word}" +
+    ".msctrl{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid #e3e3e3;border-radius:12px;padding:11px 14px;margin:14px 0}" +
+    ".msctrl .ctl{display:flex;flex-direction:column;gap:3px}" +
+    ".msctrl label{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#5a6b8c}" +
+    ".msctrl select{appearance:auto;font-family:inherit;font-size:14px;font-weight:600;color:#001e50;padding:7px 9px;border:1px solid #cfd6e4;border-radius:8px;background:#fff;cursor:pointer;min-width:104px}" +
+    ".msctrl select:hover{border-color:#185fa5}" +
+    ".msctrl .sep{align-self:center;color:#9aa4b6;font-size:12px;font-weight:700;padding-bottom:8px}" +
+    ".msreset{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:12px;padding:8px 13px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4;background:#f3f6fb;color:#1c2b3a;margin-left:auto}" +
+    ".msreset:hover{background:#e7eefc;border-color:#185fa5}" +
+    "@media print{.msctrl{display:none}}" +
     ".hero{background:#fff5e6;border:1px solid #f0d9a8;border-left:5px solid #e0910f;border-radius:12px;padding:12px 15px;margin:14px 0}" +
     ".hero h2{margin:0;font-size:18px;color:#7a4d00}" +
     ".hero .lvl{font-size:13px;color:#8a6a2f;font-weight:700}" +
     ".hero .sub{font-size:12px;color:#7a6a4a;margin-top:3px}" +
     ".hero .note{font-size:11.5px;color:#7a5a12;margin-top:7px;line-height:1.4}" +
+    ".hero .note .dg{display:inline-flex;align-items:center;vertical-align:-3px;color:#b23b3b;background:#fff;border:1px solid #e6c9c9;border-radius:5px;padding:1px 3px;margin:0 1px}" +
     ".card{background:#fff;border:1px solid #e3e3e3;border-radius:12px;margin:12px 0;overflow:hidden}" +
     ".chd{padding:11px 14px;border-left:5px solid #5a6b8c;font-weight:700;font-size:14px}" +
     ".cbody{padding:2px 14px 10px}" +
@@ -3669,6 +3716,56 @@
     "@media print{.msdel{display:none}}" +
     ".none{color:#8a93a5;font-style:italic;font-size:13px;padding:4px 0}" +
     ".foot{color:#7a8394;font-size:11px;margin-top:20px;border-top:1px solid #d9dfea;padding-top:10px;line-height:1.5}";
+  // a synthetic delivery date `years` ago, so the tech's Time dropdown can drive the
+  // same age logic as a real delivery date (issue #148). "" when no year chosen.
+  function msSynthDeliv(years) { if (!years) return ""; var d = new Date(); d.setFullYear(d.getFullYear() - years); return d.toISOString().slice(0, 10); }
+  // the Mileage + Time override dropdowns (issue #148). Default-select the scanned
+  // mileage (rounded to 10K) and the delivery-date age (rounded to whole years); the
+  // tech can override either for one-off cases. Wired from the opener in wireMsWindow.
+  function msControls(selMi, selYr) {
+    var miOpts = '<option value="">—</option>', m;
+    for (m = 10000; m <= 200000; m += 10000) miOpts += '<option value="' + m + '"' + (m === selMi ? " selected" : "") + ">" + (m / 1000) + "K mi</option>";
+    var yrOpts = '<option value="">—</option>', y;
+    for (y = 1; y <= 20; y++) yrOpts += '<option value="' + y + '"' + (y === selYr ? " selected" : "") + ">" + y + " yr" + (y > 1 ? "s" : "") + "</option>";
+    return '<div class="msctrl">' +
+      '<div class="ctl"><label>Mileage</label><select id="ms_mi">' + miOpts + "</select></div>" +
+      '<div class="sep">and&#47;or</div>' +
+      '<div class="ctl"><label>Time in service</label><select id="ms_yr">' + yrOpts + "</select></div>" +
+      '<button id="ms_reset" class="msreset" title="Back to what the scan pulled">Reset</button></div>';
+  }
+  // the hero + three item cards for a computed `due` — re-rendered in place whenever
+  // the tech changes a dropdown (see wireMsWindow). Kept separate so the controls and
+  // vehicle grid above it stay put.
+  function msWinBody(due, veh) {
+    if (!due) return '<div class="none" style="padding:14px 2px">No maintenance schedule loaded for <b>' + esc(veh.year || "this year") +
+      "</b> — open the ⚙ gear in Hahns to add that year’s VW Maintenance Schedules PDF.</div>";
+    var svc = due.rounded ? (due.rounded / 1000) + "K" : "";
+    var lvlTxt = due.levels.length ? due.levels.map(function (l) { return l + " Maintenance"; }).join(" + ") : "no scheduled level";
+    var hero;
+    if (due.rounded > 0) {
+      hero = '<div class="hero"><h2>Possible ' + esc(svc) + ' service due <span class="lvl">(' + esc(lvlTxt) + ")</span></h2>" +
+        '<div class="sub">' + esc(veh.model || "") + " · " + (due.mileage || 0).toLocaleString() + " mi" +
+        (due.actualAge != null ? " · ~" + due.actualAge.toFixed(1) + " yrs" : "") +
+        (due.ageDriven ? " · " + (due.rounded / 1000) + "K reached by time" : "") + (due.isEV ? " · Electric" : "") + "</div>" +
+        '<div class="note">Assumes ~10,000 miles/year for time-based items. Use the trash button ' +
+        '<span class="dg"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="' + TRASH + '"/></svg></span>' +
+        ' next to any item to remove anything already done or not needed before printing.</div></div>';
+    } else {
+      hero = '<div class="hero"><h2>Choose a mileage or time above to see what’s due</h2>' +
+        '<div class="sub">Pick the service interval from the dropdowns. The ' + esc(veh.year) + " schedule is loaded.</div></div>";
+    }
+    var delBtn = '<button class="msdel" title="Remove this item" aria-label="Remove this item"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="' + TRASH + '"/></svg></button>';
+    function liReplace(x) { return '<li data-svc="' + esc(x.item) + '"><span class="lbl">' + esc(x.item) + (x.assumed ? "" : ' <span class="from">(' + esc(x.from) + " Maintenance)</span>") + "</span>" + delBtn + "</li>"; }
+    function liAdd(x) { return '<li data-svc="' + esc(x.item) + '"><span class="lbl"><b>' + esc(x.item) + '</b> — <span class="iv">' + esc(x.interval) + "</span></span>" + delBtn + "</li>"; }
+    function card(title, inner) { return '<div class="card"><div class="chd">' + esc(title) + '</div><div class="cbody">' + inner + "</div></div>"; }
+    var repl = due.replaceItems.length ? "<ul>" + due.replaceItems.map(liReplace).join("") + "</ul>" : '<div class="none">nothing to replace at this service</div>';
+    var allA = due.all.length ? "<ul>" + due.all.map(liAdd).join("") + "</ul>" : '<div class="none">none due</div>';
+    var modA = due.model.length ? "<ul>" + due.model.map(liAdd).join("") + "</ul>" : '<div class="none">none due for this vehicle</div>';
+    return hero +
+      card("Replace items" + (due.levels.length ? " (from " + due.levels.join(" / ") + ")" : ""), repl) +
+      card("Additional items — all vehicles", allA) +
+      card("Additional items — this vehicle", modA);
+  }
   function buildMsWindowHTML(r) {
     var veh = fluidVeh(r);
     var v = (r && r.__vehicle) || {};
@@ -3676,34 +3773,13 @@
     var due = msDueForVehicle(r, mileage);
     var body;
     if (!due) {
-      body = '<div class="none" style="padding:14px 2px">No maintenance schedule loaded for <b>' + esc(veh.year || "this year") +
-        "</b> — open the ⚙ gear in Hahns to add that year’s VW Maintenance Schedules PDF.</div>";
+      body = msWinBody(null, veh);
     } else {
-      var svc = due.rounded ? (due.rounded / 1000) + "K" : "";
-      var lvlTxt = due.levels.length ? due.levels.map(function (l) { return l + " Maintenance"; }).join(" + ") : "no scheduled level";
-      var hero;
-      if (mileage > 0) {
-        hero = '<div class="hero"><h2>Possible ' + esc(svc) + ' service due <span class="lvl">(' + esc(lvlTxt) + ")</span></h2>" +
-          '<div class="sub">' + esc(veh.model || "") + " · " + due.rounded.toLocaleString() + " mi" +
-          (due.actualAge != null ? " · ~" + due.actualAge.toFixed(1) + " yrs old" : "") + (due.isEV ? " · Electric" : "") + "</div>" +
-          '<div class="note">Assumes ~10,000 miles/year for time-based items. Use the 🗑 to remove anything already done or not needed before printing.</div></div>';
-      } else {
-        hero = '<div class="hero"><h2>Enter the mileage to check what’s due</h2>' +
-          '<div class="sub">Type the odometer reading into the <b>Mileage</b> field of the green vehicle bar in Hahns, then reopen this. The ' + esc(veh.year) + " schedule is loaded.</div></div>";
-      }
-      // per-item trash button (wired from the opener in wireMsWindow — a click
-      // asks "remove <item>?" Yes/No, and Yes drops the row from the window)
-      var delBtn = '<button class="msdel" title="Remove this item" aria-label="Remove this item"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="' + TRASH + '"/></svg></button>';
-      function liReplace(x) { return '<li data-svc="' + esc(x.item) + '"><span class="lbl">' + esc(x.item) + (x.assumed ? "" : ' <span class="from">(' + esc(x.from) + " Maintenance)</span>") + "</span>" + delBtn + "</li>"; }
-      function liAdd(x) { return '<li data-svc="' + esc(x.item) + '"><span class="lbl"><b>' + esc(x.item) + '</b> — <span class="iv">' + esc(x.interval) + "</span></span>" + delBtn + "</li>"; }
-      function card(title, inner) { return '<div class="card"><div class="chd">' + esc(title) + '</div><div class="cbody">' + inner + "</div></div>"; }
-      var repl = due.replaceItems.length ? "<ul>" + due.replaceItems.map(liReplace).join("") + "</ul>" : '<div class="none">nothing to replace at this service</div>';
-      var allA = due.all.length ? "<ul>" + due.all.map(liAdd).join("") + "</ul>" : '<div class="none">none due</div>';
-      var modA = due.model.length ? "<ul>" + due.model.map(liAdd).join("") + "</ul>" : '<div class="none">none due for this vehicle</div>';
-      body = hero +
-        card("Replace items" + (due.levels.length ? " (from " + due.levels.join(" / ") + ")" : ""), repl) +
-        card("Additional items — all vehicles", allA) +
-        card("Additional items — this vehicle", modA);
+      // default the dropdowns to what the scan pulled: mileage → nearest 10K, time →
+      // delivery-date age in whole years. The tech can override either (issue #148).
+      var selMi = due.odoRounded || 0;
+      var selYr = due.actualAge != null ? Math.round(due.actualAge) : 0;
+      body = msControls(selMi, selYr) + '<div id="msbody">' + msWinBody(due, veh) + "</div>";
     }
     var vehGrid = [["Model Year", veh.year], ["Model", veh.model], ["Sales Code", v.sales],
       ["Mileage", mileage ? mileage.toLocaleString() + " mi" : ""], ["Delivery Date", v.delivery]]
@@ -3725,7 +3801,7 @@
   // same-origin technique openDocWindow uses for Print/Close, so it works
   // regardless of the child's CSP). A click swaps the row for an inline
   // "Are you sure you want to remove <item>?" Yes/No confirm; Yes drops the row.
-  function wireMsWindow(win) {
+  function wireMsWindow(win, r) {
     var doc; try { doc = win.document; } catch (e) { return; }
     function wire(btn) {
       if (!btn) return;
@@ -3741,9 +3817,31 @@
         if (no) no.onclick = function () { li.innerHTML = saved; wire(li.querySelector(".msdel")); };
       };
     }
-    try { Array.prototype.forEach.call(doc.querySelectorAll(".msdel"), wire); } catch (e3) {}
+    function wireTrash() { try { Array.prototype.forEach.call(doc.querySelectorAll(".msdel"), wire); } catch (e3) {} }
+    // the Mileage / Time dropdowns (issue #148): recompute the due list from the chosen
+    // values and swap only the #msbody, then re-wire the fresh trash buttons. Runs in
+    // the opener, so it needs `r` (vehicle + loaded schedule) — same-origin, no CSP issue.
+    var miSel = doc.getElementById("ms_mi"), yrSel = doc.getElementById("ms_yr"), reset = doc.getElementById("ms_reset");
+    function recompute() {
+      var selMi = (miSel && parseInt(miSel.value, 10)) || 0;
+      var selYr = (yrSel && parseInt(yrSel.value, 10)) || 0;
+      var due = msDueForVehicle(r, selMi, selYr ? msSynthDeliv(selYr) : "");
+      var body = doc.getElementById("msbody");
+      if (body) { body.innerHTML = msWinBody(due, fluidVeh(r)); wireTrash(); }
+    }
+    if (miSel) miSel.onchange = recompute;
+    if (yrSel) yrSel.onchange = recompute;
+    if (reset) reset.onclick = function () {
+      var v = (r && r.__vehicle) || {}, odo = msMileage(v);
+      var defMi = Math.round(odo / 10000) * 10000;
+      var age = v.delivery ? msAgeYears(v.delivery) : null;
+      if (miSel) miSel.value = defMi ? String(defMi) : "";
+      if (yrSel) yrSel.value = age != null ? String(Math.round(age)) : "";
+      recompute();
+    };
+    wireTrash();
   }
-  function openMsWindow(r) { return openDocWindow("hahns_maint", 620, 820, buildMsWindowHTML(r), wireMsWindow); }
+  function openMsWindow(r) { return openDocWindow("hahns_maint", 620, 820, buildMsWindowHTML(r), function (win) { wireMsWindow(win, r); }); }
 
   /* ---- 5. loading the PDFs through Settings -------------------------- */
   // pick the year PDFs (several at once is fine) and convert each LOCALLY.
@@ -5142,6 +5240,39 @@
     ".msbtn.due:hover{background:#ffeccb;border-color:#e0910f}" +
     ".msbtn.due svg{stroke:#e0910f}" +
     ".msbtn.due .arr{color:#e0910f}" +
+    ".msbtn.off{background:#f4f4f6;border-color:#e5e5ea;color:#8a8a8a;cursor:default;font-weight:600}" +
+    ".msbtn.off:hover{background:#f4f4f6;border-color:#e5e5ea}" +
+    ".msbtn.off svg{stroke:#a8a8ae}" +
+    ".msbtn.load{background:#f4f4f6;border-color:#e5e5ea;color:#5f6b80;cursor:pointer;font-weight:600}" +
+    ".msbtn.load:hover{background:#ececf0;border-color:#c9c9d2}" +
+    ".msbtn.load svg{stroke:#8a94a6}" +
+    // compact quick-row (issue #149): Fluids + Maintenance shrink to icon chips in one
+    // row with a Vehicle re-expand toggle on the right.
+    ".quickrow{display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:9px 13px;background:#fff;border-bottom:1px solid #eee}" +
+    // New-Vehicle confirm drops onto its own full-width second line, leaving the 4
+    // buttons undisturbed on row one (issue #149 follow-up).
+    ".qcbar{flex:0 0 100%;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px;padding-top:9px;border-top:1px solid #f0f0f0}" +
+    ".qcbar .ctxt{white-space:normal}" +
+    ".qchip{appearance:none;-webkit-appearance:none;width:46px;height:42px;display:flex;align-items:center;justify-content:center;border-radius:10px;cursor:pointer;background:#eef6ff;border:1px solid #cfe0f5}" +
+    ".qchip svg{width:22px;height:22px;fill:none;stroke:#185fa5;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
+    ".qchip:hover{background:#e2eefc;border-color:#185fa5}" +
+    ".qchip.load{background:#f4f4f6;border-color:#e5e5ea}" +
+    ".qchip.load svg{stroke:#8a94a6}" +
+    ".qchip.load:hover{background:#ececf0;border-color:#c9c9d2}" +
+    ".qchip.off{background:#f4f4f6;border-color:#e5e5ea;cursor:default}" +
+    ".qchip.off svg{stroke:#a8a8ae}" +
+    ".qchip.due{background:#fff5e6;border-color:#f0d9a8}" +
+    ".qchip.due svg{stroke:#e0910f}" +
+    ".qchip.due:hover{background:#ffeccb;border-color:#e0910f}" +
+    ".qchip.newv{background:#eef1f6;border-color:#d5dced}" +
+    ".qchip.newv svg{stroke:#3a4a63}" +
+    ".qchip.newv:hover{background:#e2e8f3;border-color:#b9c4db}" +
+    ".qchip.newv.armed{background:#fdecec;border-color:#e6b0b0}" +
+    ".qchip.newv.armed svg{stroke:#a32d2d}" +
+    ".qveh{appearance:none;-webkit-appearance:none;display:flex;align-items:center;gap:5px;height:42px;padding:0 11px;border-radius:10px;cursor:pointer;background:#edf7ee;border:1px solid #cce6cf;color:#1e6b34;font-family:inherit;font-weight:700;font-size:12px}" +
+    ".qveh:hover{background:#dcecdd;border-color:#8fca97}" +
+    ".qveh svg{width:15px;height:15px;fill:none;stroke:#1e6b34;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}" +
+    ".qmiss{background:#e0910f;color:#fff;font-size:10px;font-weight:800;min-width:15px;height:15px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px}" +
     ".dgmhdr{font-family:inherit;font-weight:600;font-size:11px;color:#5f6b80;margin:9px 0 4px}" +
     ".dgmwrap{position:relative;margin:6px 0}" +
     ".dgm{display:block;max-width:100%;height:auto;border:1px solid #e3e3e3;border-radius:6px;cursor:zoom-in;background:#fff}" +
@@ -5353,11 +5484,24 @@
   var MS_CAL = "M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z M4 9h16 M8 3v3 M16 3v3";
   function msMileage(v) { return parseInt(String((v && v.mileage) || "").replace(/[^0-9]/g, ""), 10) || 0; }
   function msBar(r) {
-    if (!vehLoaded(r) || !msReady) return "";
+    // Keep the feature discoverable in every state, mirroring fluidsBar — a tech who
+    // has never loaded a Maintenance PDF must still see that the feature exists and
+    // where to enable it (issue #145). Only the "due" state turns amber.
+    if (!vehLoaded(r)) {
+      return '<div class="msbar"><div class="msbtn off" title="Scan ELSA’s Vehicle Summary page to enable">' +
+        svg(MS_CAL) + "Maintenance schedule — scan Vehicle Summary to enable</div></div>";
+    }
     var v = r.__vehicle || {};
-    if (!v.year) return "";
+    if (!v.year) return '<div class="msbar"><div class="fluidnote">Add the <b>Model Year</b> above to check maintenance services due.</div></div>';
+    if (!msReady) return '<div class="msbar"><div class="msbtn off" title="Reading saved maintenance schedules…">' + svg(MS_CAL) + "Maintenance schedule — loading…</div></div>";
     var st = loadMs();
-    if (!(st && st.byYear && st.byYear[v.year])) return "";   // no schedule this year → keep the panel clean (load it in Settings)
+    if (!(st && st.byYear && st.byYear[v.year])) {
+      // no schedule for this year yet → point the tech at Settings so they discover
+      // and enable the feature, exactly like the fluids bar does.
+      return '<div class="msbar"><button class="msbtn load" data-act="settings" data-tip="Open Settings (⚙) and load the yearly VW Maintenance Schedules PDF — kept only on this computer">' +
+        svg(MS_CAL) + (st ? "No " + esc(String(v.year)) + " maintenance schedule on this computer — add the PDF in Settings"
+                          : "Maintenance schedule — load the PDF in Settings") + "</button></div>";
+    }
     var mileage = msMileage(v);
     var due = msDueForVehicle(r, mileage);
     var hasDue = due && (due.replaceItems.length || due.all.length || due.model.length);
@@ -5370,6 +5514,48 @@
     return '<div class="msbar"><button class="msbtn" data-act="msdue">' + svg(MS_CAL) +
       (mileage > 0 ? "Maintenance — nothing flagged at " + mileage.toLocaleString() + " mi, view schedule"
                    : "Maintenance — enter mileage to check services due") + '<span class="arr">&#8599;</span></button></div>';
+  }
+
+  // ---- compact quick-row (issue #149) ---------------------------------------
+  // Once a vehicle is loaded and the top area auto-collapses (3 s, shared with the
+  // vehicle bar), the Fluids and Maintenance bars shrink to icon-only chips and sit
+  // in ONE row with a "Vehicle ▾" toggle on the right — reclaiming vertical space.
+  // Clicking a chip does exactly what its full-width bar did; the toggle re-expands.
+  var WRENCH = "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z";
+  function quickChip(cls, act, tip, iconPath) {
+    return '<button class="qchip ' + cls + '" data-act="' + act + '" data-tip="' + esc(tip) + '">' + svg(iconPath) + "</button>";
+  }
+  function quickRow(r) {
+    var v = r.__vehicle || {};
+    // Fluids chip — mirror fluidsBar's active/load states.
+    var fl;
+    if (!fluidsReady) fl = quickChip("off", "", "Fluids & capacities — loading…", DROPLET);
+    else {
+      var fst = loadFluids(), hasFluids = !!(fst && fst.years && fst.years[v.year]), hasSx = !!sxForVehicle(r);
+      fl = (hasFluids || hasSx)
+        ? quickChip("fl", "fluids", "Fluids & capacities for this vehicle", DROPLET)
+        : quickChip("load", "settings", "No fluid tables for " + esc(String(v.year || "this year")) + " — load the PDF in Settings", DROPLET);
+    }
+    // Maintenance chip — mirror msBar; amber when a service is actually due.
+    var ms;
+    if (!msReady) ms = quickChip("off", "", "Maintenance schedule — loading…", WRENCH);
+    else {
+      var mst = loadMs();
+      if (mst && mst.byYear && mst.byYear[v.year]) {
+        var mileage = msMileage(v), due = msDueForVehicle(r, mileage);
+        var hasDue = due && (due.replaceItems.length || due.all.length || due.model.length);
+        ms = (mileage > 0 && hasDue)
+          ? quickChip("due", "msdue", "Possible " + (due.rounded / 1000) + "K service due — click for details", WRENCH)
+          : quickChip("ms", "msdue", mileage > 0 ? "Maintenance — nothing flagged, view schedule" : "Maintenance — enter mileage to check services due", WRENCH);
+      } else ms = quickChip("load", "settings", "No maintenance schedule for " + esc(String(v.year || "this year")) + " — load the PDF in Settings", WRENCH);
+    }
+    var miss = vehMissing(v);
+    var missTag = miss.length ? '<span class="qmiss" data-tip="' + miss.length + ' vehicle field' + (miss.length > 1 ? "s" : "") + ' still blank">' + miss.length + "</span>" : "";
+    var vtog = '<button class="qveh" data-act="vehexpand" data-tip="Show vehicle details">' + svg(CHECK) + "Vehicle" + missTag + svg(CHEV_DOWN) + "</button>";
+    // New Vehicle sits between the wrench and the Vehicle toggle (owner request, #149)
+    var newv = '<button class="qchip newv" data-act="newjob" data-tip="Start over with a NEW vehicle — clears the loaded vehicle and all collected info">' + svg(RESTART) + "</button>";
+    var note = vehNotice ? '<div class="vwarn" style="margin:6px 13px 0">' + esc(vehNotice) + "</div>" : "";
+    return '<div class="quickrow">' + fl + ms + newv + vtog + "</div>" + note;
   }
 
   // Service Xpress torque card for the Fluids & Capacities WINDOW — sits at the top,
@@ -5462,6 +5648,9 @@
 
   function buildHTML(r, embed) {
     var mini = !embed && isMin();
+    // compact top area (issue #149): vehicle loaded + collapse state "0" → one icon row
+    // (Fluids, Maintenance, New Vehicle, Vehicle toggle) instead of the full stack.
+    var compact = !embed && vehLoaded(r) && vehExpState() === "0";
     // any collected info (specs/tools/warnings/diagrams)? drives the "Clear info"
     // button — which wipes the recorded data but keeps the loaded vehicle.
     var hasInfo = (r.__images || []).length > 0;
@@ -5481,14 +5670,15 @@
         (embed ? "" : '<button class="fblink" data-tip="Report a bug or send feedback to the developer">Feedback</button>') +
       "</div>" +
       // "New Vehicle" — the start-over action: wipes the loaded vehicle AND all
-      // collected info. Pinned at the very top, right under the version bar.
-      (embed ? "" : '<div class="topbar"><button class="newveh" data-act="newjob" data-tip="Start over with a NEW vehicle — clears the loaded vehicle and all collected info">' + svg(RESTART) + "New Vehicle</button></div>") +
-      // vehicle identity strip (required before any procedure page is collected)
-      (embed ? "" : vehicleBar(r)) +
-      // fluids & capacities link — pinned directly under the vehicle bar (the
-      // Service Xpress torque specs live INSIDE that window, next to the vehicle)
-      (embed ? "" : fluidsBar(r)) +
-      (embed ? "" : msBar(r)) +
+      // collected info. Pinned at the very top when expanded; in the compact row it
+      // moves into that row (issue #149), so hide the standalone bar there.
+      ((embed || compact) ? "" : '<div class="topbar"><button class="newveh" data-act="newjob" data-tip="Start over with a NEW vehicle — clears the loaded vehicle and all collected info">' + svg(RESTART) + "New Vehicle</button></div>") +
+      // Top area. Once a vehicle is loaded AND the shared collapse state is "0" (the
+      // 3 s auto-collapse fired, or the tech collapsed it), everything folds into one
+      // compact icon row (issue #149). Otherwise the full vehicle grid + labeled
+      // Fluids/Maintenance bars show — including all the pre-vehicle discoverability
+      // and "load the PDF" states.
+      (embed ? "" : (compact ? quickRow(r) : (vehicleBar(r) + fluidsBar(r) + msBar(r)))) +
       '<div class="scanbar"><button class="scan" data-act="rescan" data-tip="Read this page and add its specs to the job">SCAN</button></div>' +
       '<div class="jobbar">' +
         '<input class="job" type="text" placeholder="Job title — e.g. Rear Brakes" value="' + esc(r.__title || "") + '">' +
@@ -6752,8 +6942,25 @@
         } else if (act === "rescan" && typeof onRescan === "function") {
           onRescan();
         } else if (act === "newjob" && typeof options.onNewJob === "function") {
-          // New Vehicle wipes EVERYTHING (vehicle + all collected info) — confirm first
-          inlineConfirm(btn, "New vehicle? Clears all.", function () { options.onNewJob(); });
+          // New Vehicle wipes EVERYTHING (vehicle + all collected info) — confirm first.
+          var qrow = btn.closest ? btn.closest(".quickrow") : null;
+          if (qrow && btn.classList.contains("newv")) {
+            // compact row (issue #149): keep the 4 icons on their row; drop ONLY the
+            // confirm onto a second line inside the same block. Clicking again closes it.
+            var openCf = qrow.querySelector(".qcbar");
+            qrow.querySelectorAll(".qchip.newv.armed").forEach(function (b) { b.classList.remove("armed"); });
+            if (openCf) { openCf.remove(); return; }
+            var cf = document.createElement("div");
+            cf.className = "qcbar";
+            cf.innerHTML = '<span class="ctxt">New vehicle? Clears all.</span>' +
+              '<span class="confirm"><button class="cno">No</button><button class="cyes">Yes</button></span>';
+            qrow.appendChild(cf);
+            btn.classList.add("armed");
+            cf.querySelector(".cyes").addEventListener("click", function () { options.onNewJob(); });
+            cf.querySelector(".cno").addEventListener("click", function () { cf.remove(); btn.classList.remove("armed"); });
+          } else {
+            inlineConfirm(btn, "New vehicle? Clears all.", function () { options.onNewJob(); });
+          }
         } else if (act === "clearinfo") {
           // clear the COLLECTED info (specs, tools, warnings, diagrams, title) but
           // keep the loaded vehicle — confirmed inline so a stray click is safe

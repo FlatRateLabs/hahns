@@ -9,7 +9,37 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.2-beta — in progress
+## v0.5.3-beta — 2026-08-18
+
+### Added
+- **2027 fluid capacities.** The 2027 *VW Fluid Capacity Tables* now read and look up correctly (all 7
+  models). Load the 2027 PDF once in ⚙ Settings; the Settings counter now shows **“X / 28 years.”** (#144)
+- **Pick the service interval by hand (maintenance).** The “possible services due” window now has
+  **Mileage** and **Time in service** dropdowns, so you can check any service for those one-off cases.
+  They default to what the scan pulled — the odometer and the delivery-date age — and you can override
+  either; **Reset** puts them back. (#148)
+
+### Changed
+- **The top of the panel folds into one compact row.** A few seconds after a vehicle loads, the Fluids,
+  Maintenance, New Vehicle and Vehicle-details controls shrink into a single icon row to free up screen
+  space (Fluids keeps its oil-drop, Maintenance uses a wrench). Tap **Vehicle ▾** to expand the full
+  details again. (#149)
+- **Maintenance is now discoverable before a PDF is loaded.** Like Fluids, there’s now a button telling
+  you to load the Maintenance PDF in Settings, so techs know the feature exists. (#145)
+
+### Fixed
+- **Electric vehicles now get their maintenance items.** e-Golf / ID.4 / ID.Buzz were showing *no*
+  services due because the electric **“Additional Maintenance Items”** (brake fluid, cabin/pollen filter,
+  tire filler bottle) weren’t being read for most years. Now read for every EV year. (#141)
+- **Services due now go by mileage OR time — whichever is further along.** A car at ~50,000 miles but
+  ~8 years old is now correctly flagged for its **80K** service, not 50K (using the ~10,000 miles/year
+  guideline). (#147)
+- **The maintenance trash-button note** now shows a matching trash icon instead of a mismatched emoji
+  that looked odd on some computers. (#146)
+
+---
+
+## v0.5.2-beta — 2026-08-17
 
 ### Changed
 - **Maintenance window: the cross-off checkbox is now a 🗑 trash button with a confirm.** The checkbox
