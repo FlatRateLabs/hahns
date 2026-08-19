@@ -2998,6 +2998,42 @@
     if (/^\d\.\d/.test(code) && veh.liters) return Math.abs(veh.liters - parseFloat(code)) < 0.16;   // engine size 1.8L / 2.0T
     return false;
   }
+  // Code-based identity, used ONLY as a fallback when the model-NAME pass finds
+  // nothing (issue #154). ELSA's Model Name doesn't always name the family the
+  // schedule uses — a Golf Variant reaches us as "GSW ALLTRACK", so a row that
+  // says "Golf variant (BX5)" / "0D9 (DSG): … Golf Variant" is invisible to the
+  // name pass. But the vehicle's Sales Code (BX5DQ7 → platform BX5) and DSG trans
+  // code (0D9) ARE exactly the codes the row lists. These use the anchored
+  // Sales-Code / trans-code PREFIX only — never the loose engine-liter guess,
+  // which isn't model-specific.
+  function msPlatformPrefix(code, veh) {
+    code = msAlnum(code).replace(/\./g, ""); if (code.length < 2) return false;
+    return !!(veh.sales && veh.sales.indexOf(code) === 0);
+  }
+  function msTransPrefix(code, veh) {
+    code = msAlnum(code).replace(/\./g, ""); if (code.length < 2) return false;
+    var tc = veh.transCodes || [];
+    for (var i = 0; i < tc.length; i++) if (tc[i] && tc[i].indexOf(code) === 0) return true;
+    return false;
+  }
+  // Two applicability shapes:
+  //  • TRANSMISSION rows group by trans code — "0D9 (DSG): … / 09G: …". A car has
+  //    ONE gearbox, so it matches the single group whose code is its transmission.
+  //    We must NOT match a different-transmission group just because it lists our
+  //    platform (the 80K "09G: … Golf Variant (BX5)" group must miss a 0D9 DSG car).
+  //  • FLAT model lists (spark plugs, etc.) — "… Golf variant (BX5) …". Match when a
+  //    parenthetical code is our platform (Sales-Code prefix).
+  function msCodeApplies(applic, veh) {
+    var groupRe = /(^|[^0-9A-Z])([0-9][A-Z0-9]{1,3})\s*(?:\(DSG\))?\s*:/gi, gm, hasGroups = false;
+    while ((gm = groupRe.exec(applic))) { hasGroups = true; if (msTransPrefix(gm[2], veh)) return { ok: true, scope: "model", why: "trans " + gm[2] }; }
+    if (hasGroups) return null;   // transmission-keyed row, our gearbox wasn't listed → no match
+    var pm, parenRe = /\(([^)]*)\)/g;
+    while ((pm = parenRe.exec(applic))) {
+      var parts = pm[1].split(/[,/\s]+/).filter(Boolean);
+      for (var j = 0; j < parts.length; j++) if (msPlatformPrefix(parts[j], veh)) return { ok: true, scope: "model", why: "platform " + parts[j] };
+    }
+    return null;
+  }
   // does an applicability STRING apply to this vehicle? → {ok, scope:"all"|"model", why}
   function msApplies(applic, veh) {
     applic = String(applic || "");
@@ -3016,7 +3052,7 @@
     // a pure powertrain qualifier (no model named) — the schedule pick already
     // separates ICE vs BEV, and we don't reliably know PHEV/HEV, so skip these.
     if (/^\s*(PHEV|BEV|HEV|BEV and PHEV|PHEV,\s*BEV|HEV,\s*PHEV|PHEV,?\s*BEV)\s*$/i.test(applic)) return { ok: false };
-    var vm = msVehModels(veh.model); if (!vm.length) return { ok: false };
+    var vm = msVehModels(veh.model);
     for (var i = 0; i < vm.length; i++) {
       var m = vm[i], mre = m.replace(/ /g, "\\s*").replace(/\./g, "\\.");
       // coded mentions of this model: MODEL(code…)
@@ -3033,6 +3069,9 @@
       // bare mention (model with no parenthetical code anywhere) → model-level match
       if (!sawCoded && new RegExp("\\b" + mre + "\\b", "i").test(applic)) return { ok: true, scope: "model", why: m };
     }
+    // model NAME didn't resolve it — try the Sales-Code / trans-code identity (#154)
+    var byCode = msCodeApplies(applic, veh);
+    if (byCode) return byCode;
     return { ok: false };
   }
   // ---- due logic
@@ -3058,6 +3097,50 @@
   function msAgeYears(deliv) { if (!deliv) return null; var d = new Date(deliv); if (isNaN(d)) return null; return (Date.now() - d.getTime()) / (365.25 * 24 * 3600 * 1000); }
   function msGridHits(arr, rounded) { if (!arr || arr.length < 2 || rounded <= 0) return false; var first = arr[0], per = arr[1] - arr[0]; return per > 0 && rounded >= first && (rounded - first) % per === 0; }
   function msIsEV(veh) { return /\bID\.?\s*\d|ID\.?\s*BUZZ|\bE-?GOLF\b|\bELECTRIC\b/i.test(veh.model || ""); }
+  // An AWD-only service (the Haldex/AWD clutch fluid) must NOT be recommended on a
+  // front-drive car (issue #155). The schedule tags "AWD Clutch - Change fluid" as
+  // "All Applicable Vehicles", so msApplies returns scope "all" and it shows on
+  // everything — but "applicable" there means the AWD ones. Gate it on veh.awd
+  // (set from the Model Name's AWD/4MOTION/4MO markers + the AWD-only models Golf R
+  // / Touareg / Alltrack). We deliberately do NOT gate "Front Axle Differential
+  // Lock": a FWD GTI carries the VAQ front diff (a PR-code option), so that item is
+  // option-specific, not drivetrain-specific.
+  function msIsAwdItem(name) { return /\bAWD\b|4\s*-?\s*MOTION|\bHALDEX\b|ALL[\s-]*WHEEL/i.test(String(name || "")); }
+  // Spark plugs are a GAS-engine service — a diesel (TDI/SDI) has glow plugs, not
+  // spark plugs (issue #156). A diesel's sales code still shares the model platform
+  // (a Jetta TDI is "Jetta (163)" too), so it matches the spark-plug row by
+  // platform/name; gate it out when we're confident the vehicle is a diesel
+  // (veh.fuel === "diesel", set from TDI/SDI/DIESEL in the engine/model text).
+  // Unknown fuel keeps the item — don't guess; most VWs are gas.
+  function msIsSparkItem(name) { return /spark\s*plug/i.test(String(name || "")); }
+  function msSkipItem(name, veh) { return (msIsAwdItem(name) && !veh.awd) || (msIsSparkItem(name) && veh.fuel === "diesel"); }
+  // Timing/toothed belt interim (issue #157). The belt interval depends on the exact
+  // engine + model year, laid out in the PDF as one flowing applicability paragraph
+  // that wraps across all four interval rows with the interval numbers at the BOTTOM
+  // of each block — which the row-pairing parser (built for top-aligned intervals)
+  // splits wrong, so a 2014 Jetta diesel (truly 130K) matched the 100K row. Until the
+  // parser rework lands, we NEVER assert a specific belt mileage: instead we flag the
+  // belt as "verify in ELSA". The UNION of a belt item's variant applicabilities is
+  // unaffected by the mis-pairing, so we can still tell reliably WHETHER a belt is
+  // relevant to this vehicle — just not which interval.
+  function msIsBeltItem(name) { return /toothed belt|timing belt/i.test(String(name || "")); }
+  function msBeltRelevant(it, veh) {
+    var name = String(it.item || "");
+    if (/\(\s*diesel/i.test(name) && veh.fuel !== "diesel") return false;   // diesel belt, not a diesel
+    if (/\(\s*gas/i.test(name) && veh.fuel === "diesel") return false;      // gas belt, diesel car
+    return (it.variants || []).some(function (v) {
+      var ap = String(v.applic || "");
+      // an "except <models>" clause (the coolant-pump belt lists the models that do
+      // NOT get it) — if the vehicle is named there, it's excluded, not included.
+      if (/except/i.test(ap)) {
+        var after = ap.split(/except/i).slice(1).join(" ");
+        if (after && msApplies(after, veh).ok) return false;
+        var before = ap.split(/except/i)[0];
+        return !!before && msApplies(before, veh).ok;
+      }
+      return msApplies(ap, veh).ok;
+    });
+  }
 
   function msServicesDue(sched, veh, mileage, deliv) {
     var odoRounded = Math.round((mileage || 0) / 10000) * 10000;
@@ -3092,7 +3175,7 @@
       if (k % 4 === 0) levels.push("Extended");
     }
     var replaceItems = [];
-    function addReplace(name, arr) { (arr || []).forEach(function (r) { if (/\breplace\b/i.test(r.item) && msApplies(r.applic, veh).ok) replaceItems.push({ item: r.item, from: name }); }); }
+    function addReplace(name, arr) { (arr || []).forEach(function (r) { if (msSkipItem(r.item, veh)) return; if (/\breplace\b/i.test(r.item) && msApplies(r.applic, veh).ok) replaceItems.push({ item: r.item, from: name }); }); }
     if (levels.indexOf("Minor") >= 0 || levels.indexOf("Standard") >= 0) addReplace("Minor", sched.minor);
     if (levels.indexOf("Standard") >= 0) addReplace("Standard", sched.standard);
     if (levels.indexOf("Extended") >= 0) addReplace("Extended", sched.extended);
@@ -3101,8 +3184,13 @@
     // "Replace Engine Oil" line. EVs don't get one. Owner rule (v0.5.1).
     if (!isEV && levels.length && !replaceItems.some(function (x) { return /\boil\b/i.test(x.item); }))
       replaceItems.unshift({ item: "Engine Oil and Filter", from: "Service interval", assumed: true });
-    var all = [], model = [];
+    var all = [], model = [], verify = [];
     (sched.additional || []).forEach(function (it) {
+      if (msSkipItem(it.item, veh)) return;   // AWD-only on FWD (#155) / spark plugs on diesel (#156)
+      // Timing/toothed belt (#157): don't assert a (possibly mis-paired) mileage —
+      // flag it to verify in ELSA instead. Relevance is judged on the union of the
+      // item's applicabilities, which the mis-pairing doesn't affect.
+      if (msIsBeltItem(it.item)) { if (msBeltRelevant(it, veh) && verify.indexOf(it.item) < 0) verify.push(it.item); return; }
       (it.variants || []).forEach(function (v) {
         var ap = msApplies(v.applic, veh); if (!ap.ok) return;
         if (rounded <= 0) return;                         // no mileage entered → nothing to schedule
@@ -3123,7 +3211,7 @@
         (ap.scope === "all" ? all : model).push({ item: it.item, interval: msIntervalUSA(v.interval), applic: v.applic });
       });
     });
-    return { rounded: rounded, odoRounded: odoRounded, ageDriven: ageDriven, actualAge: actualAge, impliedAge: impliedAge, levels: levels, replaceItems: replaceItems, all: all, model: model };
+    return { rounded: rounded, odoRounded: odoRounded, ageDriven: ageDriven, actualAge: actualAge, impliedAge: impliedAge, levels: levels, replaceItems: replaceItems, all: all, model: model, verify: verify };
   }
   // Top-level: given the running job (vehicle) + a mileage, compute what's due.
   // Returns null when there's no maintenance data for the vehicle's model year.
@@ -3241,15 +3329,18 @@
       fr.onload = function () {
         var bundle = null;
         try { bundle = JSON.parse(fr.result); } catch (e) {}
-        if (!bundle) { flash(root, "That file isn’t a valid setup file"); return; }
+        if (!bundle) { okModal(root, "Couldn’t load setup", "That file isn’t a valid Hahns setup file. Make sure you picked the .json file saved with “Save setup to a file”."); return; }
         importShopConfig(bundle).then(function (n) {
           renderInto(host, r, options);
           openSettings(host, r, options, root);   // refresh Settings in place
-          flash(root, "Setup loaded — " + n.fluidYears + " fluid, " + n.sxYears + " torque, " + n.msYears + " maintenance year" + (n.msYears === 1 ? "" : "s") + (n.tools ? ", tool list (" + n.tools + ")" : ""));
-        }).catch(function (e) { flash(root, "Couldn’t load: " + ((e && e.message) || "error")); });
+          // OK confirmation the tech must acknowledge, on top of Settings (issue #158)
+          okModal(root, "✓ Setup loaded successfully", "Loaded onto this computer: " + n.fluidYears + " fluid year" + (n.fluidYears === 1 ? "" : "s") +
+            ", " + n.sxYears + " torque chart" + (n.sxYears === 1 ? "" : "s") + ", " + n.msYears + " maintenance schedule" + (n.msYears === 1 ? "" : "s") +
+            (n.tools ? ", and the tool list (" + n.tools + " tools)" : "") + ".");
+        }).catch(function (e) { okModal(root, "Couldn’t load setup", "Something went wrong loading that file: " + ((e && e.message) || "error")); });
       };
-      fr.onerror = function () { flash(root, "Couldn’t read that file"); };
-      try { fr.readAsText(f); } catch (e) { flash(root, "Couldn’t read that file"); }
+      fr.onerror = function () { okModal(root, "Couldn’t read that file", "The file couldn’t be read — try choosing it again."); };
+      try { fr.readAsText(f); } catch (e) { okModal(root, "Couldn’t read that file", "The file couldn’t be read — try choosing it again."); }
     });
     (root.querySelector(".wrap") || root).appendChild(inp);
     inp.click();
@@ -3761,7 +3852,14 @@
     var repl = due.replaceItems.length ? "<ul>" + due.replaceItems.map(liReplace).join("") + "</ul>" : '<div class="none">nothing to replace at this service</div>';
     var allA = due.all.length ? "<ul>" + due.all.map(liAdd).join("") + "</ul>" : '<div class="none">none due</div>';
     var modA = due.model.length ? "<ul>" + due.model.map(liAdd).join("") + "</ul>" : '<div class="none">none due for this vehicle</div>';
-    return hero +
+    // #157 interim: timing/toothed-belt interval isn't auto-calculated (varies by exact
+    // engine + model year) — surfaced as a verify-in-ELSA advisory, no mileage asserted.
+    var verifyCard = (due.verify && due.verify.length)
+      ? '<div class="card"><div class="chd" style="border-left-color:#e0910f;color:#8a5a00">⚠ Verify interval in ELSA</div><div class="cbody"><ul>' +
+          due.verify.map(function (n) { return '<li><span class="lbl">' + esc(n) + "</span></li>"; }).join("") +
+          '</ul><div class="none">Timing / toothed-belt intervals depend on the exact engine and model year (many VW engines use a timing chain and have no belt) and are not auto-calculated here — confirm in ELSA before servicing.</div></div></div>'
+      : "";
+    return hero + verifyCard +
       card("Replace items" + (due.levels.length ? " (from " + due.levels.join(" / ") + ")" : ""), repl) +
       card("Additional items — all vehicles", allA) +
       card("Additional items — this vehicle", modA);
@@ -3898,7 +3996,7 @@
   // year → straight to the picker; several → a small chooser first. (0 → add.)
   function openFluidUpdate(host, r, options, root) {
     var fl = loadFluids();
-    var years = fl && fl.years ? Object.keys(fl.years).sort() : [];
+    var years = fl && fl.years ? Object.keys(fl.years).sort(function (a, b) { return a < b ? 1 : a > b ? -1 : 0; }) : [];
     if (!years.length) { pickFluidFiles(host, r, options, root); return; }
     if (years.length === 1) { pickFluidFiles(host, r, options, root, years[0]); return; }
     // show only the year (the tech asked not to see file names here — the file
@@ -4017,7 +4115,8 @@
         // if Settings is still open behind this dialog, refresh it in place so the
         // newly-saved years show without the tech having to reopen it
         if (root.querySelector(".setc-settings")) openSettings(host, r, options, root);
-        flash(root, "Fluid tables saved: " + ok.map(function (o) { return o.year; }).sort().join(", "));
+        var flY = ok.map(function (o) { return o.year; }).sort();
+        okModal(root, "✓ Fluid tables saved", "Saved to this computer: " + flY.join(", ") + " (" + flY.length + " year" + (flY.length === 1 ? "" : "s") + ").");
       }).catch(function (e) {
         var err = ov.querySelector(".maperr");
         err.textContent = "Couldn’t save (" + ((e && e.message) || "storage blocked or full on this machine") + ").";
@@ -4080,7 +4179,7 @@
     var files = sx && sx.files ? sx.files : [];
     if (!files.length) { pickSxFiles(host, r, options, root); return; }
     var items = files.map(function (f) { return { key: f.key, year: sxFileYear(f) }; })
-      .sort(function (a, b) { return a.year < b.year ? -1 : a.year > b.year ? 1 : 0; });
+      .sort(function (a, b) { return a.year < b.year ? 1 : a.year > b.year ? -1 : 0; });
     if (items.length === 1) { pickSxFiles(host, r, options, root, items[0].key, items[0].year); return; }
     var list = items.map(function (o) {
       return '<button class="updpick" data-k="' + esc(o.key) + '" data-y="' + esc(o.year) + '"><b>' + esc(o.year) + "</b></button>";
@@ -4165,7 +4264,8 @@
         // refresh Settings in place if it's still open behind this dialog
         if (root.querySelector(".setc-settings")) openSettings(host, r, options, root);
         var allYears = {}; ok.forEach(function (o) { (o.years || []).forEach(function (y) { allYears[y] = 1; }); });
-        flash(root, "Service Xpress saved: " + Object.keys(allYears).sort().join(", "));
+        var sxY = Object.keys(allYears).sort();
+        okModal(root, "✓ Torque charts saved", "Saved to this computer: " + sxY.join(", ") + " (" + sxY.length + " year" + (sxY.length === 1 ? "" : "s") + ").");
       }).catch(function (e) {
         var err = ov.querySelector(".maperr");
         err.textContent = "Couldn’t save (" + ((e && e.message) || "storage blocked or full on this machine") + ").";
@@ -4219,7 +4319,7 @@
     var files = ms && ms.files ? ms.files : [];
     if (!files.length) { pickMsFiles(host, r, options, root); return; }
     var items = files.map(function (f) { return { key: f.key, year: msFileYear(f) }; })
-      .sort(function (a, b) { return a.year < b.year ? -1 : a.year > b.year ? 1 : 0; });
+      .sort(function (a, b) { return a.year < b.year ? 1 : a.year > b.year ? -1 : 0; });
     if (items.length === 1) { pickMsFiles(host, r, options, root, items[0].key, items[0].year); return; }
     var list = items.map(function (o) {
       return '<button class="updpick" data-k="' + esc(o.key) + '" data-y="' + esc(o.year) + '"><b>' + esc(o.year) + "</b></button>";
@@ -4297,7 +4397,8 @@
         close();
         renderInto(host, r, options);
         if (root.querySelector(".setc-settings")) openSettings(host, r, options, root);
-        flash(root, "Maintenance schedules saved: " + ok.map(function (o) { return o.year; }).sort().join(", "));
+        var msY = ok.map(function (o) { return o.year; }).sort();
+        okModal(root, "✓ Maintenance schedules saved", "Saved to this computer: " + msY.join(", ") + " (" + msY.length + " year" + (msY.length === 1 ? "" : "s") + ").");
       }).catch(function (e) {
         var err = ov.querySelector(".maperr");
         err.textContent = "Couldn’t save (" + ((e && e.message) || "storage blocked or full on this machine") + ").";
@@ -6180,6 +6281,24 @@
     var t = root.querySelector(".toast");
     if (t) { t.textContent = msg; t.classList.add("on"); setTimeout(function () { t.classList.remove("on"); }, 1600); }
   }
+  // A confirmation the tech must dismiss with OK, layered ON TOP of whatever modal is
+  // open (Settings) — for results that shouldn't vanish on their own like a toast, e.g.
+  // "setup loaded" when standing up another shop computer (issue #158). Appended after
+  // the Settings overlay; both use z-index max, so later-in-DOM paints on top.
+  function okModal(root, title, msg) {
+    var ov = document.createElement("div");
+    ov.className = "setc";
+    ov.innerHTML = '<div class="setbox">' +
+      '<p class="settl">' + esc(title) + "</p>" +
+      '<p class="setsub" style="margin-bottom:14px">' + esc(msg) + "</p>" +
+      '<div class="setbtns"><button class="primary okbtn">OK</button></div>' +
+      "</div>";
+    if (root) root.appendChild(ov);
+    var close = function () { try { ov.remove(); } catch (e) {} };
+    ov.querySelector(".okbtn").addEventListener("click", close);
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    try { ov.querySelector(".okbtn").focus(); } catch (e) {}
+  }
 
   // pick a CSV off this computer and open the column-mapper. Reading the file is a
   // LOCAL FileReader read — NO network — so the ELSA zero-network rule is intact.
@@ -6269,7 +6388,7 @@
       : '<div class="setstat none">No tool list loaded yet. Upload your shop’s list to see drawer locations next to each special tool.</div>';
     // ---- fluid capacity tables status (v0.3.13) ----
     var fl = loadFluids();
-    var flYears = fl && fl.years ? Object.keys(fl.years).sort() : [];
+    var flYears = fl && fl.years ? Object.keys(fl.years).sort(function (a, b) { return a < b ? 1 : a > b ? -1 : 0; }) : [];
     var flItems = flYears.map(function (y) {
       return '<span class="setitem"><span class="siyr">' + esc(y) + "</span>" +
         '<button class="siremove" data-flrmyear="' + esc(y) + '" title="Remove ' + esc(y) + '" aria-label="Remove ' + esc(y) + '">&#10005;</button></span>';
@@ -6292,7 +6411,7 @@
     var sxFiles = sx && sx.files ? sx.files : [];
     var sxCount = sxFiles.length + " / " + (SX_YEAR_MAX - SX_YEAR_MIN + 1) + " yrs";
     var sxByYear = sxFiles.map(function (f) { return { key: f.key, year: sxFileYear(f) }; })
-      .sort(function (a, b) { return a.year < b.year ? -1 : a.year > b.year ? 1 : 0; });
+      .sort(function (a, b) { return a.year < b.year ? 1 : a.year > b.year ? -1 : 0; });
     var sxItems = sxByYear.map(function (o) {
       return '<span class="setitem"><span class="siyr">' + esc(o.year) + "</span>" +
         '<button class="siremove" data-sxrmkey="' + esc(o.key) + '" title="Remove ' + esc(o.year) + '" aria-label="Remove ' + esc(o.year) + '">&#10005;</button></span>';
@@ -6307,7 +6426,7 @@
     var msFilesL = ms && ms.files ? ms.files : [];
     var msCount = msFilesL.length + " / " + (MS_YEAR_MAX - MS_YEAR_MIN + 1) + " yrs";
     var msByYear = msFilesL.map(function (f) { return { key: f.key, year: msFileYear(f) }; })
-      .sort(function (a, b) { return a.year < b.year ? -1 : a.year > b.year ? 1 : 0; });
+      .sort(function (a, b) { return a.year < b.year ? 1 : a.year > b.year ? -1 : 0; });
     var msItems = msByYear.map(function (o) {
       return '<span class="setitem"><span class="siyr">' + esc(o.year) + "</span>" +
         '<button class="siremove" data-msrmkey="' + esc(o.key) + '" title="Remove ' + esc(o.year) + '" aria-label="Remove ' + esc(o.year) + '">&#10005;</button></span>';
@@ -6670,7 +6789,7 @@
         renderInto(host, r, options);
         // refresh Settings in place if it's still open behind the mapper
         if (root.querySelector(".setc-settings")) openSettings(host, r, options, root);
-        flash(root, built.count + " tools loaded");
+        okModal(root, "✓ Tool list saved", "Saved to this computer: " + built.count + " tool" + (built.count === 1 ? "" : "s") + (meta.name ? " from " + meta.name : "") + ".");
       });
     });
   }
@@ -6953,7 +7072,7 @@
             var cf = document.createElement("div");
             cf.className = "qcbar";
             cf.innerHTML = '<span class="ctxt">New vehicle? Clears all.</span>' +
-              '<span class="confirm"><button class="cno">No</button><button class="cyes">Yes</button></span>';
+              '<span class="confirm"><button class="cyes">Yes</button><button class="cno">No</button></span>';
             qrow.appendChild(cf);
             btn.classList.add("armed");
             cf.querySelector(".cyes").addEventListener("click", function () { options.onNewJob(); });

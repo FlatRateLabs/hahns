@@ -5,6 +5,82 @@ permanent project reference.
 
 ---
 
+## Session close (2026-08-18, later) — v0.5.4-beta: 7-issue shop-testing batch (#152–#158)
+
+Owner spent a heavy day bay-testing v0.5.3 and filed seven in-app reports (#152–#158). Worked through them
+one at a time, each verified before moving on, batched into ONE release. **App-only → no re-drag**
+(`LOADER_VER` stays 2); **no `MS_PARSER_VER` bump** — every maintenance fix was MATCHING/DISPLAY logic, not
+parsing (`tools/parser-test.js` = **65 files, 0 drift** throughout). VERSION → **0.5.4-beta**.
+
+### The fixes (all in `src/helper.js`)
+1. **#152 (bug) — New-Vehicle confirm button order.** The compact-row (issue #149) New-Vehicle confirm
+   rendered No-then-Yes; every other confirm (`inlineConfirm`, `confirmRemove`) is affirmative-first.
+   Flipped to Yes-then-No.
+2. **#153 (feature) — newest PDF year first.** All three Update choosers (`openFluidUpdate`/`openSxUpdate`/
+   `openMsUpdate`) AND the Settings loaded-year chip lists (fluids/SX/MS) sorted ascending → flipped to
+   descending so the newest years (most likely to need replacing) are on top.
+3. **#154 (bug) — Alltrack missed spark plugs + DSG fluid @80K.** ROOT CAUSE: the 2017 Alltrack is Sales
+   Code **BX5**DQ7 (a Golf Variant) / DSG trans **0D9**, and the PDF lists both services under those CODES
+   ("Golf variant (BX5)", "0D9 (DSG): … Golf Variant"), but ELSA calls the car "GSW ALLTRACK". `msApplies`
+   only checked a code when the model NAME beside it was also in the vehicle's name → dropped. Added a
+   **code-based identity fallback** (`msCodeApplies` + `msPlatformPrefix`/`msTransPrefix`) that runs when
+   the name pass finds nothing: transmission rows match by the vehicle's trans-code group (a car has ONE
+   gearbox — the **trap** was the 80K row ALSO lists "Golf Variant (BX5)" but under the `09G` non-DSG
+   group, so a naive BX5 match would wrongly add the 80K non-DSG service); flat lists (spark plugs) match
+   by Sales-Code platform prefix. **Strictly additive** (only turns a non-match into a match). Verified
+   against the real 2017 PDF: Alltrack @80K now gets spark plugs (via BX5) + DSG fluid (via 0D9) at the
+   40K interval; 80K trans row correctly stays unmatched; **BW2/5N Tiguan invariant preserved**.
+4. **#155 (bug) — AWD fluid on FWD car.** "AWD Clutch – Change fluid" is tagged "All Applicable Vehicles"
+   (scope "all") → shown on everything. Added `msIsAwdItem` gate on `veh.awd`. Deliberately does NOT gate
+   "Front Axle Differential Lock" (a FWD GTI has the VAQ front diff — option-specific, not drivetrain).
+5. **#156 (bug) — spark plugs on a diesel.** A diesel shares the model platform (Jetta TDI is still
+   "Jetta (163)") so it matched the spark-plug row. Added `msIsSparkItem` gate on `veh.fuel === "diesel"`
+   (from `fuelOf` TDI/SDI/DIESEL). Folded #155+#156 into one `msSkipItem(name, veh)`. Unknown fuel keeps
+   the item (don't guess).
+6. **#157 (bug) — 2014 diesel toothed belt @130K shown as 100K.** THE HARD ONE. Confirmed against the raw
+   PDF: a 2014 Jetta diesel IS 130K, but the belt table lays the interval numbers at the BOTTOM of each
+   applicability block with the applicability as one flowing wrapped paragraph — the row-pairing parser
+   (built for top-aligned intervals) pulls "Jetta/Variant (from 2010)" up into the 100K bucket. Tested a
+   "nearest-interval" rule; it still splits the phrase. This is the known deferred "wrapped/engine-
+   conditional applicability" gap — a real parser rework, not a batch quick-fix. **Owner chose the safe
+   interim:** never assert a belt mileage — route timing/toothed-belt items to a **"⚠ Verify interval in
+   ELSA"** advisory card (`msIsBeltItem`/`msBeltRelevant` → `due.verify`; card in `msWinBody`). Relevance
+   uses the UNION of the item's variant applicabilities (unaffected by the mis-pairing) + engine gating
+   (diesel belt for diesel, gas belt for gas) + an "except <models>" guard (coolant-pump belt). **#157
+   stays OPEN** — posted a full diagnosis + real-fix plan as a comment for a future session; batch PR must
+   NOT auto-close it.
+7. **#158 (bug) — "setup loaded" confirmation.** The Copy-setup import showed an auto-vanishing `flash()`
+   toast over the app. Added **`okModal(root, title, msg)`** — a confirmation the tech dismisses with **OK**,
+   layered on top of Settings (same `.setc` overlay pattern as the Update choosers; z-index max, later-in-DOM
+   paints on top). Converted the import success + all its error paths. **Then (owner follow-on) matched all
+   the other upload confirmations** — fluids, Service Xpress, maintenance PDF saves, AND the shop tool-list
+   CSV save — to the same `okModal` style ("✓ … saved", OK button). Browser-verified: dialog stacks on top,
+   OK is the topmost/clickable element, screenshots match.
+
+### Verification pattern
+Every maintenance fix driven through the REAL functions against the actual gitignored PDFs (`~/Downloads/
+20xx VW Maintenance Schedules.pdf`) via throwaway Node harnesses (all deleted after). `okModal` stacking +
+render verified in the real in-app browser by injecting `.setc` overlays into the live shadow root (the demo
+page is embed mode, so the real import/Settings flow isn't drivable there). `node --check` + `node tools/
+build.js` + `node tools/parser-test.js` (0 drift) before commit; built app boots (`window.VWJB` object, only
+the known mascot-PNG 404s on the preview root).
+
+### Deploy
+Batched as PR **#159** (squash `--admin`). App-only, no re-drag, no reparse. **#152–#156, #158 auto-close;
+#157 stays open** (interim only). Live-verify `version.json` = v0.5.4-beta after merge.
+
+### Carry-forward
+- **#157 real fix** — rework `parseAdditionalRuns` applicability pairing for bottom/center-aligned interval
+  blocks (the partial inner-divider border rules are the likely signal) + year-range qualifiers ("from
+  2010"), bump `MS_PARSER_VER`, hand-verify all belt tables across 18 years, then remove the `due.verify`
+  interim. Full plan in the #157 comment.
+- **GTI spark-plug watch (#154 fallback):** a GTI is also a Golf; the code fallback catches it only if the
+  GTI's real Sales Code starts with a prefix the PDF lists (e.g. AU1). Worth a bay check.
+- Deferred maintenance gaps unchanged: 2000–2009 mileage-indexed (#140), partial BEV additional items,
+  engine-conditional applicability. Open issues after this batch: **#157, #140, #122, #117, #11, #10.**
+
+---
+
 ## Session close (2026-08-18) — v0.5.3-beta: 7-issue maintenance/fluids/UI batch — LIVE
 
 Owner walked through seven in-app feedback issues in order (#141, #144, #145, #146, #147, #148, #149),
