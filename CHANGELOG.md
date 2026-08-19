@@ -9,6 +9,31 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.5.4-beta — in progress
+
+### Fixed
+- **Maintenance: right services for cars named oddly in ELSA (e.g. the Alltrack).** The app now uses your
+  car’s **Sales Code / transmission code** to find the right maintenance rows even when ELSA’s model name
+  doesn’t spell out the family. A 2017 Alltrack (which ELSA calls “GSW ALLTRACK”) now correctly gets its
+  **spark plugs and DSG fluid at the 40K interval** (so they show at 80K). (#154)
+- **Maintenance: no AWD fluid on front-wheel-drive cars.** The “AWD Clutch – change fluid” service no longer
+  shows on non-AWD vehicles. (#155)
+- **Maintenance: no spark plugs on diesels.** Diesels have glow plugs — spark-plug service is no longer
+  recommended on a TDI. (#156)
+- **Maintenance: timing/toothed belt no longer shows a wrong mileage.** The belt interval depends on the
+  exact engine and year in a way the app can’t yet read reliably, so instead of guessing a mileage it now
+  shows a **“Verify interval in ELSA”** note. (Full fix tracked in #157.)
+- **“New Vehicle” confirm button order** now matches every other Yes/No prompt (Yes on the left). (#152)
+
+### Changed
+- **Settings shows the newest PDF years first.** The Update list and the loaded-year chips for fluids,
+  Service Xpress and maintenance now list newest → oldest. (#153)
+- **Clear “✓ saved / loaded” confirmations.** Loading or updating a fluid, torque, maintenance PDF or your
+  tool list — and copying your setup to another computer — now shows a confirmation with an **OK** button
+  on top of Settings, instead of a small message that disappears on its own. (#158)
+
+---
+
 ## v0.5.3-beta — 2026-08-18
 
 ### Added
