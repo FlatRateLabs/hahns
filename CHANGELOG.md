@@ -9,7 +9,21 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.5-beta — in progress
+## v0.5.6-beta — in progress
+
+### Fixed
+- **Maintenance: diesel timing-belt interval is now shown correctly.** A 2014 Jetta diesel’s toothed
+  (timing) belt is a **130,000-mile** service, but Hahns had been unsure and only said “verify in ELSA.”
+  It now reads the belt table correctly and shows the real interval for diesel VWs across 2010–2017 (a
+  modern diesel Jetta = 130K). This was the tricky one: the belt table lists several intervals with the
+  year ranges wrapping across lines, so Hahns now follows the PDF’s own table lines to keep each interval
+  with the right models/years. If a specific car still can’t be pinned to one interval, it keeps the safe
+  “⚠ verify in ELSA” note rather than guess — a wrong timing-belt number can damage an engine. Gas-engine
+  and coolant-pump belts are unchanged (they still show the verify note). (#157)
+
+---
+
+## v0.5.5-beta — 2026-08-22
 
 ### Added
 - **Reads the vehicle’s Country and picks the right market’s maintenance intervals.** Hahns now reads the
