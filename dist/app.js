@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.5-beta · 2026-08-22 21:13 UTC";
+var BUILD = "v0.5.6-beta · 2026-08-22 22:33 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -2359,7 +2359,7 @@ return idbGet("sx_meta", key).then(function (m) { m = m || { key: key }; m.statu
 .then(function () { return idbGetAll("sx_meta"); }).then(function (l) { sxMetaList = l || []; }).catch(function () {});
 });
 }
-var MS_PARSER_VER = "1.2.0";        // bump → stored Maintenance PDFs auto-re-parse (1.2.0: BEV Additional Items now parse for all EV years — footer-bound the band + 2-column table support, issue #141; 1.1.0: 2022–2027 layout — tier-bleed fix, footnote filter, flexible Additional section #, 2000–2009 gate)
+var MS_PARSER_VER = "1.3.0";        // bump → stored Maintenance PDFs auto-re-parse (1.3.0: DIESEL toothed-belt table now segmented by the PDF's own cell borders so each interval keeps its own wrapped applicability clause — a 2014 diesel Jetta resolves to 130K, issue #157; 1.2.0: BEV Additional Items now parse for all EV years — footer-bound the band + 2-column table support, issue #141; 1.1.0: 2022–2027 layout — tier-bleed fix, footnote filter, flexible Additional section #, 2000–2009 gate)
 // span for the "N / M loaded" counter. 2010–2027 = 18 (2000–2009 use the old
 // mileage-indexed layout that isn't supported yet — see msFromPdf gate; when it
 // lands, drop MS_YEAR_MIN to 2000 → 28).
@@ -2514,6 +2514,14 @@ var ivX = (anchors[0] + anchors[1]) / 2;
 var appX = noApplic ? 1e9 : (anchors[1] + anchors[2]) / 2;
 var rows = rowsByY(inBand);
 var by = (borders || []).filter(function (b) { return b.x1 < ivX; }).map(function (b) { return b.y; }).sort(function (a, b) { return b - a; });
+// Interval-column cell borders (the horizontal rule the PDF draws between one
+// interval sub-row and the next, spanning the Interval column: x1≈ interval-col
+// left, wide). These are the table's OWN cell boundaries — the only reliable way
+// to segment a multi-interval item whose applicability text WRAPS across several
+// lines, where pairing by text position mis-groups the wrapped clause (issue #157,
+// the diesel toothed belt: "Jetta/Variant (from 2010)" wrapped up into the wrong
+// interval). Used per-block below; single-cell/borderless blocks keep the old path.
+var ivBorders = (borders || []).filter(function (b) { return b.x1 > ivX && b.x1 < appX && (b.x2 - b.x1) > 100; }).map(function (b) { return b.y; });
 var B = []; by.forEach(function (y) { if (!B.length || B[B.length - 1] - y > 4) B.push(y); });
 var blocks = [];
 if (B.length >= 2) {
@@ -2534,27 +2542,73 @@ blocks = cellRanges(checkIdx, 0).map(function (rng) { return rows.slice(rng[0], 
 return blocks.map(function (rws) {
 if (!rws.length) return null;
 var name = [];
-var variants = [], curV = null;
+rws.forEach(function (row) { name.push(joinRuns(row.runs.filter(function (r) { return r.x < ivX; }))); });
+var itemName = finalize(name.join(" "));
+var variants = null;
+// --- Border-based interval-cell segmentation (issue #157), scoped to the DIESEL
+// toothed-belt item only. That table lays each interval's applicability as a
+// paragraph that WRAPS across several lines with the interval number bottom-
+// aligned, which the text-position pairing mis-groups (a 2014 diesel Jetta's
+// "from 2010" clause drifted into the 100K row). Segmenting by the PDF's own
+// drawn cell borders keeps each wrapped clause with its own interval. Kept
+// deliberately NARROW: every other multi-interval item (spark plugs, transmission,
+// brake fluid, and the GAS / coolant-pump belts — which key by ENGINE displacement
+// we don't resolve) has its behaviour verified against the real PDFs under the
+// original pairing (#154/#156/#160/#164), so we do NOT disturb it. Only the diesel
+// belt — model + model-year keyed, the item this fix targets — is re-segmented.
+var isBeltItem = /toothed belt|timing belt/i.test(itemName) && /diesel/i.test(itemName);
+var ymax = Math.max.apply(null, rws.map(function (r) { return r.y; }));
+var ymin = Math.min.apply(null, rws.map(function (r) { return r.y; }));
+// Use interval-column borders as the INTERNAL dividers only; the top and bottom
+// of the block are already bounded by the item's name-column border (the outer
+// interval-border may or may not sit exactly at a run's y). Anchoring the outer
+// edges to the block extent keeps the first/last interval cell from being lost.
+var divs = [];
+ivBorders.filter(function (y) { return y < ymax - 2 && y > ymin + 2; })
+.sort(function (a, b) { return b - a; })
+.forEach(function (y) { if (!divs.length || divs[divs.length - 1] - y > 4) divs.push(y); });
+if (isBeltItem && divs.length >= 1) {   // belt item + ≥1 internal divider → ≥2 interval cells
+var edges = [ymax + 3].concat(divs, [ymin - 3]);
+var cv = [];
+for (var ci = 0; ci < edges.length - 1; ci++) {
+var hi = edges[ci], lo = edges[ci + 1];
+var cellRows = rws.filter(function (row) { return row.y < hi && row.y >= lo; });
+var ivC = [], apC = [];
+cellRows.forEach(function (row) {
+var ivv = joinRuns(row.runs.filter(function (r) { return r.x >= ivX && r.x < appX; }));
+var app = joinRuns(row.runs.filter(function (r) { return r.x >= appX; }));
+if (tidy(ivv)) ivC.push(ivv);
+if (tidy(app)) apC.push(app);
+});
+var ivF = finalize(ivC.join(" ")), apF = finalize(apC.join(" "));
+if (!ivF && !apF) continue;
+cv.push({ interval: ivF, applic: noApplic ? "All Vehicles" : apF });
+}
+cv = cv.filter(function (v) { return v.interval || (!noApplic && v.applic); });
+if (cv.length) variants = cv;
+}
+// --- Fallback: the original text-position pairing (single-cell items, or any
+// block without interval-column borders). Unchanged behaviour.
+if (!variants) {
+var vv = [], curV = null;
 rws.forEach(function (row) {
-name.push(joinRuns(row.runs.filter(function (r) { return r.x < ivX; })));
 var iv = joinRuns(row.runs.filter(function (r) { return r.x >= ivX && r.x < appX; }));
 if (!tidy(iv)) return;
-if (!curV || newInterval(iv)) { curV = { startY: row.y, iv: [], ap: [] }; variants.push(curV); }
+if (!curV || newInterval(iv)) { curV = { startY: row.y, iv: [], ap: [] }; vv.push(curV); }
 curV.iv.push(iv);
 });
-if (!variants.length) variants.push({ startY: 1e9, iv: [], ap: [] });
+if (!vv.length) vv.push({ startY: 1e9, iv: [], ap: [] });
 rws.forEach(function (row) {
 var ap = joinRuns(row.runs.filter(function (r) { return r.x >= appX; }));
 if (!tidy(ap)) return;
 var k = 0;
-while (k + 1 < variants.length && variants[k + 1].startY >= row.y - 2) k++;
-variants[k].ap.push(ap);
+while (k + 1 < vv.length && vv[k + 1].startY >= row.y - 2) k++;
+vv[k].ap.push(ap);
 });
-return {
-item: finalize(name.join(" ")),
-variants: variants.map(function (v) { return { interval: finalize(v.iv.join(" ")), applic: noApplic ? "All Vehicles" : finalize(v.ap.join(" ")) }; })
-.filter(function (v) { return v.interval || (!noApplic && v.applic); })
-};
+variants = vv.map(function (v) { return { interval: finalize(v.iv.join(" ")), applic: noApplic ? "All Vehicles" : finalize(v.ap.join(" ")) }; })
+.filter(function (v) { return v.interval || (!noApplic && v.applic); });
+}
+return { item: itemName, variants: variants };
 }).filter(function (r) { return r && r.item; });
 }
 // find the repeated 3-col header row on a page → {y, ivX, appX}, or null
@@ -3008,25 +3062,28 @@ function msIsAwdItem(name) { return /\bAWD\b|4\s*-?\s*MOTION|\bHALDEX\b|ALL[\s-]
 // Unknown fuel keeps the item — don't guess; most VWs are gas.
 function msIsSparkItem(name) { return /spark\s*plug/i.test(String(name || "")); }
 function msSkipItem(name, veh) { return (msIsAwdItem(name) && !veh.awd) || (msIsSparkItem(name) && veh.fuel === "diesel"); }
-// Timing/toothed belt interim (issue #157). The belt interval depends on the exact
-// engine + model year, laid out in the PDF as one flowing applicability paragraph
-// that wraps across all four interval rows with the interval numbers at the BOTTOM
-// of each block — which the row-pairing parser (built for top-aligned intervals)
-// splits wrong, so a 2014 Jetta diesel (truly 130K) matched the 100K row. Until the
-// parser rework lands, we NEVER assert a specific belt mileage: instead we flag the
-// belt as "verify in ELSA". The UNION of a belt item's variant applicabilities is
-// unaffected by the mis-pairing, so we can still tell reliably WHETHER a belt is
-// relevant to this vehicle — just not which interval.
+// Timing/toothed belt (issue #157). The interval depends on the exact engine + model
+// year, laid out in the PDF as one flowing applicability paragraph that WRAPS across
+// several interval rows with the interval numbers bottom-aligned. As of v0.5.6 the
+// parser segments that table by the PDF's own drawn cell borders (see the belt branch
+// of parseAdditionalRuns), so each interval carries its own clean clause — which lets
+// us resolve the ONE interval for the vehicle by model + model-year (msPickBelt /
+// msBeltHits below), instead of the pre-v0.5.6 "verify in ELSA" advisory. When the
+// clauses can't pin a single interval (0 or >1 match), we still fall back to that
+// advisory rather than guess — a wrong timing-belt number can destroy an engine.
 function msIsBeltItem(name) { return /toothed belt|timing belt/i.test(String(name || "")); }
+function msIsDieselBelt(name) { return msIsBeltItem(name) && /diesel/i.test(String(name || "")); }
+// Whether a belt is RELEVANT (used for the "verify in ELSA" advisory on the gas /
+// coolant-pump belts, which key by engine displacement and aren't auto-resolved). The
+// UNION of a belt's variant applicabilities is unaffected by any interval mis-pairing,
+// so this reliably says WHETHER a belt applies — just not which interval.
 function msBeltRelevant(it, veh) {
 var name = String(it.item || "");
 if (/\(\s*diesel/i.test(name) && veh.fuel !== "diesel") return false;   // diesel belt, not a diesel
 if (/\(\s*gas/i.test(name) && veh.fuel === "diesel") return false;      // gas belt, diesel car
 return (it.variants || []).some(function (v) {
 var ap = String(v.applic || "");
-// an "except <models>" clause (the coolant-pump belt lists the models that do
-// NOT get it) — if the vehicle is named there, it's excluded, not included.
-if (/except/i.test(ap)) {
+if (/except/i.test(ap)) {   // coolant-pump belt lists who does NOT get it
 var after = ap.split(/except/i).slice(1).join(" ");
 if (after && msApplies(after, veh).ok) return false;
 var before = ap.split(/except/i)[0];
@@ -3034,6 +3091,77 @@ return !!before && msApplies(before, veh).ok;
 }
 return msApplies(ap, veh).ok;
 });
+}
+// A model-year qualifier inside a belt applicability clause → {from, to}. Forms seen
+// in the real charts: "up to 2006", "from 2010", "from 2007-09" (two-digit end).
+function msYearRange(t) {
+var m;
+if ((m = /from\s*(20\d{2})\s*[-–]\s*(\d{2})/i.exec(t))) return { from: +m[1], to: 2000 + parseInt(m[2], 10) };
+if ((m = /from\s*(20\d{2})/i.exec(t))) return { from: +m[1], to: 9999 };
+if ((m = /up\s*to\s*(20\d{2})/i.exec(t))) return { from: 0, to: +m[1] };
+return null;
+}
+// Does this belt VARIANT (one interval cell, now cleanly segmented by the PDF's cell
+// borders — v0.5.6) apply to the vehicle? Match the vehicle's model NAME (or, as a
+// fallback, its Sales-Code platform), then apply the model-year qualifier that FIRST
+// appears at/after that mention — which governs both the clause-final form ("Jetta,
+// Golf Variant … up to 2006") and the inline form ("Jetta/Variant (from 2010)"). No
+// qualifier near the mention → applies to all years.
+function msBeltVariantHit(applic, veh) {
+applic = String(applic || "");
+var vm = msVehModels(veh.model), i, mm;
+for (i = 0; i < vm.length; i++) {
+var m = vm[i], mre = m.replace(/ /g, "\\s*").replace(/\./g, "\\.");
+var re = m === "GOLF" ? /\bGOLF\b(?!\s*R\b|\s*VARIANT|\s*ALLTRACK)/ig : new RegExp("\\b" + mre + "\\b", "ig");
+while ((mm = re.exec(applic))) {
+var yr = msYearRange(applic.slice(mm.index));
+if (!yr) return true;                                            // named, no year limit
+if (veh.year && veh.year >= yr.from && veh.year <= yr.to) return true;
+// named but this mention is year-excluded → keep scanning other mentions
+}
+}
+var byCode = msCodeApplies(applic, veh);   // Sales-Code platform fallback (#154 style)
+if (byCode && byCode.ok) {
+var yr2 = msYearRange(applic);
+if (!yr2) return true;
+if (veh.year && veh.year >= yr2.from && veh.year <= yr2.to) return true;
+}
+return false;
+}
+function msBeltEngineOk(name, veh) {
+if (/\(\s*diesel/i.test(name) && veh.fuel !== "diesel") return false;   // diesel belt, not a diesel
+if (/\(\s*gas/i.test(name) && veh.fuel === "diesel") return false;      // gas belt, diesel car
+return true;
+}
+// Does ONE belt interval cell apply, honouring an "except <models>" clause (the
+// coolant-pump belt lists who does NOT get it)? Year-aware throughout (matching goes
+// only through msBeltVariantHit — never year-blind msApplies, which is what mis-fired
+// the original bug by letting a 2014 Jetta match the "…up to 2006" cell on platform).
+function msBeltVariantApplies(applic, veh) {
+var ap = String(applic || "");
+if (/except/i.test(ap)) {
+var after = ap.split(/except/i).slice(1).join(" ");
+if (after && msBeltVariantHit(after, veh)) return false;   // vehicle is in the excluded set
+var before = ap.split(/except/i)[0];
+return !!before && msBeltVariantHit(before, veh);
+}
+return msBeltVariantHit(ap, veh);
+}
+// Every belt interval cell that applies to this vehicle (engine-gated, year-aware).
+function msBeltHits(it, veh) {
+if (!msBeltEngineOk(it.item, veh)) return [];
+return (it.variants || []).filter(function (v) { return v.interval && msBeltVariantApplies(v.applic, veh); });
+}
+// Resolve a belt item to the ONE interval this vehicle falls in, or null if it can't
+// be pinned to a single interval (0 or >1 distinct intervals match) → the caller keeps
+// the safe "verify in ELSA" advisory rather than assert a number we're unsure of.
+// Safety-critical: a wrong timing-belt interval can destroy an engine, so "unsure →
+// don't guess" is deliberate.
+function msPickBelt(it, veh) {
+var by = {};
+msBeltHits(it, veh).forEach(function (v) { var mi = msIntMiles(v.interval); by[mi == null ? v.interval : String(mi)] = v; });
+var keys = Object.keys(by);
+return keys.length === 1 ? by[keys[0]] : null;
 }
 function msServicesDue(sched, veh, mileage, deliv) {
 var odoRounded = Math.round((mileage || 0) / 10000) * 10000;
@@ -3084,7 +3212,35 @@ if (msSkipItem(it.item, veh)) return;   // AWD-only on FWD (#155) / spark plugs 
 // Timing/toothed belt (#157): don't assert a (possibly mis-paired) mileage —
 // flag it to verify in ELSA instead. Relevance is judged on the union of the
 // item's applicabilities, which the mis-pairing doesn't affect.
-if (msIsBeltItem(it.item)) { if (msBeltRelevant(it, veh) && verify.indexOf(it.item) < 0) verify.push(it.item); return; }
+if (msIsBeltItem(it.item)) {
+if (msIsDieselBelt(it.item)) {
+// v0.5.6 (#157): the diesel belt table is now cleanly cell-segmented, so resolve
+// the ONE interval for this vehicle by model + model-year. Exactly one interval
+// matches → treat the belt as a normal mileage-due item with its real number;
+// more than one → ambiguous → keep the safe "verify in ELSA" advisory; none →
+// the belt doesn't apply to this vehicle, show nothing.
+var bby = {};
+msBeltHits(it, veh).forEach(function (v) { var bm = msIntMiles(v.interval); bby[bm == null ? v.interval : String(bm)] = v; });
+var bkeys = Object.keys(bby);
+if (bkeys.length === 1) {
+var bpick = bby[bkeys[0]], bvr = msVariantRegion(bpick.interval);
+if ((bvr === "both" || bvr === reg) && rounded > 0) {
+var bmi = msIntMiles(bpick.interval), btp = msTimePattern(bpick.interval, reg), bdue = false;
+if (bmi && rounded % bmi === 0) bdue = true;
+if (btp) { var bf = btp.first * 10000, be = (btp.every || btp.first) * 10000; if (rounded >= bf && (rounded - bf) % be === 0) bdue = true; }
+if (bdue && !model.some(function (x) { return x.item === it.item; }))
+model.push({ item: it.item, interval: msRegionClause(bpick.interval, reg), applic: bpick.applic, _mi: bmi });
+}
+} else if (bkeys.length > 1) {
+if (verify.indexOf(it.item) < 0) verify.push(it.item);
+}
+} else {
+// Gas / coolant-pump toothed belts key by ENGINE displacement (2.0 FSI/2.5L),
+// which we don't resolve — keep the pre-v0.5.6 "verify in ELSA" advisory.
+if (msBeltRelevant(it, veh) && verify.indexOf(it.item) < 0) verify.push(it.item);
+}
+return;
+}
 (it.variants || []).forEach(function (v) {
 // Skip an interval meant for the OTHER market (issue #165): a Canada-only
 // clause on a USA car (the original bug), or a USA-only clause on a Canada
@@ -7106,6 +7262,7 @@ msFromPdf: msFromPdf, parseMaintenance: MS.parseMaintenance,
 loadMs: loadMs, msSaveFiles: msSaveFiles, removeMs: removeMs, removeMsFile: removeMsFile,
 msDueForVehicle: msDueForVehicle, msServicesDue: msServicesDue, msApplies: msApplies,
 msRegion: msRegion, msSchedMiles: msSchedMiles, msDisp: msDisp, msKLabel: msKLabel, fluidVeh: fluidVeh,
+msPickBelt: msPickBelt, msBeltVariantHit: msBeltVariantHit, msYearRange: msYearRange,
 buildMsWindowHTML: buildMsWindowHTML, readVehMileage: readVehMileage,
 exportShopConfig: exportShopConfig, importShopConfig: importShopConfig };
 })();if(window.VWJB){window.VWJB.run();}})();
