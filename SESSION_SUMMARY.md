@@ -5,6 +5,63 @@ permanent project reference.
 
 ---
 
+## Session close (2026-08-22, later) — v0.5.6-beta: diesel toothed-belt interval resolved (#157) — LIVE
+
+The deferred hard one from the last two batches. **Issue #157** — a 2014 Jetta diesel's toothed (timing)
+belt is a **130,000-mile** service, but Hahns matched the 100K row (then fell back to the "⚠ verify in ELSA"
+interim from v0.5.4). Now it shows the real number for diesel VWs **2010–2017**. PR **#171** (squash
+`--admin`, merge `2c36655`), **live-confirmed** `version.json` = v0.5.6-beta. #157 auto-closed. **App-only →
+no re-drag** (`LOADER_VER` stays 2); `MS_PARSER_VER` **1.2.0 → 1.3.0** (stored maintenance PDFs auto-reparse).
+
+### Root cause (confirmed against the real PDFs)
+The diesel belt table lists 2–4 intervals whose year-range applicability **wraps across several lines with
+the interval number bottom-aligned**. The text-position row-pairing (`parseAdditionalRuns`, built for
+top-aligned intervals) mis-grouped the wrapped clauses — "Jetta/ Variant (from 2010)" (the 2014 answer)
+physically landed in the parsed **100K** row, so "just drop the 80K/100K lines" (owner's first idea) could
+NOT work: the right text was stuck in the wrong cell. The clean signal turned out to be the **PDF's own drawn
+cell-border rules** — I dumped them and they segment the four interval cells exactly.
+
+### The fix (all in `src/helper.js`)
+1. **Parser — border-based cell segmentation.** `parseAdditionalRuns` now computes `ivBorders` (the
+   interval-column horizontal rules: `ivX < x1 < appX`, width >100) and, for the **diesel belt item only**
+   (`isBeltItem = /toothed belt|timing belt/i && /diesel/i` on the item name), segments the block into
+   interval cells using those borders as INTERNAL dividers with the block's name-border extent as the outer
+   top/bottom edges (anchoring the outer edges to the block extent was needed — requiring a border exactly at
+   top dropped the first cell). Each interval now keeps its own complete wrapped clause. **Scoped strictly to
+   the diesel belt** — a first pass applied it to ALL multi-interval items and shifted spark-plug/transmission
+   matching (56+53 due-changes); narrowing to the diesel belt makes every other item byte-identical.
+2. **Matching — year-aware resolution.** `msYearRange` (parses "up to 2006" / "from 2007-09" / "from 2010"),
+   `msBeltVariantHit` (model name + the FIRST year phrase at/after the mention — governs clause-final AND
+   inline "(from 2010)" forms; never year-blind `msApplies`, which is what mis-fired the original bug),
+   `msBeltVariantApplies` (handles "except" clauses), `msBeltHits`, `msPickBelt`. In `msServicesDue`: a diesel
+   belt resolving to exactly ONE interval → normal mileage-due item with its real number; **0 or >1 → keeps
+   the safe "verify in ELSA" advisory** (never guess — a wrong timing belt destroys an engine). Gas/coolant
+   belts unchanged (`msBeltRelevant` → verify; they key by engine displacement we don't resolve).
+3. Removed the now-dead old `msBeltRelevant`→verify-only belt branch; exposed `msPickBelt`/`msBeltVariantHit`/
+   `msYearRange` on `window.VWJB`.
+
+### Verification (the safety-critical part — a wrong belt number kills an engine)
+- **Diesel Jetta → 130K in EVERY year 2010–2017** (bare-name, no sales code needed); all 8 years' cell
+  groupings hand-checked against the PDFs — "Jetta/Variant (from 2010)" is in the 130K cell every time.
+- **Zero collateral change:** before/after due-output diff (main vs branch) across **18 years × 9 vehicles ×
+  3 mileages** = ONLY the diesel belt changed. Spark plugs / transmission / brake fluid (verified in
+  #154/#156/#160/#164) byte-identical.
+- `node tools/parser-test.js` = **65 files, 0 drift** after `--update` (drift confined to the diesel-belt
+  item, hand-reviewed clean). Real-browser smoke test on built `app.js`: `msPickBelt` → "Every 130,000 miles",
+  belt due @130K, no console errors.
+- **2000–2009 remain gated** (owner confirmed mid-session — a different mileage-indexed "Service at N miles"
+  layout; the diesel belt there is "Timing Belt: Replace (TDI only)" under a mileage section — belongs to the
+  deferred #140 parser). 2018+ have no diesel belt item (US diesels ended).
+
+### Carry-forward / still-open
+- **Gas + coolant-pump toothed belts are NOT auto-resolved** (engine-displacement keyed: "2.0L FSI", "2.5L")
+  — still show the "verify in ELSA" advisory. A future enhancement could resolve them with engine-size
+  matching, but it's trickier and lower-value than the diesel case.
+- Open issues after this: **#140, #122, #117, #11, #10.** (#157 was the last of the maintenance-matching
+  batch backlog.)
+
+---
+
 ## Session close (2026-08-22) — v0.5.5-beta: 9-issue bay-testing batch (#160–#169) + country/km
 
 Owner walked through in-app reports #160–#169 one at a time, each verified before moving on, batched into ONE
