@@ -9,7 +9,38 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.4-beta — in progress
+## v0.5.5-beta — in progress
+
+### Added
+- **Reads the vehicle’s Country and picks the right market’s maintenance intervals.** Hahns now reads the
+  **Country** field from ELSA’s Vehicle Summary (shown, and editable, in the green vehicle bar). A
+  **Canada** vehicle uses the Canada service intervals; USA (or blank/unknown) uses USA. (#165)
+- **Kilometres for Canada vehicles.** For a Canada-market car the odometer is treated as **km** throughout
+  the maintenance feature — the mileage field, the “possible NNK km service due” message, the milestone
+  dropdown (in km) and the window all read in kilometres. (#165)
+
+### Fixed
+- **Maintenance: services no longer listed twice.** A transmission (DSG) service and, on some cars, spark
+  plugs were showing twice at different intervals — they now appear once, at the correct interval. Spark-plug
+  matching also respects the engine size (so a 1.8L and a 1.4L don’t both match). (#160, #164)
+- **Maintenance: sunroof service now recommended for the Alltrack / Golf wagons.** The Sunroof Drains check
+  is a Golf-family service; ELSA calls the car “GSW ALLTRACK”, which was hiding it. Fixed — and a plain Golf
+  no longer picks up Golf-R-only services. (#166)
+- **Maintenance: Canada-only brake flush no longer shown on USA cars.** A separate Canada brake-fluid
+  interval was being applied to US vehicles; it now follows the vehicle’s market. (#165)
+- **Confirmations show over the Settings window.** “Removed”, “Saved”, and error messages for the tool list,
+  fluid tables, Service Xpress, maintenance PDFs, and Copy-setup now pop up on the Settings screen (where
+  you’re looking) instead of behind the app. (#162, #163)
+- **Panel no longer jumps to the other side of the screen.** Clicking near the minimize/close buttons and
+  slightly missing no longer flings the whole app across the screen. (#167)
+- **Minimized panel: “Vehicle” button works.** From the minimized quick-row, tapping **Vehicle** now opens
+  the full panel with the vehicle details instead of showing a stray maintenance bar. (#168)
+- **Minimized panel: no stray maintenance bar.** With no vehicle scanned and Hahns minimized, the
+  “scan Vehicle Summary to enable” bar is no longer shown. (#169)
+
+---
+
+## v0.5.4-beta — 2026-08-18
 
 ### Fixed
 - **Maintenance: right services for cars named oddly in ELSA (e.g. the Alltrack).** The app now uses your
