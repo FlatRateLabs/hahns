@@ -5,6 +5,86 @@ permanent project reference.
 
 ---
 
+## Session close (2026-08-22) — v0.5.5-beta: 9-issue bay-testing batch (#160–#169) + country/km
+
+Owner walked through in-app reports #160–#169 one at a time, each verified before moving on, batched into ONE
+release. **App-only → no re-drag** (`LOADER_VER` stays 2); **no `MS_PARSER_VER` bump** — every maintenance
+fix was MATCHING/DISPLAY logic, not parsing (`tools/parser-test.js` = **65 files, 0 drift** throughout).
+VERSION → **0.5.5-beta**. **#157 deliberately deferred** (owner agreed — it's the parser rework that needs a
+`MS_PARSER_VER` bump + 18-year belt verification; its safe "Verify interval in ELSA" interim is already live).
+
+### The fixes (all in `src/helper.js` unless noted)
+1. **#160 (bug) — DSG service listed twice.** A 0GC DSG trans code appears in BOTH the 80K and 40K
+   transmission-fluid variant lists (2017 PDF), so both matched. Fix: dedup additional items by name within a
+   card, keeping the SHORTER mileage interval (a single service can't have two correct intervals; shorter is
+   conservative and 40K is the right DSG spec at an 80K milestone).
+2. **#161 (feature) — attach a screenshot to feedback.** CLOSED as won't-do: GitHub's API has no
+   issue-attachment endpoint, so the image would have to be hosted somewhere, and a bay screenshot can carry
+   customer data (VIN/RO/name). Not worth the privacy risk; feedback stays text-only.
+3. **#162 + #163 (bug) — confirmations on the app, not Settings.** The remove/save "popups" were transient
+   `flash()` toasts on the main panel, invisible while the tech is in Settings. Converted the 7 remove
+   confirmations, the terminal upload/read errors, and the Copy-setup export success/error to `okModal`
+   (layers over the Settings overlay, dismissed with OK — the #158 pattern). Left transient progress
+   ("Reading…", "Loading…") and non-Settings pop-up nudges as `flash`. #163 (the "saved setup" popup) is the
+   same change.
+4. **#164 (bug) — spark plugs listed twice.** `msCodeApplies` matched a platform prefix (BX6) but ignored a
+   co-listed engine size, so a 1.8L Alltrack matched both `Golf Variant (BX6, 1.8L)` (40K) and `(BX6 - 1.4l)`
+   (80K). Fix: the code fallback is now engine-size-aware (a listed displacement must fit `veh.liters`). Also
+   corrected a latent 1.4L SportWagen wrong-interval.
+5. **#165 (bug) — Canada brake flush on USA cars + country/km follow-up (owner-requested).**
+   - Skip a variant whose interval is for the OTHER market (Canada-only on a USA car, USA-only on a Canada
+     car); "both"/untagged apply anywhere. Handles combined `-USA…-Canada`, the parser's split variants, and
+     `(Only Canada)` BEV heat-pump.
+   - **Reads the ELSA "Country" field** (`VEH_LABELS.country`, tuned to a real 2019 Alltrack dump: `Country`
+     → `USA`) into the vehicle object / `__vehicle` / green bar (editable `opt`) / maintenance window /
+     diagnostic dump. `msRegion(veh)` → usa|canada; blank → usa.
+   - **km handling:** a Canada odometer is converted to "schedule miles" via **÷1.5** (VW's own dual-unit
+     convention — aligns km milestones to the mile grid exactly; the true 1.609 misaligns) at ONE boundary
+     (`msDueForVehicle`). All display (bar, hero, dropdown in 15K-km steps, window, "~15,000 km/yr" note)
+     shows km for Canada; USA output byte-identical (helpers add a unit only for Canada). Verified end-to-end
+     with real IndexedDB (2019 Alltrack @120,000 km → 120K km milestone = the 80K-mi service).
+   - Exposed `fluidVeh`/`msRegion`/`msSchedMiles`/`msDisp`/`msKLabel` on `window.VWJB` for harnesses.
+   - **Bay caveat:** assumes ELSA presents the Mileage input in the vehicle's market unit (km for a Canada
+     VIN). If a US shop's ELSA shows a Canada car's odometer in miles, the tech sets Country → USA to force
+     miles. Worth a real Canada-VIN check.
+6. **#166 (bug) — no sunroof service for the Alltrack.** Sunroof Drains lists the Golf family by bare name
+   ("Golf/GTI/GolfR"); ELSA's "GSW ALLTRACK" has no "GOLF" so it missed. Fix (4 parts in `msVehModels`/
+   `msApplies`): GSW/Alltrack/SportWagen → also "GOLF" (family identity, mirrors fluids); added "GOLF R" as
+   its own model; bare "GOLF" gets a negative lookahead so plain Golf/Alltrack don't grab "Golf R"/"Golf
+   Variant" rows (killed a spurious Golf-R torque-vectoring-diff match); slash-joined groups "Golf/GTI
+   (AU2…)" are treated as coded (and separator tokens like "-" dropped so `msCodeFits` doesn't wildcard) so a
+   BX6 Alltrack doesn't inherit the AU2 60K spark interval. All #160/#164/#154 regressions re-verified.
+7. **#167 (bug) — panel flies across the screen.** `pointerdown` set `right:auto` but `left` was only set in
+   `move`; a stationary click (miss a header button) left the fixed panel `left:auto`+`right:auto` → snapped
+   to the other side, and saved `{0,0}`. Fix: a 4px drag threshold — don't drop the right-anchor/reposition
+   or save until a real drag starts. A click that misses is now a no-op.
+8. **#168 + #169 (bug) — minimized quick-row.** Clicking "Vehicle" while minimized expanded the vehicle bar
+   but `.min` hid it while leaking only the `.msbar` ("maintenance due"). Fix: "Vehicle" also un-minimizes
+   (owner's "maximize" option), AND added `.msbar` to the `.min` hidden list. That same `.msbar` rule fixes
+   **#169** (the "scan Vehicle Summary to enable" bar no longer shows when minimized with no vehicle).
+
+### Verification pattern
+Each maintenance fix driven through the REAL functions against the actual gitignored PDFs (`~/Downloads/20xx
+VW Maintenance Schedules.pdf`) via throwaway Node harnesses (deleted after). UI fixes (#162/#167/#168/#169)
+verified in the real in-app browser by rendering panels/overlays into the live shadow root and asserting DOM
+state; the country/km path verified end-to-end with real IndexedDB (built app.js, PDF → IDB → Canada window
+render, screenshot). `node --check` + `node tools/build.js` + `node tools/parser-test.js` (65 files, 0 drift)
+throughout; built app boots clean (no console errors).
+
+### Deploy
+Batched as PR (squash `--admin`). App-only, no re-drag, no reparse. **#160, #162–#169 auto-close** (repeat the
+"Closes" keyword per issue); **#161 already closed** manually. Flipped the stale `v0.5.4-beta` CHANGELOG
+heading to its release date (2026-08-18). Live-verify `version.json` = v0.5.5-beta after merge.
+
+### Carry-forward
+- **#157 (toothed belt) is NEXT** — its own branch/release: rework `parseAdditionalRuns` for bottom/center-
+  aligned interval blocks + year-range qualifiers, bump `MS_PARSER_VER`, hand-verify all belt tables across
+  18 years, then remove the `due.verify` interim. Full plan in the #157 comment.
+- **GTI spark-plug watch (#154):** still worth a bay check that a GTI's real Sales Code prefix matches.
+- Open issues after this batch: **#157, #140, #122, #117, #11, #10.**
+
+---
+
 ## Session close (2026-08-18, later) — v0.5.4-beta: 7-issue shop-testing batch (#152–#158)
 
 Owner spent a heavy day bay-testing v0.5.3 and filed seven in-app reports (#152–#158). Worked through them

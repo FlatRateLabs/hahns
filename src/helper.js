@@ -2985,8 +2985,21 @@
    * lookups use): a BW2 Tiguan must NEVER see the 1st-gen Tiguan(5N) intervals.
    */
   // the models the schedules name, longest-first so "ATLAS SPORT" beats "ATLAS"
-  var MS_MODELS = ["ATLAS SPORT", "ATLAS", "ARTEON", "TIGUAN", "GOLF VARIANT", "GOLF", "GTI", "JETTA", "GLI", "PASSAT", "BEETLE", "TOUAREG", "EOS", "ROUTAN", "ALLTRACK", "ID.4", "ID.BUZZ", "TAOS"];
-  function msVehModels(name) { name = String(name || "").toUpperCase(); return MS_MODELS.filter(function (m) { return name.indexOf(m) >= 0; }); }
+  var MS_MODELS = ["ATLAS SPORT", "ATLAS", "ARTEON", "TIGUAN", "GOLF VARIANT", "GOLF R", "GOLF", "GTI", "JETTA", "GLI", "PASSAT", "BEETLE", "TOUAREG", "EOS", "ROUTAN", "ALLTRACK", "ID.4", "ID.BUZZ", "TAOS"];
+  function msVehModels(name) {
+    name = String(name || "").toUpperCase();
+    var out = MS_MODELS.filter(function (m) { return name.indexOf(m) >= 0; });
+    // A Golf SportWagen / Alltrack IS a Golf (a Golf Variant) — but ELSA names them
+    // "GSW …" / "… ALLTRACK …" with no "GOLF", so schedule rows that list the Golf
+    // family by bare name (e.g. Sunroof Drains "Golf/GTI/GolfR") were missed (issue
+    // #166). Add the family identity, mirroring the fluids "an Alltrack is a Golf"
+    // rule. We add "GOLF" (not "GOLF VARIANT") on purpose: the coded rows that DO say
+    // "Golf Variant (BX6, 1.8L)" are engine-size-specific and are matched by the
+    // liter-aware code path (msCodeApplies, issue #164) — routing them through a bare
+    // name match would skip that check.
+    if (/\bALLTRACK\b|\bGSW\b|SPORT\s*WAG(?:E|O)N/.test(name) && out.indexOf("GOLF") < 0) out.push("GOLF");
+    return out;
+  }
   function msAlnum(s) { return String(s || "").toUpperCase().replace(/[^A-Z0-9.]/g, ""); }
   // does a single applicability CODE (BW2, 5N, A33, 09P, 1.8L…) fit this vehicle?
   function msCodeFits(code, veh) {
@@ -3030,7 +3043,17 @@
     var pm, parenRe = /\(([^)]*)\)/g;
     while ((pm = parenRe.exec(applic))) {
       var parts = pm[1].split(/[,/\s]+/).filter(Boolean);
-      for (var j = 0; j < parts.length; j++) if (msPlatformPrefix(parts[j], veh)) return { ok: true, scope: "model", why: "platform " + parts[j] };
+      var plat = null;
+      for (var j = 0; j < parts.length; j++) if (msPlatformPrefix(parts[j], veh)) { plat = parts[j]; break; }
+      if (!plat) continue;
+      // One platform can appear at TWO intervals split by ENGINE SIZE (issue #164):
+      // 2019 "Golf Variant (BX6, 1.8L)" is 40K but "Golf Variant (BX6 - 1.4l)" is
+      // 80K. When the matched parenthetical also pins a displacement, it must fit the
+      // vehicle or this isn't our row — otherwise a 1.8L matched (and was reported
+      // for) both. No liter listed, or unknown veh.liters → match on platform alone.
+      var liters = pm[1].match(/\d\.\d/g);
+      if (liters && veh.liters && !liters.some(function (L) { return Math.abs(veh.liters - parseFloat(L)) < 0.16; })) continue;
+      return { ok: true, scope: "model", why: "platform " + plat };
     }
     return null;
   }
@@ -3055,19 +3078,32 @@
     var vm = msVehModels(veh.model);
     for (var i = 0; i < vm.length; i++) {
       var m = vm[i], mre = m.replace(/ /g, "\\s*").replace(/\./g, "\\.");
-      // coded mentions of this model: MODEL(code…)
-      var re = new RegExp(mre + "\\s*\\(([^)]*)\\)", "gi"), mm, sawCoded = false, matched = false;
+      // coded mentions of this model: MODEL(code…). Also handle a SLASH-JOINED group
+      // that shares one parenthetical — "Golf/GTI (AU2 - 1.4, 2.0l)" — so the qualifier
+      // binds to Golf too (issue #166): a BX6 Alltrack must NOT match the AU2 Golf/GTI
+      // group just because it says "Golf". A bare family list with no parens
+      // ("Golf/GTI/GolfR") still falls through to the bare match below.
+      var re = new RegExp(mre + "(?:\\s*/\\s*[A-Za-z0-9]+)*\\s*\\(([^)]*)\\)", "gi"), mm, sawCoded = false, matched = false;
       while ((mm = re.exec(applic))) {
         sawCoded = true;
-        var codes = mm[1].split(/[,\s]+/).filter(Boolean);
+        // keep only real code tokens — drop bare separators like "-" (a range dash in
+        // "AU2 - 1.4, 2.0l"), which msAlnum() empties and msCodeFits() would then treat
+        // as a wildcard "match", wrongly qualifying a non-AU2 car (issue #166).
+        var codes = mm[1].split(/[,\s]+/).filter(function (c) { return c && msAlnum(c); });
         if (codes.some(function (c) { return msCodeFits(c, veh); })) matched = true;
       }
       if (matched) return { ok: true, scope: "model", why: m };
       // trans-code-qualified group: "09P: … MODEL …" (code before a colon)
       var tg = new RegExp("([0-9][A-Z0-9]{1,3})\\s*(?:\\(DSG\\))?\\s*:[^:]*\\b" + mre + "\\b", "gi");
       while ((mm = tg.exec(applic))) { if (msCodeFits(mm[1], veh)) return { ok: true, scope: "model", why: m + " " + mm[1] }; }
-      // bare mention (model with no parenthetical code anywhere) → model-level match
-      if (!sawCoded && new RegExp("\\b" + mre + "\\b", "i").test(applic)) return { ok: true, scope: "model", why: m };
+      // bare mention (model with no parenthetical code anywhere) → model-level match.
+      // Plain "GOLF" must NOT swallow the more-specific "Golf R" / "Golf Variant" rows
+      // (issue #166): an Alltrack/base Golf isn't a Golf R, so it can't inherit the
+      // Golf R's torque-vectoring rear-diff service. A real Golf R matches those via
+      // its own "GOLF R" model entry. ("GolfR" with no space isn't a \bGOLF\b match, so
+      // the "Golf/GTI/GolfR" family list still matches on its leading bare "Golf".)
+      var bareRe = m === "GOLF" ? /\bGOLF\b(?!\s+(?:R\b|VARIANT))/i : new RegExp("\\b" + mre + "\\b", "i");
+      if (!sawCoded && bareRe.test(applic)) return { ok: true, scope: "model", why: m };
     }
     // model NAME didn't resolve it — try the Sales-Code / trans-code identity (#154)
     var byCode = msCodeApplies(applic, veh);
@@ -3077,23 +3113,66 @@
   // ---- due logic
   function msIntMiles(t) { var m = String(t).match(/([\d,]+)\s*miles/i); if (m) return parseInt(m[1].replace(/,/g, ""), 10); m = String(t).match(/(\d+)K\s*miles/i); if (m) return parseInt(m[1], 10) * 1000; return null; }
   function msIntYears(t) { var m = String(t).match(/(\d+)\s*year/i); return m ? parseInt(m[1], 10) : null; }
-  // Time-based interval → {first, every} in YEARS on the US schedule. Handles the
-  // compound "N years aft. registration, then every M years -USA … -Canada" (this
-  // is a US-shop tool, so we read the USA clause), plain "Every N years", and
-  // "or N years". Brake fluid USA = {first:3, every:2}; AWD clutch = {first:3, every:3}.
-  function msTimePattern(t) {
+  // The vehicle's market, read from the ELSA Vehicle Summary "Country" field
+  // (issue #165 follow-up): "USA" → usa, "Canada"/"CAN" → canada. Anything else
+  // (blank/unknown) defaults to usa — this is a US shop, and the interval logic's
+  // long-standing default was USA. The tech can hand-edit Country in the green bar.
+  function msRegion(veh) { return /canada|^\s*can\b/i.test(String((veh && veh.country) || "")) ? "canada" : "usa"; }
+  // A Canada odometer reads KILOMETRES, but the whole due engine (grid + interval
+  // mileages) is in MILES. VW's own schedule prints the km column as miles × 1.5
+  // (footnotes: 10,000 mi = 15,000 km; 20,000 mi = 30,000 km; the milestone grid is
+  // consistently ×1.5), so we convert a km odometer to "schedule miles" with ÷1.5 —
+  // NOT the true 1.609, which would misalign the milestones (135,000 km is the 90K-mi
+  // minor: 135÷1.5 = 90 ✓, but 135÷1.609 = 84 → wrong service). USA = miles, no-op.
+  var MS_KM_PER_MI = 1.5;
+  function msUnit(reg) { return reg === "canada" ? "km" : "mi"; }
+  // raw odometer (km for Canada) → schedule miles for the milestone/interval math
+  function msSchedMiles(raw, reg) { raw = raw || 0; return reg === "canada" ? Math.round(raw / MS_KM_PER_MI) : raw; }
+  // schedule miles → the distance shown to the tech, in their market's unit
+  function msDisp(schedMi, reg) { return reg === "canada" ? Math.round((schedMi || 0) * MS_KM_PER_MI) : (schedMi || 0); }
+  // milestone label: "90K km" for Canada; "80K" for USA (unchanged from before, so the
+  // long-standing USA wording — "Possible 80K service due" — stays byte-identical).
+  function msKLabel(schedMi, reg) { return (msDisp(schedMi, reg) / 1000) + "K" + (reg === "canada" ? " km" : ""); }
+  // Which market(s) an interval clause is FOR. The schedule tags region-specific
+  // clauses as "… -USA … -Canada" (combined) or, when the parser splits them, one
+  // "…-USA" variant + one "…-Canada" variant; some (2026/2027 BEV heat-pump) use
+  // "(Only Canada)". "both" = a plain interval with no region tag → applies anywhere.
+  function msVariantRegion(t) {
+    t = String(t || ""); var u = /usa/i.test(t), c = /canada/i.test(t);
+    return u && c ? "both" : u ? "usa" : c ? "canada" : "both";
+  }
+  // Pull the clause for ONE market out of a (possibly combined) interval string.
+  //   usa:    text before "-USA"  →  "3 years aft. registration, then every 2 years"
+  //   canada: text before "-Canada" (and after "-USA" if the USA clause precedes it)
+  // No region tag → the whole string. Used for BOTH display and the cadence read so
+  // a Canada car gets the Canada numbers and a USA car the USA numbers.
+  function msRegionClause(t, reg) {
     t = String(t || "");
-    var usa = /-\s*USA/i.test(t) ? t.split(/-\s*USA/i)[0] : t;
-    var m = usa.match(/(\d+)\s*years?\b[\s\S]*?then\s*every\s*(\d+)\s*years?/i);
+    if (reg === "canada") {
+      if (/-\s*canada/i.test(t)) {
+        var pre = t.split(/-\s*canada/i)[0];
+        if (/-\s*usa/i.test(pre)) pre = pre.split(/-\s*usa/i).pop();
+        return pre.replace(/^[\s,;:.\-–—]+/, "").replace(/[\s,;-]+$/, "").trim();
+      }
+      return t.replace(/^[\s,;:.\-–—]+/, "").trim();
+    }
+    return /-\s*usa/i.test(t) ? t.split(/-\s*usa/i)[0].replace(/^[\s,;:.\-–—]+/, "").replace(/[\s,;-]+$/, "").trim()
+                              : t.replace(/^[\s,;:.\-–—]+/, "").trim();
+  }
+  // Time-based interval → {first, every} in YEARS for the vehicle's market. Handles
+  // the compound "N years aft. registration, then every M years", plain "Every N
+  // years", and "or N years". USA brake fluid = {3,2} (30/50/70/90K); Canada = {2,2}
+  // (20/40/60/80K); AWD clutch = {3,3}.
+  function msTimePattern(t, reg) {
+    var s = msRegionClause(t, reg || "usa");
+    var m = s.match(/(\d+)\s*years?\b[\s\S]*?then\s*every\s*(\d+)\s*years?/i);
     if (m) return { first: +m[1], every: +m[2] };
-    m = usa.match(/(?:every|or)\s*(\d+)\s*years?/i);
+    m = s.match(/(?:every|or)\s*(\d+)\s*years?/i);
     if (m) return { first: +m[1], every: +m[1] };
-    m = usa.match(/(\d+)\s*years?/i);
+    m = s.match(/(\d+)\s*years?/i);
     if (m) return { first: +m[1], every: +m[1] };
     return null;
   }
-  // Interval text for display: trim the "-USA … -Canada" tail to just the USA clause.
-  function msIntervalUSA(t) { t = String(t || ""); return /-\s*USA/i.test(t) ? t.split(/-\s*USA/i)[0].replace(/[\s,;-]+$/, "").trim() : t; }
   function msAgeYears(deliv) { if (!deliv) return null; var d = new Date(deliv); if (isNaN(d)) return null; return (Date.now() - d.getTime()) / (365.25 * 24 * 3600 * 1000); }
   function msGridHits(arr, rounded) { if (!arr || arr.length < 2 || rounded <= 0) return false; var first = arr[0], per = arr[1] - arr[0]; return per > 0 && rounded >= first && (rounded - first) % per === 0; }
   function msIsEV(veh) { return /\bID\.?\s*\d|ID\.?\s*BUZZ|\bE-?GOLF\b|\bELECTRIC\b/i.test(veh.model || ""); }
@@ -3160,6 +3239,7 @@
     // `rounded` has jumped ahead by time.
     var impliedAge = odoRounded > 0 ? odoRounded / 10000 : null;
     var isEV = msIsEV(veh);
+    var reg = msRegion(veh);   // "usa" | "canada" from the summary's Country field (#165 follow-up)
     var levels = [], g = sched.grid || {};
     var haveGrid = (g.minor && g.minor.length) || (g.standard && g.standard.length) || (g.extended && g.extended.length);
     if (haveGrid) {
@@ -3192,9 +3272,14 @@
       // item's applicabilities, which the mis-pairing doesn't affect.
       if (msIsBeltItem(it.item)) { if (msBeltRelevant(it, veh) && verify.indexOf(it.item) < 0) verify.push(it.item); return; }
       (it.variants || []).forEach(function (v) {
+        // Skip an interval meant for the OTHER market (issue #165): a Canada-only
+        // clause on a USA car (the original bug), or a USA-only clause on a Canada
+        // car. "both"/untagged intervals apply either way.
+        var vr = msVariantRegion(v.interval);
+        if (vr !== "both" && vr !== reg) return;
         var ap = msApplies(v.applic, veh); if (!ap.ok) return;
         if (rounded <= 0) return;                         // no mileage entered → nothing to schedule
-        var mi = msIntMiles(v.interval), tp = msTimePattern(v.interval), due = false;
+        var mi = msIntMiles(v.interval), tp = msTimePattern(v.interval, reg), due = false;
         // mileage interval: due when the odometer is a multiple of it
         if (mi && rounded % mi === 0) due = true;
         // time interval on the ~10K mi/yr assumption: first service at `first`
@@ -3208,7 +3293,18 @@
           else if (actualAge != null && actualAge >= tp.first && impliedAge < tp.first) due = true;
         }
         if (!due) return;
-        (ap.scope === "all" ? all : model).push({ item: it.item, interval: msIntervalUSA(v.interval), applic: v.applic });
+        // Same service, matched via more than one variant (issue #160): a DSG whose
+        // trans code is listed under BOTH an 80K and a 40K transmission-fluid row
+        // matched both, so the item was reported twice. A single service can only
+        // have ONE correct interval for a given car, so collapse duplicates by item
+        // name and keep the SHORTER mileage interval (more conservative — and the
+        // 40K DSG spec is the right one when the car is at an 80K milestone).
+        var target = ap.scope === "all" ? all : model;
+        var entry = { item: it.item, interval: msRegionClause(v.interval, reg), applic: v.applic, _mi: mi };
+        var dup = -1;
+        for (var di = 0; di < target.length; di++) if (target[di].item === entry.item) { dup = di; break; }
+        if (dup < 0) target.push(entry);
+        else if (entry._mi != null && (target[dup]._mi == null || entry._mi < target[dup]._mi)) target[dup] = entry;
       });
     });
     return { rounded: rounded, odoRounded: odoRounded, ageDriven: ageDriven, actualAge: actualAge, impliedAge: impliedAge, levels: levels, replaceItems: replaceItems, all: all, model: model, verify: verify };
@@ -3226,8 +3322,14 @@
     var sched = isEV && yd.schedules.bev ? yd.schedules.bev : yd.schedules.ice;
     if (!sched) return null;
     var deliv = delivOverride != null ? delivOverride : ((r && r.__vehicle && r.__vehicle.delivery) || "");
-    var due = msServicesDue(sched, veh, mileage, deliv);
-    due.veh = veh; due.year = veh.year; due.isEV = isEV; due.mileage = mileage || 0; due.file = yd.file || "";
+    // `mileage` arrives in the vehicle's own unit (KM for a Canada car); the due
+    // engine works in schedule miles, so convert at this one boundary (#165 km).
+    var reg = msRegion(veh);
+    var due = msServicesDue(sched, veh, msSchedMiles(mileage, reg), deliv);
+    due.veh = veh; due.year = veh.year; due.isEV = isEV;
+    due.mileage = mileage || 0;   // the RAW odometer (km for Canada) — for display
+    due.reg = reg; due.unit = msUnit(reg);
+    due.file = yd.file || "";
     return due;
   }
 
@@ -3313,8 +3415,8 @@
       var fl = loadFluids(), sx = loadSx(), tl = loadShopTools();
       var ms = loadMs();
       var flN = (fl && fl.years) ? Object.keys(fl.years).length : 0, sxN = (sx && sx.years) ? sx.years.length : 0, msN = (ms && ms.years) ? ms.years.length : 0;
-      flash(root, "Saved your setup — " + flN + " fluid, " + sxN + " torque, " + msN + " maintenance year" + (msN === 1 ? "" : "s") + (tl ? ", tool list" : "") + ". Copy it to the other computer and use Load setup there.");
-    }).catch(function (e) { flash(root, "Couldn’t export: " + ((e && e.message) || "error")); });
+      okModal(root, "✓ Setup saved", "Saved your setup — " + flN + " fluid, " + sxN + " torque, " + msN + " maintenance year" + (msN === 1 ? "" : "s") + (tl ? ", tool list" : "") + ". Copy it to the other computer and use Load setup there.");
+    }).catch(function (e) { okModal(root, "Couldn’t save setup", "Something went wrong: " + ((e && e.message) || "error")); });
   }
   // Settings button → pick a previously-exported setup file and load it in.
   function pickImportFile(host, r, options, root) {
@@ -3439,6 +3541,8 @@
     };
     // "BX5DQ7" → "BX5DQ7": the table's platform code is a PREFIX of this (see platformHit)
     veh.sales = String(v.sales || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    // market from the summary's Country field, for region-specific maintenance intervals (#165)
+    veh.country = String(v.country || "");
     // a vehicle can carry more than one trans code — EVs list front + rear
     // drive units ("0MH / 0MK"); ICE is one ("09PA - AQ450-8A"). Keep them all.
     veh.transCodes = veh.trans.split(/[^A-Z0-9]/).filter(function (s) { return /^[A-Z0-9]{3,6}$/.test(s); });
@@ -3813,9 +3917,13 @@
   // the Mileage + Time override dropdowns (issue #148). Default-select the scanned
   // mileage (rounded to 10K) and the delivery-date age (rounded to whole years); the
   // tech can override either for one-off cases. Wired from the opener in wireMsWindow.
-  function msControls(selMi, selYr) {
+  function msControls(selMi, selYr, reg) {
+    // The dropdown lists — and its VALUES are — the vehicle's own unit: km (in 15K
+    // steps, VW's Canada milestone spacing) for a Canada car, else miles (10K steps).
+    // msDueForVehicle converts the chosen value to schedule miles (#165 km).
+    var unit = msUnit(reg), step = reg === "canada" ? 15000 : 10000, max = reg === "canada" ? 300000 : 200000;
     var miOpts = '<option value="">—</option>', m;
-    for (m = 10000; m <= 200000; m += 10000) miOpts += '<option value="' + m + '"' + (m === selMi ? " selected" : "") + ">" + (m / 1000) + "K mi</option>";
+    for (m = step; m <= max; m += step) miOpts += '<option value="' + m + '"' + (m === selMi ? " selected" : "") + ">" + (m / 1000) + "K " + unit + "</option>";
     var yrOpts = '<option value="">—</option>', y;
     for (y = 1; y <= 20; y++) yrOpts += '<option value="' + y + '"' + (y === selYr ? " selected" : "") + ">" + y + " yr" + (y > 1 ? "s" : "") + "</option>";
     return '<div class="msctrl">' +
@@ -3830,15 +3938,16 @@
   function msWinBody(due, veh) {
     if (!due) return '<div class="none" style="padding:14px 2px">No maintenance schedule loaded for <b>' + esc(veh.year || "this year") +
       "</b> — open the ⚙ gear in Hahns to add that year’s VW Maintenance Schedules PDF.</div>";
-    var svc = due.rounded ? (due.rounded / 1000) + "K" : "";
+    var reg = due.reg || "usa";
+    var svc = due.rounded ? msKLabel(due.rounded, reg) : "";
     var lvlTxt = due.levels.length ? due.levels.map(function (l) { return l + " Maintenance"; }).join(" + ") : "no scheduled level";
     var hero;
     if (due.rounded > 0) {
       hero = '<div class="hero"><h2>Possible ' + esc(svc) + ' service due <span class="lvl">(' + esc(lvlTxt) + ")</span></h2>" +
-        '<div class="sub">' + esc(veh.model || "") + " · " + (due.mileage || 0).toLocaleString() + " mi" +
+        '<div class="sub">' + esc(veh.model || "") + " · " + (due.mileage || 0).toLocaleString() + " " + msUnit(reg) +
         (due.actualAge != null ? " · ~" + due.actualAge.toFixed(1) + " yrs" : "") +
-        (due.ageDriven ? " · " + (due.rounded / 1000) + "K reached by time" : "") + (due.isEV ? " · Electric" : "") + "</div>" +
-        '<div class="note">Assumes ~10,000 miles/year for time-based items. Use the trash button ' +
+        (due.ageDriven ? " · " + msKLabel(due.rounded, reg) + " reached by time" : "") + (due.isEV ? " · Electric" : "") + "</div>" +
+        '<div class="note">Assumes ~' + (reg === "canada" ? "15,000 km" : "10,000 miles") + '/year for time-based items. Use the trash button ' +
         '<span class="dg"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="' + TRASH + '"/></svg></span>' +
         ' next to any item to remove anything already done or not needed before printing.</div></div>';
     } else {
@@ -3869,18 +3978,22 @@
     var v = (r && r.__vehicle) || {};
     var mileage = msMileage(v);
     var due = msDueForVehicle(r, mileage);
+    var reg = msRegion(veh);
     var body;
     if (!due) {
       body = msWinBody(null, veh);
     } else {
-      // default the dropdowns to what the scan pulled: mileage → nearest 10K, time →
-      // delivery-date age in whole years. The tech can override either (issue #148).
-      var selMi = due.odoRounded || 0;
+      // default the dropdowns to what the scan pulled: mileage → nearest step in the
+      // vehicle's unit (10K mi / 15K km), time → delivery-date age in whole years. The
+      // tech can override either (issue #148). Dropdown values are the RAW unit.
+      var step = reg === "canada" ? 15000 : 10000;
+      var selMi = mileage ? Math.round(mileage / step) * step : 0;
       var selYr = due.actualAge != null ? Math.round(due.actualAge) : 0;
-      body = msControls(selMi, selYr) + '<div id="msbody">' + msWinBody(due, veh) + "</div>";
+      body = msControls(selMi, selYr, reg) + '<div id="msbody">' + msWinBody(due, veh) + "</div>";
     }
     var vehGrid = [["Model Year", veh.year], ["Model", veh.model], ["Sales Code", v.sales],
-      ["Mileage", mileage ? mileage.toLocaleString() + " mi" : ""], ["Delivery Date", v.delivery]]
+      ["Mileage", mileage ? mileage.toLocaleString() + " " + msUnit(reg) : ""], ["Delivery Date", v.delivery],
+      ["Country", v.country]]
       .map(function (p) { return '<span class="k">' + esc(p[0]) + '</span><span class="v">' + esc(p[1] || "—") + "</span>"; }).join("");
     return '<!doctype html><html><head><meta charset="utf-8">' +
       '<meta name="viewport" content="width=device-width, initial-scale=1">' +
@@ -3892,7 +4005,7 @@
       '<div class="meta">from the ' + esc(veh.year || "?") + " VW Maintenance Schedules on this computer" + (due && due.file ? " (" + esc(due.file) + ")" : "") + "</div>" +
       '<div class="veh"><div class="t">Vehicle</div><div class="grid">' + vehGrid + "</div></div>" +
       body +
-      '<div class="foot">A GUIDE only — always confirm against ELSA’s Maintenance Procedures. Mileage items round to the nearest 10,000 mi; time-based items assume ~10,000 mi/yr (or the delivery date, whichever is further along).<br>H.A.H.N.S ' + esc(BUILD) + " · matched to your vehicle, nothing saved online.</div>" +
+      '<div class="foot">A GUIDE only — always confirm against ELSA’s Maintenance Procedures. Mileage items round to the nearest ' + (reg === "canada" ? "15,000 km" : "10,000 mi") + '; time-based items assume ~' + (reg === "canada" ? "15,000 km/yr" : "10,000 mi/yr") + ' (or the delivery date, whichever is further along).<br>H.A.H.N.S ' + esc(BUILD) + " · matched to your vehicle, nothing saved online.</div>" +
       "</body></html>";
   }
   // Wire the maintenance window's per-item trash buttons from the opener (same
@@ -3931,7 +4044,8 @@
     if (yrSel) yrSel.onchange = recompute;
     if (reset) reset.onclick = function () {
       var v = (r && r.__vehicle) || {}, odo = msMileage(v);
-      var defMi = Math.round(odo / 10000) * 10000;
+      var step = msRegion(fluidVeh(r)) === "canada" ? 15000 : 10000;
+      var defMi = Math.round(odo / step) * step;
       var age = v.delivery ? msAgeYears(v.delivery) : null;
       if (miSel) miSel.value = defMi ? String(defMi) : "";
       if (yrSel) yrSel.value = age != null ? String(Math.round(age)) : "";
@@ -3957,7 +4071,7 @@
       var files = Array.prototype.slice.call(inp.files || []);
       try { inp.remove(); } catch (e) {}
       if (!files.length) return;
-      if (typeof DecompressionStream === "undefined") { flash(root, "This browser can’t read PDFs — use Chrome, Edge or Safari"); return; }
+      if (typeof DecompressionStream === "undefined") { okModal(root, "Can’t read PDFs", "This browser can’t read PDFs — use Chrome, Edge or Safari."); return; }
       flash(root, "Reading " + files.length + " PDF" + (files.length > 1 ? "s" : "") + "…");
       var results = [], chain = Promise.resolve();
       files.forEach(function (f) {
@@ -4138,7 +4252,7 @@
       var files = Array.prototype.slice.call(inp.files || []);
       try { inp.remove(); } catch (e) {}
       if (!files.length) return;
-      if (typeof DecompressionStream === "undefined") { flash(root, "This browser can’t read PDFs — use Chrome, Edge or Safari"); return; }
+      if (typeof DecompressionStream === "undefined") { okModal(root, "Can’t read PDFs", "This browser can’t read PDFs — use Chrome, Edge or Safari."); return; }
       flash(root, "Reading " + files.length + " PDF" + (files.length > 1 ? "s" : "") + "…");
       var results = [], chain = Promise.resolve();
       files.forEach(function (f) {
@@ -4284,7 +4398,7 @@
       var files = Array.prototype.slice.call(inp.files || []);
       try { inp.remove(); } catch (e) {}
       if (!files.length) return;
-      if (typeof DecompressionStream === "undefined") { flash(root, "This browser can’t read PDFs — use Chrome, Edge or Safari"); return; }
+      if (typeof DecompressionStream === "undefined") { okModal(root, "Can’t read PDFs", "This browser can’t read PDFs — use Chrome, Edge or Safari."); return; }
       flash(root, "Reading " + files.length + " PDF" + (files.length > 1 ? "s" : "") + "…");
       var results = [], chain = Promise.resolve();
       files.forEach(function (f) {
@@ -4681,7 +4795,8 @@
     engine: /^engine\s*code\b/i,
     trans:  /^trans(?:mission)?\s*type\b|^gearbox\s*type\b/i,
     sales:  /^sales\s*(?:model\s*)?code\b/i,
-    delivery: /^delivery\s*date\b/i
+    delivery: /^delivery\s*date\b/i,
+    country: /^country\b/i
   };
   // Electric vehicles' Vehicle Summary has NO single "Engine Code" / "Trans Type" —
   // it lists Front/Rear motor and transaxle codes instead. Match those so EVs load
@@ -4745,7 +4860,7 @@
   // Only meaningful when isVehicleSummaryPage() is true for the same page.
   function extractVehicle(segments) {
     var lines = vehLines(segments);
-    var v = { vin: "", year: "", model: "", engine: "", trans: "", sales: "", delivery: "", mileage: "" };
+    var v = { vin: "", year: "", model: "", engine: "", trans: "", sales: "", delivery: "", mileage: "", country: "" };
 
     // VIN — prefer a line that names it; fall back to any VIN-shaped token
     for (var i = 0; i < lines.length && !v.vin; i++) {
@@ -4785,6 +4900,10 @@
     // Delivery Date ("2018-11-25") → age, for the time-based maintenance intervals.
     // ELSA repeats it (Vehicle Data + Dealer Data); vehField takes the first, which is fine.
     v.delivery = vehField(lines, VEH_LABELS.delivery, /\b(\d{4}-\d{2}-\d{2})\b/);
+    // Country ("USA" / "Canada") from the Dealer Data section — selects the market's
+    // maintenance intervals (issue #165 follow-up). ELSA repeats it (two Dealer Data
+    // blocks); vehField takes the first. Blank/unknown → treated as USA downstream.
+    v.country = vehField(lines, VEH_LABELS.country, null);
     // NOTE: the current mileage is NOT in the page text — ELSA keeps it in an INPUT
     // box (the "Mileage" field by "Launch UPG"), and the "Odometer" rows lower down
     // are per-WARRANTY-KEY odometers (wrong number). So mileage is read from the live
@@ -4843,7 +4962,8 @@
     { k: "engine", label: "Engine Code" },
     { k: "trans",  label: "Trans Type" },
     { k: "mileage",  label: "Mileage", opt: true },
-    { k: "delivery", label: "Delivery Date", opt: true }
+    { k: "delivery", label: "Delivery Date", opt: true },
+    { k: "country",  label: "Country", opt: true }
   ];
   function vehLoaded(r) { return !!(r && r.__vehicle && r.__vehicle.vin); }
   function vehMissing(v) {
@@ -5201,7 +5321,7 @@
     ".wrap.min{max-height:none}" +
     // minimized = just the header bar (with a compact green SCAN in it). The full
     // scanbar and everything else are hidden so the collapsed bar stays tiny.
-    ".wrap.min .sub,.wrap.min .topbar,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .vbar,.wrap.min .fluidbar,.wrap.min .scanbar{display:none}" +
+    ".wrap.min .sub,.wrap.min .topbar,.wrap.min .jobbar,.wrap.min .body,.wrap.min .ft,.wrap.min .vbar,.wrap.min .fluidbar,.wrap.min .msbar,.wrap.min .scanbar{display:none}" +
     // SCAN in the header: hidden while expanded, shown as plain green text (no
     // button box) only when minimized, sitting just left of the minimize icon.
     ".hdscan{display:none}" +
@@ -5607,13 +5727,13 @@
     var due = msDueForVehicle(r, mileage);
     var hasDue = due && (due.replaceItems.length || due.all.length || due.model.length);
     if (mileage > 0 && hasDue) {
-      var svc = due.rounded ? (due.rounded / 1000) + "K" : "";
+      var svc = due.rounded ? msKLabel(due.rounded, due.reg) : "";
       var lvl = due.levels.length ? " (" + due.levels.join(" + ") + ")" : "";
       return '<div class="msbar"><button class="msbtn due" data-act="msdue">' + svg(MS_CAL) +
         "Possible " + esc(svc) + " service due" + esc(lvl) + '<span class="arr">&#8599;</span></button></div>';
     }
     return '<div class="msbar"><button class="msbtn" data-act="msdue">' + svg(MS_CAL) +
-      (mileage > 0 ? "Maintenance — nothing flagged at " + mileage.toLocaleString() + " mi, view schedule"
+      (mileage > 0 ? "Maintenance — nothing flagged at " + mileage.toLocaleString() + " " + (due && due.unit ? due.unit : "mi") + ", view schedule"
                    : "Maintenance — enter mileage to check services due") + '<span class="arr">&#8599;</span></button></div>';
   }
 
@@ -5646,7 +5766,7 @@
         var mileage = msMileage(v), due = msDueForVehicle(r, mileage);
         var hasDue = due && (due.replaceItems.length || due.all.length || due.model.length);
         ms = (mileage > 0 && hasDue)
-          ? quickChip("due", "msdue", "Possible " + (due.rounded / 1000) + "K service due — click for details", WRENCH)
+          ? quickChip("due", "msdue", "Possible " + msKLabel(due.rounded, due.reg) + " service due — click for details", WRENCH)
           : quickChip("ms", "msdue", mileage > 0 ? "Maintenance — nothing flagged, view schedule" : "Maintenance — enter mileage to check services due", WRENCH);
       } else ms = quickChip("load", "settings", "No maintenance schedule for " + esc(String(v.year || "this year")) + " — load the PDF in Settings", WRENCH);
     }
@@ -6257,17 +6377,29 @@
       e.preventDefault();
       var rect = wrap.getBoundingClientRect();
       var sx = e.clientX, sy = e.clientY, sl = rect.left, st = rect.top;
-      wrap.style.right = "auto";
+      var dragging = false;
       try { handle.setPointerCapture(e.pointerId); } catch (_) {}
       function move(ev) {
-        var p = clampPos(sl + (ev.clientX - sx), st + (ev.clientY - sy), wrap);
+        var dx = ev.clientX - sx, dy = ev.clientY - sy;
+        // A click that slightly MISSES a header button must not move the panel
+        // (issue #167). Don't drop the right-anchor or reposition until the pointer
+        // travels past a small threshold — otherwise the panel, briefly left:auto AND
+        // right:auto, snaps to the other side of the screen on a stationary click.
+        if (!dragging) {
+          if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+          dragging = true;
+          wrap.style.right = "auto";
+        }
+        var p = clampPos(sl + dx, st + dy, wrap);
         wrap.style.left = p.left + "px"; wrap.style.top = p.top + "px";
       }
       function up() {
         handle.removeEventListener("pointermove", move);
         handle.removeEventListener("pointerup", up);
         try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
-        savePos({ left: parseInt(wrap.style.left, 10) || 0, top: parseInt(wrap.style.top, 10) || 0 });
+        // Only persist a position if an actual drag happened — a bare click leaves the
+        // panel exactly where (and anchored how) it was.
+        if (dragging) savePos({ left: parseInt(wrap.style.left, 10) || 0, top: parseInt(wrap.style.top, 10) || 0 });
       }
       handle.addEventListener("pointermove", move);
       handle.addEventListener("pointerup", up);
@@ -6313,29 +6445,29 @@
       if (!f) return;
       // modern Excel (.xlsx) → convert to rows in the browser (local, no network)
       if (/\.xlsx$/i.test(f.name)) {
-        if (typeof DecompressionStream === "undefined") { flash(root, "This browser can’t read .xlsx — save it as CSV first"); return; }
+        if (typeof DecompressionStream === "undefined") { okModal(root, "Can’t read .xlsx", "This browser can’t read .xlsx — save it as CSV first."); return; }
         var fx = new FileReader();
         fx.onload = function () {
           xlsxToRows(fx.result).then(function (rows) {
-            if (!rows || !rows.length) { flash(root, "That .xlsx looked empty — is the list on the first sheet?"); return; }
+            if (!rows || !rows.length) { okModal(root, "That file looks empty", "That .xlsx looked empty — is the list on the first sheet?"); return; }
             openToolMapper(host, r, options, root, rows, { name: f.name, fmt: "xlsx" });
-          }).catch(function () { flash(root, "Couldn’t read that .xlsx — try saving it as CSV"); });
+          }).catch(function () { okModal(root, "Couldn’t read that file", "Couldn’t read that .xlsx — try saving it as CSV."); });
         };
-        fx.onerror = function () { flash(root, "Could not read that file"); };
-        try { fx.readAsArrayBuffer(f); } catch (e) { flash(root, "Could not read that file"); }
+        fx.onerror = function () { okModal(root, "Couldn’t read that file", "The file couldn’t be read — try choosing it again."); };
+        try { fx.readAsArrayBuffer(f); } catch (e) { okModal(root, "Couldn’t read that file", "The file couldn’t be read — try choosing it again."); }
         return;
       }
       // old .xls (binary) / Apple Numbers → different formats we can't parse
-      if (/\.(xls|numbers)$/i.test(f.name)) { flash(root, "Save the spreadsheet as CSV (or .xlsx) first, then upload"); return; }
+      if (/\.(xls|numbers)$/i.test(f.name)) { okModal(root, "Unsupported file", "Save the spreadsheet as CSV (or .xlsx) first, then upload."); return; }
       var fr = new FileReader();
       fr.onload = function () {
         var rows;
         try { rows = parseCSV(String(fr.result || "")); }
-        catch (e) { flash(root, "Could not read that file"); return; }
+        catch (e) { okModal(root, "Couldn’t read that file", "The file couldn’t be read — try choosing it again."); return; }
         openToolMapper(host, r, options, root, rows, { name: f.name, fmt: "csv" });
       };
-      fr.onerror = function () { flash(root, "Could not read that file"); };
-      try { fr.readAsText(f); } catch (e) { flash(root, "Could not read that file"); }
+      fr.onerror = function () { okModal(root, "Couldn’t read that file", "The file couldn’t be read — try choosing it again."); };
+      try { fr.readAsText(f); } catch (e) { okModal(root, "Couldn’t read that file", "The file couldn’t be read — try choosing it again."); }
     });
     (root.querySelector(".wrap") || root).appendChild(inp);
     inp.click();
@@ -6582,7 +6714,7 @@
         removeShopTools();
         renderInto(host, r, options);
         refresh();
-        flash(root, "Tool list removed");
+        okModal(root, "✓ Removed", "The shop tool list has been removed from this computer.");
       });
     });
     var flup = ov.querySelector(".flupload");
@@ -6595,7 +6727,7 @@
         removeFluids();
         renderInto(host, r, options);
         refresh();
-        flash(root, "Fluid tables removed");
+        okModal(root, "✓ Removed", "All fluid capacity tables have been removed from this computer.");
       });
     });
     var sxup = ov.querySelector(".sxupload");
@@ -6608,7 +6740,7 @@
         removeSx();
         renderInto(host, r, options);
         refresh();
-        flash(root, "Torque charts removed");
+        okModal(root, "✓ Removed", "All Service Xpress torque charts have been removed from this computer.");
       });
     });
     var msup = ov.querySelector(".msupload");
@@ -6621,7 +6753,7 @@
         removeMs();
         renderInto(host, r, options);
         refresh();
-        flash(root, "Maintenance schedules removed");
+        okModal(root, "✓ Removed", "All maintenance schedules have been removed from this computer.");
       });
     });
     // per-item removal (#129) — one year of fluids, or one Service Xpress chart file
@@ -6632,7 +6764,7 @@
           removeFluidYear(y).then(function () {
             renderInto(host, r, options);
             refresh();
-            flash(root, y + " removed");
+            okModal(root, "✓ Removed", "The " + y + " fluid tables have been removed.");
           });
         });
       });
@@ -6644,7 +6776,7 @@
           removeSxFile(k).then(function () {
             renderInto(host, r, options);
             refresh();
-            flash(root, "Chart removed");
+            okModal(root, "✓ Removed", "That torque chart has been removed.");
           });
         });
       });
@@ -6656,7 +6788,7 @@
           removeMsFile(k).then(function () {
             renderInto(host, r, options);
             refresh();
-            flash(root, "Schedule removed");
+            okModal(root, "✓ Removed", "That maintenance schedule has been removed.");
           });
         });
       });
@@ -6676,7 +6808,7 @@
     rows = (rows || []).filter(function (row) {
       return row && row.some(function (c) { return String(c == null ? "" : c).trim() !== ""; });
     });
-    if (!rows.length) { flash(root, "That file looks empty"); return; }
+    if (!rows.length) { okModal(root, "That file looks empty", "There were no rows to read in that file — check you picked the right one."); return; }
 
     var headerIdx = findToolHeader(rows);
     var dataStart = headerIdx >= 0 ? headerIdx + 1 : 0;
@@ -7093,7 +7225,10 @@
         } else if (act === "vehcollapse") {
           cancelVehAuto(); setVehExp(false); renderInto(host, r, options);
         } else if (act === "vehexpand") {
-          cancelVehAuto(); setVehExp(true); renderInto(host, r, options);
+          // From the minimized quick-row, "Vehicle" must actually reveal the details —
+          // expanding alone leaves them hidden under the .min styles (and used to leak
+          // only the maintenance bar). So restore the panel too (issue #168).
+          cancelVehAuto(); setVehExp(true); if (isMin()) setMin(false); renderInto(host, r, options);
         } else if (act === "settings") {
           // a "load" bar lands the tech straight in the right section (the torque
           // bar tags itself data-sx); the gear opens with all sections collapsed
@@ -7346,6 +7481,7 @@
     msFromPdf: msFromPdf, parseMaintenance: MS.parseMaintenance,
     loadMs: loadMs, msSaveFiles: msSaveFiles, removeMs: removeMs, removeMsFile: removeMsFile,
     msDueForVehicle: msDueForVehicle, msServicesDue: msServicesDue, msApplies: msApplies,
+    msRegion: msRegion, msSchedMiles: msSchedMiles, msDisp: msDisp, msKLabel: msKLabel, fluidVeh: fluidVeh,
     buildMsWindowHTML: buildMsWindowHTML, readVehMileage: readVehMileage,
     exportShopConfig: exportShopConfig, importShopConfig: importShopConfig };
 })();
