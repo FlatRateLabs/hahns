@@ -9,7 +9,34 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.6-beta — in progress
+## v0.5.7-beta — in progress
+
+A batch of bay-testing fixes from a 2015 Golf TDI and a 2019 e-Golf, plus a new update reminder.
+
+### Added
+- **Update-available reminder next to the gear.** When Hahns finds a newer version and you choose
+  “Not now,” a small **yellow warning triangle** now sits just left of the ⚙ gear so you don’t forget an
+  update is waiting. Click it to install. It disappears once you update (or if you’re already current).
+  (Feature #178.)
+
+### Fixed
+- **Diesel Golf/Jetta no longer misread as gas.** ELSA writes some diesels as “2.0TDI” (no space) and lists
+  the fuel type further down the engine line — Hahns was missing it and treating a **TDI** as a gas engine.
+  It now reads the fuel type reliably (this also fixes gas cars where the model name doesn’t spell out
+  TSI/FSI). This one bug was behind several wrong recommendations below. (#172, #173.)
+- **No more spark plugs on a diesel.** Follows from the fuel fix — a diesel has glow plugs, not spark plugs.
+  (#173.)
+- **No automatic-transmission fluid service on a manual.** A manual Golf was being shown an automatic/DSG
+  transmission fluid service. Manuals are now correctly skipped. (#174.)
+- **No front differential lock fluid on cars that can’t have it.** The VAQ locking front differential is a
+  performance option (GTI / Golf R / GLI) and the vehicle summary can’t confirm it — so Hahns now only
+  suggests it on those models, marked **“(if equipped)”**, instead of on every car. (#175.)
+- **Fluids drivetrain no longer shows other models.** A plain Golf was listing the **Golf R** and
+  **Alltrack** rear-final-drive rows; each of those now shows only on its own model. (#176.)
+- **No Canada brake-flush interval on a USA EV.** A 2019 e-Golf (USA) was shown the Canada brake-fluid
+  interval; the correct market is now picked on the electric schedule too. (#177.)
+
+## v0.5.6-beta — 2026-08-22
 
 ### Fixed
 - **Maintenance: diesel timing-belt interval is now shown correctly.** A 2014 Jetta diesel’s toothed

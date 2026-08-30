@@ -20,12 +20,71 @@
   // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
   // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
   var SITE_URL = "https://flatratelabs.github.io/hahns/";
+  // the GitHub Pages ORIGIN the self-updating loader's popup posts from — the only
+  // sender we trust for update messages (issue #178). Derived from SITE_URL.
+  var PAGES_ORIGIN = (function () { try { return new URL(SITE_URL).origin; } catch (e) { return "https://flatratelabs.github.io"; } })();
+  // localStorage key: the version an update popup offered that the tech chose "Not
+  // now" on. Set by our own update-message listener (watchUpdates), cleared when an
+  // update is accepted or we're already current. Drives the header ⚠ badge (#178).
+  var LS_UPD_AVAIL = "hahns_upd_avail";
   // the feedback / bug-report popup (hosted on Pages; posts to the relay Worker
   // which files a labeled GitHub issue). Opened from the version bar + Settings.
   var REPORT_URL = "__REPORT_URL__";
   // transient one-line note for the vehicle bar (e.g. a blocked procedure scan
   // before a vehicle is loaded). Cleared once shown — never persisted.
   var vehNotice = "";
+
+  // ---- pending-update badge (issue #178) ---------------------------------
+  // When the self-updating loader's popup offers a newer version and the tech
+  // clicks "Not now", the popup posts {dismissed:true, version:<latest>} back to
+  // the ELSA page. We record that version so a ⚠ badge next to the ⚙ gear reminds
+  // them an update is waiting. When they later accept it (or we're already current)
+  // the flag is cleared. All local (ELSA-origin localStorage); no network, no
+  // re-drag — update.html already sends the version, and its postMessage reaches
+  // this page where the app runs. The badge self-heals: it only shows when the
+  // stored version is strictly NEWER than the running BUILD, so once the update is
+  // applied (BUILD catches up) it disappears even if the flag lingers.
+  var lastRenderCtx = null;   // {host,r,options} of the current panel, for re-render
+  function lsGet(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+  // compare two "0.5.7-beta"-style versions by their numeric dotted parts only
+  // (the -alpha/-beta suffix is ignored). >0 if a is newer than b.
+  function cmpVer(a, b) {
+    var pa = String(a || "").replace(/[^0-9.].*$/, "").split("."),
+        pb = String(b || "").replace(/[^0-9.].*$/, "").split(".");
+    for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+      var x = parseInt(pa[i], 10) || 0, y = parseInt(pb[i], 10) || 0;
+      if (x !== y) return x - y;
+    }
+    return 0;
+  }
+  // is there an update the tech declined that's still newer than what's running?
+  function updatePending() {
+    var v = lsGet(LS_UPD_AVAIL);
+    return !!v && cmpVer(v, BUILD) > 0;
+  }
+  // register ONE listener for the loader popup's update replies, so a declined
+  // update leaves a breadcrumb (and an accepted / current one clears it). Guarded
+  // so repeat renders don't stack handlers. Only our Pages origin is trusted.
+  function watchUpdates() {
+    if (window.__hahnsUpdWatch) return;
+    window.__hahnsUpdWatch = true;
+    try {
+      window.addEventListener("message", function (e) {
+        if (e.origin !== PAGES_ORIGIN) return;                 // trust only our Pages origin
+        var d = e.data;
+        if (!d || d.source !== "hahns-updater") return;
+        var before = updatePending();
+        if (d.dismissed && d.version) lsSet(LS_UPD_AVAIL, String(d.version));   // "Not now" → remember it
+        else if (d.upToDate || typeof d.code === "string") lsDel(LS_UPD_AVAIL); // current, or accepted → clear
+        // repaint the badge if its state changed and a panel is mounted
+        if (updatePending() !== before && lastRenderCtx && lastRenderCtx.host) {
+          try { renderInto(lastRenderCtx.host, lastRenderCtx.r, lastRenderCtx.options); } catch (_) {}
+        }
+      }, false);
+    } catch (e) {}
+  }
   // ---- shop special-tool list (v0.3.10; moved to IndexedDB v0.3.16) -------
   // A per-shop list (tool number -> drawer/location, plus any "missing / check
   // part number" status note) the tech uploads as a CSV / .xlsx. Stored ONLY on
@@ -3246,7 +3305,39 @@
   // (veh.fuel === "diesel", set from TDI/SDI/DIESEL in the engine/model text).
   // Unknown fuel keeps the item — don't guess; most VWs are gas.
   function msIsSparkItem(name) { return /spark\s*plug/i.test(String(name || "")); }
-  function msSkipItem(name, veh) { return (msIsAwdItem(name) && !veh.awd) || (msIsSparkItem(name) && veh.fuel === "diesel"); }
+  // The Front Axle Differential Lock (the VAQ electrohydraulic locking front diff) is a
+  // PERFORMANCE OPTION, and the ELSA Vehicle Summary does NOT expose the PR code, so we
+  // can't confirm a given car has it (issue #175). It's tagged "All Applicable Vehicles"
+  // (scope "all") → shown on everything, incl. a base Golf TDI that can't be optioned
+  // with it. VAQ is only offered on the sporty models — GTI, Golf R, GLI — so restrict
+  // the item to those (a wrong SKIP only costs a reminder the tech still sees in ELSA; a
+  // wrong SHOW is the reported false positive). Even on those it's option-dependent, so
+  // it's surfaced flagged "(if equipped)" at push time rather than as a firm due item.
+  function msIsFrontDiffLockItem(name) { return /front\s+axle\s+differential\s+lock/i.test(String(name || "")); }
+  function msModelCanHaveVAQ(veh) {
+    var m = String((veh && veh.model) || "").toUpperCase();
+    return /\bGTI\b/.test(m) || /\bGOLF\s*R\b(?!\s*-?\s*LINE)/.test(m) || /\bGLI\b/.test(m);
+  }
+  // An AUTOMATIC / DSG transmission-fluid service must NOT be recommended on a MANUAL
+  // (issue #174). The schedule's automatic-trans row is keyed by trans code
+  // ("09G: … Golf(AU1) … 0D9 (DSG): …"), but msApplies matches the platform inside
+  // "Golf(AU1)" (Sales-Code AU1 prefix) before the trans-group guard runs — so a
+  // manual 02Q Golf (same AU1 platform) wrongly matched the automatic fluid item. Gate
+  // it on a CONFIDENT manual read only (the trans/model text says "MANUAL" or names a
+  // VW manual transaxle "MQxxx"); DSG (DQ…) / auto (AQ…) / unknown keep the item —
+  // don't guess. Manual VW gearboxes are effectively fill-for-life, so there's no
+  // manual-fluid item this would wrongly hide.
+  function msIsAutoTransItem(name) { return /transmission[\s,]*automatic|automatic[\s,]*transmission|\bDSG\b/i.test(String(name || "")); }
+  function msTransIsManual(veh) {
+    var s = (String((veh && veh.trans) || "") + " " + String((veh && veh.model) || "")).toUpperCase();
+    return /\bMANUAL\b/.test(s) || /\bMQ\s*\d/.test(s);
+  }
+  function msSkipItem(name, veh) {
+    return (msIsAwdItem(name) && !veh.awd)
+        || (msIsSparkItem(name) && veh.fuel === "diesel")
+        || (msIsAutoTransItem(name) && msTransIsManual(veh))
+        || (msIsFrontDiffLockItem(name) && !msModelCanHaveVAQ(veh));
+  }
   // Timing/toothed belt (issue #157). The interval depends on the exact engine + model
   // year, laid out in the PDF as one flowing applicability paragraph that WRAPS across
   // several interval rows with the interval numbers bottom-aligned. As of v0.5.6 the
@@ -3430,8 +3521,12 @@
       (it.variants || []).forEach(function (v) {
         // Skip an interval meant for the OTHER market (issue #165): a Canada-only
         // clause on a USA car (the original bug), or a USA-only clause on a Canada
-        // car. "both"/untagged intervals apply either way.
-        var vr = msVariantRegion(v.interval);
+        // car. "both"/untagged intervals apply either way. The ICE brake row tags the
+        // market in the INTERVAL ("… -USA … -Canada"), but the BEV schedule splits it
+        // into two ITEMS whose market is in the NAME ("Brake Fluid - Change Only USA" /
+        // "… Only Canada") with a plain interval — so a USA e-Golf was still shown the
+        // Canada item (issue #177). Read the region from the item name AND interval.
+        var vr = msVariantRegion(it.item + " " + v.interval);
         if (vr !== "both" && vr !== reg) return;
         var ap = msApplies(v.applic, veh); if (!ap.ok) return;
         if (rounded <= 0) return;                         // no mileage entered → nothing to schedule
@@ -3456,7 +3551,10 @@
         // name and keep the SHORTER mileage interval (more conservative — and the
         // 40K DSG spec is the right one when the car is at an 80K milestone).
         var target = ap.scope === "all" ? all : model;
-        var entry = { item: it.item, interval: msRegionClause(v.interval, reg), applic: v.applic, _mi: mi };
+        // The VAQ front diff lock reaches here only for a VAQ-capable model (GTI/Golf R/
+        // GLI); even then the Summary can't confirm the option, so mark it (issue #175).
+        var itemName = it.item + (msIsFrontDiffLockItem(it.item) ? " (if equipped)" : "");
+        var entry = { item: itemName, interval: msRegionClause(v.interval, reg), applic: v.applic, _mi: mi };
         var dup = -1;
         for (var di = 0; di < target.length; di++) if (target[di].item === entry.item) { dup = di; break; }
         if (dup < 0) target.push(entry);
@@ -3728,10 +3826,15 @@
   // diesel vs gas from an engine/description string. 2006–2010 VW tables tell
   // apart two engines of the SAME displacement (e.g. "2.0L TSI" gas vs "2.0L
   // TDI" diesel) only by this word, and it drives a different oil spec/capacity.
+  // NB: ELSA often GLUES the designation to the displacement — a 2015 Golf TDI's
+  // Model Name is "GOLF A7 SEL 4-DR 2.0TDI MANUAL" — so a leading \b fails ("0"→"T"
+  // is not a boundary). Anchor on start-of-string OR any non-letter instead, keeping
+  // the trailing \b so we don't match inside a longer word. No VW GAS designation
+  // contains TDI/SDI, so this can't misread a gas car as diesel (issue #172).
   function fuelOf(text) {
     var t = String(text || "").toUpperCase();
-    if (/\bTDI\b|\bSDI\b|DIESEL|PUMPE/.test(t)) return "diesel";
-    if (/\bT?FSI\b|\bTSI\b|\bMPI\b|\bTURBO\b|\bFSI\b|GAS/.test(t)) return "gas";
+    if (/(^|[^A-Z])[TS]DI\b|DIESEL|PUMPE/.test(t)) return "diesel";
+    if (/(^|[^A-Z])(T?FSI|TSI|MPI)\b|\bTURBO\b|GAS/.test(t)) return "gas";
     return "";
   }
   // Parser 06-10 row picker: nearest displacement (litres) to the vehicle,
@@ -3913,18 +4016,20 @@
     var a = String(r.application || "").trim();
     return !a || SUB_QUAL.test(a) ? "" : a;
   }
-  // Keep only the variant rows that name THIS vehicle. If it matches none we
-  // know nothing, so everything stays — never empty the card on a guess.
+  // A variant-named row (the "Rear Final Drive · Golf R" / "· Alltrack" sections)
+  // belongs ONLY to that variant. Keep it only when THIS vehicle IS that variant.
+  // A plain Golf TDI is neither a Golf R nor an Alltrack, so BOTH those rows must
+  // drop (issue #176 — a base Golf was showing Golf R + Alltrack final drives). A
+  // Golf R keeps its row and drops Alltrack; an Alltrack the reverse (issue #126).
+  // Non-variant rows (transmissions, "Only AWD" subs, coded rows) always stay, and
+  // a blank/unknown vehicle model keeps everything — never guess the card empty.
   function filterVariants(rows, veh) {
-    var vm = modelNorm(veh.model || ""), drop = [], byComp = {};
-    rows.forEach(function (r) { (byComp[r.component] = byComp[r.component] || []).push(r); });
-    Object.keys(byComp).forEach(function (k) {
-      var vs = byComp[k].filter(variantOf);
-      if (!vs.length || !vm) return;
-      var hit = vs.filter(function (r) { return vm.indexOf(modelNorm(variantOf(r))) >= 0; });
-      if (hit.length) vs.forEach(function (r) { if (hit.indexOf(r) < 0) drop.push(r); });
+    var vm = modelNorm(veh.model || "");
+    if (!vm) return rows;
+    return rows.filter(function (r) {
+      var vr = variantOf(r);
+      return !vr || vm.indexOf(modelNorm(vr)) >= 0;
     });
-    return rows.filter(function (r) { return drop.indexOf(r) < 0; });
   }
   function fluidDriveHTML(m, veh) {
     var all = m.drivetrain || [];
@@ -5036,13 +5141,23 @@
     v.year   = vehField(lines, VEH_LABELS.year, /\b((?:19|20)\d{2})\b/);
     v.model  = vehField(lines, VEH_LABELS.model, null);
     v.engine = vehField(lines, VEH_LABELS.engine, ENG_VAL);
-    // ELSA's Engine Code cell reads "ATQ - 2771 ccm, 147 kW, …" but ENG_VAL keeps
-    // only the bare code. Append the engine SIZE (displacement) so the fluids
-    // lookup can match the 2000–2010 tables by litres — and so the tech sees it.
-    // Code stays first, so engine-code matching + the vehicle bar are unchanged.
+    // ELSA's Engine Code cell reads "CRUA - 1968 ccm, 110 kW, Common-Rail Bosch TDI CR"
+    // but ENG_VAL keeps only the bare code. Append the engine SIZE (displacement) so
+    // the fluids lookup can match the 2000–2010 tables by litres — and so the tech sees
+    // it. Code stays first, so engine-code matching + the vehicle bar are unchanged.
     if (v.engine) {
-      var ccm = vehField(lines, VEH_LABELS.engine, null).match(/(\d{3,5})\s*ccm/i);
+      var engFull = vehField(lines, VEH_LABELS.engine, null);   // full cell incl. fuel descriptor
+      var ccm = engFull.match(/(\d{3,5})\s*ccm/i);
       if (ccm) v.engine += " - " + ccm[1] + " ccm";
+      // Preserve the fuel / injection designation from the rest of the cell (TDI/TSI/
+      // FSI/…, or a "Common-Rail"/"Diesel" phrasing) so fuel detection stays reliable
+      // even when the Model Name omits it or glues it to the displacement ("2.0TDI",
+      // where a leading \b fails) — issue #172. Applies to gas engines too. Code + ccm
+      // stay first, so engine-code matching, the cc/litres parse and the lookup are
+      // unchanged; this only APPENDS a clean token (and shows the tech the engine type).
+      var des = engFull.match(/\b(TDI|SDI|T?FSI|TSI|MPI)\b/i);
+      var tag = des ? des[1].toUpperCase() : (/common[- ]?rail|diesel/i.test(engFull) ? "TDI" : "");
+      if (tag && v.engine.toUpperCase().indexOf(tag) < 0) v.engine += " " + tag;
     }
     v.trans  = vehField(lines, VEH_LABELS.trans, null);
     // The Sales Code ("BX5DQ7") leads with the platform the fluid/torque tables are
@@ -5474,6 +5589,10 @@
     ".hd button:hover{background:rgba(255,255,255,.15);color:#fff}" +
     ".hd .hbtn{display:inline-flex;align-items:center;justify-content:center;padding:3px 5px}" +
     ".hd .hbtn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
+    // update-available triangle (issue #178) — own fills, not the stroke rule above
+    ".hd .updwarn{display:inline-flex;align-items:center;justify-content:center;padding:3px 4px;background:transparent;border:0;cursor:pointer}" +
+    ".hd .updwarn svg{width:18px;height:18px}" +
+    ".hd .updwarn:hover{background:rgba(255,255,255,.15)}" +
     ".wrap.min{max-height:none}" +
     // minimized = just the header bar (with a compact green SCAN in it). The full
     // scanbar and everything else are hidden so the collapsed bar stays tiny.
@@ -5776,6 +5895,13 @@
   var CHEV_UP = "M6 15l6-6 6 6";    // collapse the vehicle bar
   var RESTART = "M20 11.5a8 8 0 1 1-2.3-5.6M20 4v5h-5";   // "New Vehicle" / start over
   var GEAR = "M19.14 12.94a7.5 7.5 0 0 0 0-1.88l2-1.56-2-3.46-2.39.96a7 7 0 0 0-1.62-.94L14.7 2.5h-4l-.43 2.56a7 7 0 0 0-1.62.94L6.26 5l-2 3.46 2 1.56a7.5 7.5 0 0 0 0 1.88l-2 1.56 2 3.46 2.39-.96c.5.38 1.04.7 1.62.94l.43 2.56h4l.43-2.56c.58-.24 1.12-.56 1.62-.94l2.39.96 2-3.46-2-1.56zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z";   // settings gear
+  // ⚠ update-available badge (issue #178): a yellow warning triangle with a black
+  // exclamation. A self-contained SVG (its own fills, so it stays yellow regardless
+  // of the header's stroke/fill rules) — not the plain single-path svg() helper.
+  var WARN_TRI = '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="M12 3.6 22 20.4H2Z" fill="#f6c018" stroke="#7a5c00" stroke-width="1" stroke-linejoin="round"/>' +
+    '<rect x="11" y="9.2" width="2" height="6" rx="1" fill="#111"/>' +
+    '<circle cx="12" cy="17.6" r="1.25" fill="#111"/></svg>';
 
   function svg(path, cls) {
     return '<svg viewBox="0 0 24 24" class="' + (cls || "") + '"><path d="' + path + '"/></svg>';
@@ -6038,6 +6164,10 @@
         // SCAN shown in the header only when minimized (green text, no button box) —
         // left of the gear icon, so the collapsed bar stays as small as possible.
         (embed ? "" : '<button data-act="rescan" class="hdscan" title="Read this page and add its specs to the job">SCAN</button>') +
+        // ⚠ update-available badge (issue #178): shown only when an update was offered
+        // and declined ("Not now") and is still newer than what's running. Sits just
+        // left of the gear; clicking it re-opens the updater so the tech can install.
+        ((embed || !updatePending()) ? "" : '<button data-act="updavail" class="updwarn" title="An update is available — click to install">' + WARN_TRI + "</button>") +
         (embed ? "" : '<button data-act="settings" class="hbtn" title="Settings — shop tool list &amp; fluid tables">' + svg(GEAR) + "</button>") +
         (embed ? "" : '<button data-act="min" class="hbtn" title="' + (mini ? "Expand" : "Minimize") + '">' + svg(mini ? "M7 7h10v10H7z" : "M6 12h12") + "</button>") +
         '<button data-act="close" title="Close">&#10005;</button></div>' +
@@ -7087,6 +7217,10 @@
     var onRescan = options.onRescan;
     var root = host.__vwjbShadow || host.attachShadow({ mode: "open" });
     host.__vwjbShadow = root;
+    // remember this panel so the update-message listener can repaint the ⚠ badge,
+    // and make sure that listener is registered (once) — issue #178.
+    lastRenderCtx = { host: host, r: r, options: options };
+    watchUpdates();
     // remember the scroll position so a rebuild (add/delete/edit/scan) doesn't
     // snap the list back to the top
     var prevBody = root.querySelector(".body");
@@ -7316,6 +7450,15 @@
         if (act === "msdue") {
           if (e && e.preventDefault) e.preventDefault();
           if (!openMsWindow(r)) flash(root, "Allow pop-ups to open the maintenance window");
+          return;
+        }
+        if (act === "updavail") {
+          // the ⚠ badge (issue #178): re-open the updater so the tech can install the
+          // version they earlier declined. Same hook the Settings button uses; without
+          // the loader (classic bookmarklet) send them to the setup page to re-grab it.
+          if (e && e.preventDefault) e.preventDefault();
+          if (typeof window.hahnsCheckForUpdate === "function") { try { window.hahnsCheckForUpdate(); } catch (_) {} }
+          else { try { window.open(SITE_URL, "_blank", "noopener"); } catch (_) {} flash(root, "Opening the setup page — re-drag the bookmark from there."); }
           return;
         }
         if (act === "close") {
