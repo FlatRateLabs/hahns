@@ -5,6 +5,71 @@ permanent project reference.
 
 ---
 
+## Session close (2026-08-29) — v0.5.7-beta: 2015 Golf TDI / e-Golf bay-testing batch (#172–#178)
+
+Owner walked through seven in-app reports from a **2015 Golf TDI** (manual, base) and a **2019 e-Golf**,
+one at a time, each verified against the REAL gitignored PDFs before moving on, batched into ONE release.
+**App-only → no re-drag** (`LOADER_VER` stays 2); **no `MS_PARSER_VER` bump** — every fix was
+MATCHING / EXTRACTION / UI logic, not parsing (`tools/parser-test.js` = **65 files, 0 drift** throughout).
+VERSION → **0.5.7-beta**.
+
+### The fixes (all in `src/helper.js`)
+1. **#172/#173 — fuel misdetected as gas (root cause of FOUR reports).** From the owner's diagnostic dump:
+   ELSA's Model Name is `GOLF … 2.0TDI MANUAL` (designation GLUED to the displacement) and the Engine Code
+   cell is `CRUA - 1968 ccm, …, Common-Rail Bosch TDI CR` — but `extractVehicle` truncated the engine field
+   to `CRUA - 1968 ccm` (dropping the "TDI") AND `fuelOf`'s `\bTDI\b` couldn't match "2.0TDI" (no word
+   boundary), so `veh.fuel` = "" → treated as gas → diesel belt dropped + a GAS-engine belt "verify"
+   warning shown (#172), and spark plugs recommended on the diesel (#173). **Two complementary fixes:**
+   (a) `fuelOf` now anchors the keyword on start-or-non-letter (`/(^|[^A-Z])[TS]DI\b|…/`, gas likewise) so
+   glued forms match — safe because no VW gas token contains TDI/SDI; (b) `extractVehicle` APPENDS the fuel
+   designation from the full engine cell to `veh.engine` (`CRUA - 1968 ccm TDI`; code+ccm stay first so
+   `engineCode`/`liters`/all lookups are unchanged) — also fixes GAS cars whose Model Name omits TSI/FSI.
+   #173 then falls out of the existing `msIsSparkItem && veh.fuel==="diesel"` gate.
+2. **#174 — automatic-trans fluid on a manual.** The 2015 auto-trans row is trans-code-keyed
+   (`09G: … Golf(AU1) … 0D9 (DSG): …`) but `msApplies` matched the platform `Golf(AU1)` (Sales-Code AU1
+   prefix) before the trans-group guard ran, so a manual `02Q` Golf matched. `msSkipItem` now skips an
+   `msIsAutoTransItem` for a confirmed manual (`msTransIsManual`: "MANUAL" or "MQxxx"; DSG/AQ/unknown keep).
+3. **#175 — VAQ front diff lock on a car that can't have it.** The Summary can't confirm the PR-code option;
+   `msSkipItem` now skips "Front Axle Differential Lock" unless the model can be optioned with VAQ
+   (`msModelCanHaveVAQ`: GTI/Golf R/GLI, R-Line-guarded), and surfaces it flagged **"(if equipped)"** there.
+4. **#176 — fluids drivetrain showed Golf R + Alltrack on a plain Golf.** `filterVariants`' old "no match →
+   keep everything" rule left both variant rear-final-drives visible on a base Golf. Rewrote it: a
+   variant-named row is kept ONLY when the vehicle IS that variant (blank model still keeps all). Golf R /
+   Alltrack each still show only their own row (#126 preserved).
+5. **#177 — Canada brake interval on a USA e-Golf.** The BEV schedule splits brake fluid into two ITEMS
+   with the market in the NAME ("… Only USA" / "… Only Canada") + a plain interval, so the #165 region
+   filter (interval-only) let the Canada item through → now `msVariantRegion(it.item + " " + v.interval)`.
+6. **#178 (feature) — update-available ⚠ badge next to the gear.** A yellow triangle (black exclamation)
+   left of the ⚙ gear when an update was offered and DECLINED. **Entirely app-side, no re-drag:**
+   `update.html` already posts `{dismissed:true, version}` on "Not now" and its `postMessage` reaches the
+   ELSA page, so `helper.js` adds ONE origin-pinned (`PAGES_ORIGIN`) message listener (`watchUpdates`) that
+   records `localStorage hahns_upd_avail` and clears it on accept/current. `updatePending()` gates the badge
+   on `cmpVer(avail, BUILD) > 0` (self-heals once BUILD catches up). Click → `hahnsCheckForUpdate()`.
+
+### Verification pattern
+Each maintenance/fluids fix driven through the REAL functions against the actual gitignored PDFs
+(`~/Downloads/2015 VW Maintenance Schedules.pdf`, `2015 VW Fluid Capacity Tables.pdf`, `2019 VW Maintenance
+Schedules.pdf`) via throwaway Node harnesses (temp `pickFluidModel`/`fluidDriveHTML` exports added then
+removed; a `TESTONLY` grep confirms 0 remnants). #178 verified via a mocked-window/localStorage Node harness
+(version compare, dismiss→flag→clear, wrong-origin ignored, badge before gear, embed-hidden). `node --check`
++ `node tools/build.js` + `node tools/parser-test.js` (65 files, 0 drift) throughout.
+
+### Deploy
+Batched as a PR off `main` (branch-protected → `gh pr merge --admin`). App-only, no re-drag, no reparse.
+**#172–#178 auto-close** (repeat the "Closes" keyword per issue). Flipped the stale `v0.5.6-beta` CHANGELOG
+heading to its release date (2026-08-22). Live-verify `version.json` = v0.5.7-beta after merge.
+
+### Carry-forward / still-open
+- **#178 rollout:** the badge activates from this release forward (a tech must run this build for a future
+  decline to record) — worth an eyeball of the actual triangle in the panel on the next bay visit.
+- Deferred maintenance gaps unchanged: #140 (2000–2009 mileage-indexed, gated), partial BEV additional
+  items, gas/coolant-pump belts (verify-in-ELSA), engine-conditional applicability. Also noted but NOT
+  bundled: some 2023–2027 BEV items carry the market qualifier in the APPLICABILITY (`(Only Canada)` heat
+  pump) rather than name/interval — not region-filtered yet. Open issues after this batch: **#140, #122,
+  #117, #11, #10.**
+
+---
+
 ## Session close (2026-08-22, later) — v0.5.6-beta: diesel toothed-belt interval resolved (#157) — LIVE
 
 The deferred hard one from the last two batches. **Issue #157** — a 2014 Jetta diesel's toothed (timing)
