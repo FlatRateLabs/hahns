@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.8-beta · 2026-09-05 20:24 UTC";
+var BUILD = "v0.5.8.1-beta · 2026-09-05 20:38 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -3782,9 +3782,35 @@ if (!m) return true;
 var isThisEngine = Math.abs(parseFloat(m[1]) - veh.liters) < 0.3;
 return /except|other than|all but/i.test(app) ? !isThisEngine : isThisEngine;
 }
+// Some models split A/C by SALES CODE in the Application cell (the 2027 Atlas
+// Family is one table with DH1 rows AND DJ1 rows). Left unfiltered the card
+// shows both, so a DJ1 Atlas also sees the DH1 charge (issue #183). A
+// sales-code-ish token is 2–4 alnum with BOTH a letter and a digit
+// (DH1/DJ1/5C2/CA2) — never an English qualifier ("ALL"/"AWD"), a displacement,
+// nor a date fragment like the Arteon's "…07/08/2019" (08 / 2019 are digit-only,
+// so they're rejected and that supplier-by-date split is left unfiltered).
+var AC_CODE_RE = /^(?=[A-Z0-9]{2,4}$)(?=.*[A-Z])(?=.*[0-9])[A-Z0-9]+$/;
+function acCodeTokens(app) {
+return bareCodes(app).filter(function (t) { return AC_CODE_RE.test(t); });
+}
+// Keep only the A/C rows for THIS vehicle's Sales Code (+ any untagged /
+// combined rows). Never filter when we can't confidently match: a blank Sales
+// Code, no code-tagged rows, or no row matching this code all keep every row.
+function acSalesFilter(rows, veh) {
+if (!veh.sales) return rows;
+var coded = rows.filter(function (r) { return acCodeTokens(r.application).length; });
+if (!coded.length) return rows;                       // this table isn't sales-code split
+var mine = coded.some(function (r) { return platformHit(acCodeTokens(r.application).join("/"), veh) > 0; });
+if (!mine) return rows;                               // vehicle's code not represented → show all
+return rows.filter(function (r) {
+var tk = acCodeTokens(r.application);
+return !tk.length || platformHit(tk.join("/"), veh) > 0;
+});
+}
 function fluidAcHTML(m, veh) {
 var rows = (m.airConditioning || []).filter(function (r) { return acAppliesTo(r.application, veh); });
 if (!rows.length) rows = m.airConditioning || [];   // never hide the whole card
+rows = acSalesFilter(rows, veh);
 var inner = rows.map(function (r) {
 var name = String(r.component || "").replace(/\s*\(R\s?1234yf\)|\s*\(R\s?134a\)/ig, "").trim();
 return '<div class="row"><div class="rname">' + esc(name) +
