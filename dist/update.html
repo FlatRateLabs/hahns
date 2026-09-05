@@ -41,6 +41,17 @@
   #whatsnew p.note{color:#c9a94b}
   #whatsnew strong{color:#fff}
   #whatsnew code{background:#000;padding:0 4px;border-radius:4px;font-size:11.5px}
+  /* one collapsible entry per skipped version (all collapsed by default) */
+  #whatsnew .wn-item{border:1px solid #2b3550;border-radius:8px;margin:8px 0;background:#12182a;overflow:hidden}
+  #whatsnew .wn-item>summary{cursor:pointer;list-style:none;padding:9px 12px;font-weight:800;
+    color:#fff;font-size:12.5px;display:flex;align-items:center;gap:8px}
+  #whatsnew .wn-item>summary::-webkit-details-marker{display:none}
+  #whatsnew .wn-item>summary::before{content:'\25B8';color:#2fb84d;font-size:11px;
+    display:inline-block;transition:transform .12s ease}
+  #whatsnew .wn-item[open]>summary::before{transform:rotate(90deg)}
+  #whatsnew .wn-item .wn-date{margin-left:auto;font-weight:600;color:#8a93a6;font-size:11px}
+  #whatsnew .wn-body{padding:0 12px 8px}
+  #whatsnew .wn-body h4:first-child{margin-top:2px}
   #btns{display:none;gap:10px;justify-content:center;margin-top:16px}
   button{font:700 14px system-ui;border:0;border-radius:8px;padding:10px 18px;cursor:pointer}
   #yes{background:#2fb84d;color:#04210f}
@@ -94,15 +105,50 @@
   } catch (e) { }
   var cb = "?cb=" + Date.now();
 
-  // "What's new" = the OFFERED (latest) version's changes only. notes.json is built
-  // from CHANGELOG.md's top entry, so it always describes the version we're offering.
+  // compare two "0.5.9.1-beta"-style versions by numeric dotted parts only (leading
+  // "v" and any -alpha/-beta suffix ignored). >0 if a is newer than b.
+  function cmpVer(a, b) {
+    var pa = String(a || "").replace(/^v/i, "").replace(/[^0-9.].*$/, "").split("."),
+        pb = String(b || "").replace(/^v/i, "").replace(/[^0-9.].*$/, "").split(".");
+    for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+      var x = parseInt(pa[i], 10) || 0, y = parseInt(pb[i], 10) || 0;
+      if (x !== y) return x - y;
+    }
+    return 0;
+  }
+  function verLabel(v) { v = String(v || ""); return /^v/i.test(v) ? v : "v" + v; }
+
+  // "What's new": notes.json carries EVERY version entry (newest first). We show
+  // each version NEWER than the tech's installed one, each as its own collapsed
+  // dropdown so a tech who skipped several releases sees them all. Falls back to
+  // the latest entry (expanded) when we can't tell what they're running.
   // Our own trusted content (never ELSA/manual) -> innerHTML is fine.
   var notesP = fetch("./notes.json" + cb).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
   function showWhatsNew() {
     var box = document.getElementById("whatsnew");
     notesP.then(function (n) {
-      if (!n || !n.html) return;
-      box.innerHTML = "<div class='wn-h'>What’s new in v" + (n.version || "") + "</div>" + n.html;
+      if (!n) return;
+      var entries = (n.entries && n.entries.length) ? n.entries
+        : (n.html ? [{ version: n.version, status: "", html: n.html }] : []);
+      if (!entries.length) return;
+      // versions strictly newer than what the tech is running
+      var news = have ? entries.filter(function (e) { return cmpVer(e.version, have) > 0; }) : [];
+      if (!news.length) {
+        // can't tell (first install / unknown) -> just the latest, expanded
+        var e0 = entries[0];
+        box.innerHTML = "<div class='wn-h'>What’s new in " + verLabel(e0.version) + "</div>" + e0.html;
+        box.style.display = "block";
+        return;
+      }
+      var head = news.length === 1
+        ? "<div class='wn-h'>What’s new in " + verLabel(news[0].version) + "</div>"
+        : "<div class='wn-h'>" + news.length + " updates since " + verLabel(have) + "</div>";
+      var body = news.map(function (e) {
+        var date = (e.status && !/in progress/i.test(e.status)) ? " <span class='wn-date'>" + e.status + "</span>" : "";
+        return "<details class='wn-item'><summary>" + verLabel(e.version) + date +
+          "</summary><div class='wn-body'>" + e.html + "</div></details>";
+      }).join("");
+      box.innerHTML = head + body;
       box.style.display = "block";
     });
   }

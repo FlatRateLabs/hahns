@@ -9,7 +9,17 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.9.1-beta — in progress
+## v0.5.9.2-beta — 2026-09-05
+
+### Changed
+- **The update prompt now shows everything you missed, not just the newest version.** If you’ve skipped
+  a few releases, the “What’s new” box lists **every version newer than the one you’re running** — newest
+  on top — each as its own dropdown you can click to expand. All dropdowns start **collapsed**, so it stays
+  tidy; open the ones you care about. (No re-drag needed.)
+
+---
+
+## v0.5.9.1-beta — 2026-09-05
 
 ### Fixed
 - **Keyboard shortcuts: the “Reset to defaults” confirm button said “Remove.”** It now says **Reset**.
