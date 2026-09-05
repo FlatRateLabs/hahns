@@ -15,7 +15,7 @@ const root = path.join(__dirname, "..");
 // ---- version ----
 // Bump this when you ship. While testing, keep the "-alpha" tag.
 //   tiny fix -> 0.1.1   new feature -> 0.2.0   stable release -> 1.0.0
-const VERSION = "0.5.9.1-beta";
+const VERSION = "0.5.9.2-beta";
 
 // Loader generation. The loader is the dragged bookmark; it can ONLY change by
 // re-dragging. Bump this whenever src/loader.js changes so the update popup can
@@ -87,21 +87,15 @@ function renderChangelog(md) {
   closeVer();
   return html + "</div>";
 }
-// Just the LATEST version's changes, rendered to a small HTML fragment for the
-// update popup's "What's new" (it shows only the version being offered). Same
-// markdown subset as renderChangelog, but stops at the second "## " heading.
-function latestNotesHtml(md) {
-  var lines = md.split(/\r?\n/);
-  var i = 0;
-  while (i < lines.length && lines[i].indexOf("## ") !== 0) i++;   // first version heading
-  if (i >= lines.length) return "";
-  i++;                                                             // skip the heading itself
+// Render one version entry's BODY lines (everything under a "## " heading, up to
+// the next one) to the small HTML fragment the update popup shows. Same markdown
+// subset as renderChangelog.
+function renderNotesBody(lines) {
   var html = "", inList = false, curLi = null;
   function closeLi() { if (curLi !== null) { html += "<li>" + clInline(curLi.trim()) + "</li>"; curLi = null; } }
   function closeList() { closeLi(); if (inList) { html += "</ul>"; inList = false; } }
-  for (; i < lines.length; i++) {
+  for (var i = 0; i < lines.length; i++) {
     var ln = lines[i];
-    if (ln.indexOf("## ") === 0) break;                           // next version -> stop
     if (ln.indexOf("### ") === 0) { closeList(); html += "<h4>" + clInline(ln.slice(4).trim()) + "</h4><ul>"; inList = true; continue; }
     if (ln.indexOf("---") === 0) continue;
     if (/^\s*>\s?/.test(ln)) { closeList(); html += "<p class='note'>" + clInline(ln.replace(/^\s*>\s?/, "")) + "</p>"; continue; }
@@ -116,9 +110,37 @@ function latestNotesHtml(md) {
   closeList();
   return html;
 }
+// Parse the whole CHANGELOG into an ordered array (newest first) of
+// { version, status, html } — one per "## " heading. The update popup uses this
+// to show EVERY version newer than the tech's installed one, each collapsible.
+function parseChangelogEntries(md) {
+  var lines = md.split(/\r?\n/);
+  var i = 0;
+  while (i < lines.length && lines[i].indexOf("## ") !== 0) i++;   // skip file header/intro
+  var out = [];
+  while (i < lines.length) {
+    var head = lines[i].slice(3).trim();          // e.g. "v0.5.9.1-beta — in progress"
+    var parts = head.split(" — ");
+    var ver = parts[0], status = parts.length > 1 ? parts.slice(1).join(" — ") : "";
+    i++;
+    var body = [];
+    while (i < lines.length && lines[i].indexOf("## ") !== 0) { body.push(lines[i]); i++; }
+    out.push({ version: ver, status: status, html: renderNotesBody(body) });
+  }
+  return out;
+}
+// Just the LATEST version's changes (back-compat field for older popups).
+function latestNotesHtml(md) {
+  var e = parseChangelogEntries(md);
+  return e.length ? e[0].html : "";
+}
 const changelogMd = fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8");
 const changelogHtml = renderChangelog(changelogMd);
-const notesJson = JSON.stringify({ version: VERSION, html: latestNotesHtml(changelogMd) });
+const notesEntries = parseChangelogEntries(changelogMd);
+// notes.json now carries ALL version entries (newest first) so the update popup
+// can show every version the tech skipped, each as a collapsed dropdown. `html`
+// + `version` are kept for any older popup that still reads only the latest.
+const notesJson = JSON.stringify({ version: VERSION, html: notesEntries.length ? notesEntries[0].html : "", entries: notesEntries });
 
 // the Hahns mascot (bust) is embedded as a base64 data URI so the bookmarklet stays
 // self-contained — no network fetch (mandatory on ELSA; see CLAUDE.md privacy posture).
