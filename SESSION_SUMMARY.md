@@ -5,6 +5,52 @@ permanent project reference.
 
 ---
 
+## Session close (2026-09-05, later) — v0.5.9-beta: keyboard shortcuts + rebinding menu (#122) — LIVE
+
+Owner closed #117 (out of scope) and asked to build **#122**. Shipped configurable keyboard shortcuts
+plus a rebinding menu. **App-only → no re-drag** (`LOADER_VER` stays 2), **no parser bump**
+(`tools/parser-test.js` = **65 files, 0 drift**). VERSION → **0.5.9-beta**. PR **#186** (squash `--admin`,
+merge `6815993`), **live-confirmed** `version.json` = `v0.5.9-beta · 2026-09-05 23:26 UTC`; #122 auto-closed.
+
+### What shipped (all in `src/helper.js`)
+- **Owner chose Alt+Shift defaults + all actions** (via AskUserQuestion). Defaults: S Scan · P Print ·
+  C Copy · N New Vehicle · M Minimize · G Settings · F Fluids · D Maintenance.
+- **One capture-phase `document` keydown listener** (`installKeyShortcuts`, guard `__hahnsKeyWatch`,
+  registered once from `renderInto` when `!options.embed`) that on a matched combo **clicks the matching
+  `[data-act]` button in the shadow root** — reuses every existing dispatch path (confirms, window-opening,
+  toggles); safe no-op when the button isn't in the current state. Reads config fresh each keypress so a
+  rebind takes effect immediately.
+- **Combos keyed by `e.code`** ("Alt+Shift+KeyS") → layout-independent + immune to Mac Option composing a
+  special char (`comboFromEvent`/`comboLabel`/`isModCode`). Fires only when NOT typing — `isTypingTarget`
+  checks event target + `document` AND shadow-root `activeElement` (panel inputs live in the shadow root
+  and retarget to the host at document level).
+- **Settings "Keyboard shortcuts" section** (`keySettingsHTML` + wiring): enable toggle, per-row **Change**
+  (press-any-combo capture via a temp doc listener + `__hahnsKeyCapture` suppressing the live handler; Esc
+  cancels; `keyCaptureTeardown` cleaned up on Settings rebuild), ✕ clear one, **Reset to defaults**.
+  Assigning a combo already in use **auto-frees** the other action (no duplicates).
+- Persisted in **`localStorage hahns_keys_v1`** (`{enabled, map}`) — local user pref, zero network.
+  `PANEL_ID` hoisted to a module const. Exposed `loadKeys/saveKeys/comboFromEvent/comboLabel/DEFAULT_KEYS/
+  KEY_ACTIONS` on `window.VWJB`.
+
+### Verification
+Node logic harness (mock localStorage/event): comboFromEvent (incl. bare-modifier → null), comboLabel,
+defaults/save/reload, cleared-binding persistence. **Real-browser** harness (`_keytest.html`, deleted after)
+loading built `docs/app.js` in a **non-embed** panel: Alt+Shift+S fired Scan (0→1); **suppressed** when
+focus was in an `<input>`; rebind captured+saved; **duplicate-combo protection** verified (copy→Scan's combo
+freed rescan); Settings section renders 8 rows with correct chips; **no console errors**. `node --check` +
+`node tools/build.js` + parser-test (65/0) throughout; merged-tree grep on `docs/app.js` confirmed the
+feature before + after the Pages flip. Flipped the stale `v0.5.8.2-beta` CHANGELOG heading to its date.
+
+### Carry-forward
+- **Bay-check** the shortcuts on a real shop ELSA screen — confirm no clash with ELSA's own Alt+Shift keys
+  (the reason for the layout-independent `e.code` + typing-suppression design). If ELSA grabs one, the tech
+  can rebind it in Settings.
+- **Open issues after this session: #122 closed → #140, #10-carryforward bay-test.** Remaining backlog:
+  **#140** (2000–2009 mileage-indexed maintenance parser; blocked on the old PDFs). The v0.5.8.2 bottom-
+  diagram fix still wants an owner bay-test on the cylinder-head page.
+
+---
+
 ## Session close (2026-09-05) — old-issue triage: closed #10 & #11; v0.5.8.2-beta bottom-diagram fix — LIVE
 
 Worked through the backlog of old open issues ("are these even still real?"). Two closed as
