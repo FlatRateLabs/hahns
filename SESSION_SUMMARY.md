@@ -41,6 +41,24 @@ freed rescan); Settings section renders 8 rows with correct chips; **no console 
 `node tools/build.js` + parser-test (65/0) throughout; merged-tree grep on `docs/app.js` confirmed the
 feature before + after the Pages flip. Flipped the stale `v0.5.8.2-beta` CHANGELOG heading to its date.
 
+### Point release — v0.5.9.2-beta (owner request), LIVE same session
+Owner asked: when a tech is prompted to update, show change notes for **every version new to them**, not
+just the latest — newest on top, **each as a dropdown, all collapsed by default**. Implemented in the
+update popup (no app/helper change):
+- **`tools/build.js`** — new `parseChangelogEntries()` parses the whole CHANGELOG into an ordered
+  `[{version,status,html}]` (shared `renderNotesBody` used by both it and `latestNotesHtml`). **`notes.json`
+  now carries `entries` (all 89 versions, ~89KB)** plus back-compat `version`/`html` (latest only).
+- **`src/update.html`** — added `cmpVer`/`verLabel`; `showWhatsNew` filters `entries` to versions newer than
+  the running one (`?v=`) and renders each as a **collapsed `<details>`** (newest first, release date shown);
+  falls back to the latest entry expanded when the installed version is unknown. Dark-theme CSS for the
+  `.wn-item` dropdowns.
+- **Delivered via the daily loader popup** — `update.html` + `notes.json` are fetched fresh each check, so it
+  reaches every installed loader. **No re-drag** (`LOADER_VER` stays 2), no parser bump.
+- **Verified:** Node filter against the real `notes.json` (0.5.8 → 5 entries, 0.5.9 → 2, latest → 0, numeric
+  compare 0.5.10 > 0.5.9); real-browser render of the actual CSS + logic — 5 collapsed dropdowns newest-first,
+  expand-on-click shows formatted notes, no console errors (temp harness deleted). PR **#189** (squash
+  `--admin`), **live-confirmed** `version.json` = `v0.5.9.2-beta` + live `notes.json` `entries=89`.
+
 ### Point release — v0.5.9.1-beta (#187), LIVE same session
 Owner filed #187 from the in-app form while testing: the new **Reset to defaults** confirm said **"Remove"**
 (it reused `confirmRemove`, whose Yes button is hardcoded "Remove"). Gave `confirmRemove` an **optional
