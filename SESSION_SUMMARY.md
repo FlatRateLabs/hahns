@@ -41,6 +41,13 @@ freed rescan); Settings section renders 8 rows with correct chips; **no console 
 `node tools/build.js` + parser-test (65/0) throughout; merged-tree grep on `docs/app.js` confirmed the
 feature before + after the Pages flip. Flipped the stale `v0.5.8.2-beta` CHANGELOG heading to its date.
 
+### Point release — v0.5.9.1-beta (#187), LIVE same session
+Owner filed #187 from the in-app form while testing: the new **Reset to defaults** confirm said **"Remove"**
+(it reused `confirmRemove`, whose Yes button is hardcoded "Remove"). Gave `confirmRemove` an **optional
+yes-label** (defaults to "Remove" → every other caller byte-identical) and pass "Reset". App-only, no re-drag,
+no parser bump. PR **#188** (squash `--admin`), **live-confirmed** `version.json` = `v0.5.9.1-beta ·
+2026-09-05 23:37 UTC`. #187 auto-closed.
+
 ### Carry-forward
 - **Owner verified the shortcuts work** (off-ELSA) at session end. **Fuller shop bay-test planned for
   Tuesday (2026-09-08)** — the key thing to confirm on a real ELSA screen is no clash with ELSA's own
