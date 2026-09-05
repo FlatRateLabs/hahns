@@ -9,7 +9,25 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.7-beta — in progress
+## v0.5.8-beta — in progress
+
+A small fluids display batch from bay feedback.
+
+### Fixed
+- **Rear Final Drive now labeled in the fluids window.** On some vehicles (e.g. the 2025 Tiguan) the
+  rear final drive rows showed only the transmission codes (like “0CQ / 0CR” and “0BR”) with no
+  “Rear Final Drive” label. They now read **“Rear Final Drive · 0BR”** so it’s clear what the capacity
+  is for. (#180.)
+
+### Changed
+- **Fluid sub-categories stand out.** Section names inside the Fluids & Capacities window — like
+  **A/C System Refrigerant**, the transmission, and **Rear Final Drive** — are now shown in bold so
+  they’re easy to pick out from the smaller “Initial Fill / Refill” labels and the capacity numbers.
+  (#181.)
+
+---
+
+## v0.5.7-beta — 2026-08-29
 
 A batch of bay-testing fixes from a 2015 Golf TDI and a 2019 e-Golf, plus a new update reminder.
 
