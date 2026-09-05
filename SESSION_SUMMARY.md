@@ -5,6 +5,46 @@ permanent project reference.
 
 ---
 
+## Session close (2026-09-05) — v0.5.8-beta: fluids display batch (#180, #181) — LIVE
+
+Two small in-app reports, both **render/CSS-only in the Fluids & Capacities window** — no parser touched.
+**App-only → no re-drag** (`LOADER_VER` stays 2), **no `MS_PARSER_VER` bump / no reparse**; `tools/parser-test.js`
+= **65 files, 0 drift**. VERSION → **0.5.8-beta**. PR **#182** (squash `--admin`, merge `81206ef`), **live-confirmed**
+`version.json` = `v0.5.8-beta · 2026-09-05 20:24 UTC`. #180 + #181 auto-closed.
+
+### The fixes (both in `src/helper.js`, `fluidDriveHTML` / `fluidAcHTML` + `FLUIDS_WIN_CSS`)
+1. **#180 (bug) — 2025 Tiguan Rear Final Drive not labeled.** The Drivetrain card showed only the bare trans
+   codes (`0CQ / 0CR`, `0BR`) and dropped "Rear Final Drive". **Parser output was already correct** (rows are
+   `comp=[Rear Final Drive] app=[0BR]`) — the bug was purely in `fluidDriveHTML`'s `rowHtml`: `name =
+   application || component` let a code-only application win over the meaningful component. Fix: a bare-code
+   application (`/^\(?[0-9][A-Z0-9]{2}(?:\s*\/\s*[0-9][A-Z0-9]{2})*\)?$/i`, component present) is now treated
+   like the existing `qualOnly` "Only AWD" case — the **component becomes the name** and the code renders as a
+   `· <code>` suffix → "Rear Final Drive · 0BR". Rows whose application already carries descriptive text
+   (transmission names, "Bevel Box", "AWD Clutch") are unchanged.
+2. **#181 (feature) — fluid sub-categories should stand out.** The row-name label used the same muted small
+   `.lab` style as the secondary fill labels ("Initial Fill"). Added a distinct **`.rname`** class (13px, bold,
+   VW blue `#001e50`) for the category name at the head of each **A/C and drivetrain** row; the `· code`
+   qualifier and fill labels stay `.lab`. Engine oil/coolant single-value rows have no name label, so they're
+   untouched (matches the owner's note that they lack sub-categories).
+
+### Verification
+Both driven through the REAL card builders against the actual gitignored 2025 PDF (`~/Downloads/2025 VW Fluid
+Capacity Tables.pdf`) via a throwaway Node harness — confirmed the exact rendered `.rname`/`· code` markup and
+that no row still leads with a bare `.lab`; generated a full sample fluids page (real `FLUIDS_WIN_CSS`) and
+sent it to the owner to eyeball. Temp `fluidDriveHTML`/`fluidAcHTML`/`FLUIDS_WIN_CSS` etc. exports added then
+removed (`TESTONLY` grep = 0). `node --check` + `node tools/build.js` + `node tools/parser-test.js` (65 files,
+0 drift); merged-tree grep on `docs/app.js` confirmed both changes before Pages flip.
+
+### Carry-forward
+- **#140 explicitly deferred to its own release** (owner asked whether to fold it in; recommended against —
+  it's a *new* mileage-indexed parser for 2000–2009, needs a `MS_PARSER_VER` bump + reparse + 10-year
+  hand-verification, and would dilute an otherwise zero-risk render patch; same treatment #157 got). **Blocker:
+  need the real 2000–2009 Maintenance Schedule PDFs** before it can be built/verified.
+- Open issues after this batch: **#140, #122, #117, #11, #10.** Deferred maintenance gaps unchanged (partial
+  BEV additional items, gas/coolant-pump belts → verify-in-ELSA, engine-conditional applicability).
+
+---
+
 ## Session close (2026-08-29) — v0.5.7-beta: 2015 Golf TDI / e-Golf bay-testing batch (#172–#178)
 
 Owner walked through seven in-app reports from a **2015 Golf TDI** (manual, base) and a **2019 e-Golf**,
