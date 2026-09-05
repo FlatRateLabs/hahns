@@ -7242,11 +7242,11 @@
     if (fb) fb.addEventListener("click", function () { close(); openReport(root); });
     // inline "Remove? [Remove] [Cancel]" so a stray click never wipes a list (#130).
     // Swaps the clicked control for a confirm bar; Cancel rebuilds Settings in place.
-    function confirmRemove(btn, msg, onYes) {
+    function confirmRemove(btn, msg, onYes, yesLabel) {
       var cf = document.createElement("span");
       cf.className = "confirm";
       cf.innerHTML = '<span class="ctxt">' + esc(msg) + "</span>" +
-        '<button class="cyes">Remove</button><button class="cno">Cancel</button>';
+        '<button class="cyes">' + esc(yesLabel || "Remove") + '</button><button class="cno">Cancel</button>';
       btn.replaceWith(cf);
       cf.querySelector(".cyes").addEventListener("click", onYes);
       cf.querySelector(".cno").addEventListener("click", refresh);
@@ -7357,7 +7357,7 @@
       confirmRemove(keyRst, "Reset all shortcuts to defaults?", function () {
         var m = {}; for (var k in DEFAULT_KEYS) if (DEFAULT_KEYS.hasOwnProperty(k)) m[k] = DEFAULT_KEYS[k];
         var cfg = loadKeys(); cfg.map = m; saveKeys(cfg); refresh();
-      });
+      }, "Reset");
     });
     // clear one binding
     Array.prototype.forEach.call(ov.querySelectorAll(".keyclr"), function (btn) {
