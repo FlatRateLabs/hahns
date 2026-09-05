@@ -5318,17 +5318,54 @@
   }
 
   // <img> elements that haven't finished loading yet (across same-origin frames).
-  // On a first scan a not-yet-loaded image reports size 0 and is skipped.
+  // On a first scan a not-yet-loaded image reports size 0 and is skipped. Also
+  // counts a "loaded" image that still reports size 0 (a lazy image just nudged
+  // into loading), so the rescan waits for the bottom-of-page sequence figure.
   function pendingImages(doc, out) {
     out = out || [];
     try {
       Array.prototype.forEach.call(doc.querySelectorAll("img"), function (im) {
-        if (!im.complete) out.push(im);
+        var url = im.currentSrc || im.src || "";
+        if (url && /sprite|icon|logo|button|avatar|spacer|pixel|thumb|banner/i.test(url)) return;
+        if (!im.complete || (url && (im.naturalWidth || 0) === 0)) out.push(im);
       });
     } catch (e) {}
     try {
       Array.prototype.forEach.call(doc.querySelectorAll("iframe, frame"), function (f) {
         try { var d = f.contentDocument || (f.contentWindow && f.contentWindow.document); if (d) pendingImages(d, out); } catch (e) {}
+      });
+    } catch (e) {}
+    return out;
+  }
+
+  // ELSA lazy-loads images below the fold, so a diagram at the very BOTTOM of a long
+  // page (e.g. a "Tightening Specifications and Sequence" figure) often hasn't started
+  // loading when the tech scans from the top — it reads size 0 and is skipped, which
+  // made its capture intermittent (worked only when it happened to be cached/scrolled
+  // into view). Nudge every not-yet-loaded content image into loading NOW so the
+  // rescan below can wait for it and pick it up. Native lazy → eager; a JS lazy-loader
+  // that parks the real URL on a data-* attr gets that URL promoted to src.
+  function forceEagerImages(doc, out) {
+    out = out || [];
+    try {
+      Array.prototype.forEach.call(doc.querySelectorAll("img"), function (im) {
+        var url = im.currentSrc || im.src || "";
+        if (im.complete && (im.naturalWidth || 0) > 0) return;      // already loaded
+        if (url && /sprite|icon|logo|button|avatar|spacer|pixel|thumb|banner/i.test(url)) return;
+        if (!url) {
+          var lazy = im.getAttribute("data-src") || im.getAttribute("data-lazy-src") ||
+                     im.getAttribute("data-original") || im.getAttribute("data-lazy") || "";
+          if (lazy) { try { im.src = lazy; url = lazy; } catch (e) {} }
+        }
+        if (!url) return;
+        try { if (im.loading === "lazy") im.loading = "eager"; } catch (e) {}
+        try { if (im.decode) im.decode().catch(function () {}); } catch (e) {}
+        out.push(im);
+      });
+    } catch (e) {}
+    try {
+      Array.prototype.forEach.call(doc.querySelectorAll("iframe, frame"), function (f) {
+        try { var d = f.contentDocument || (f.contentWindow && f.contentWindow.document); if (d) forceEagerImages(d, out); } catch (e) {}
       });
     } catch (e) {}
     return out;
@@ -5340,6 +5377,7 @@
   // the first time) gets captured without the tech having to press SCAN twice.
   function scheduleImageRescan(rescan) {
     if (imgRescanDone) return;
+    forceEagerImages(document);          // kick below-fold lazy diagrams into loading
     var pend = pendingImages(document);
     if (!pend.length) return;
     imgRescanDone = true;
@@ -5352,7 +5390,7 @@
       };
       try { im.addEventListener("load", settle); im.addEventListener("error", settle); } catch (e) { remaining--; }
     });
-    setTimeout(go, 4000);   // safety cap so a stalled image can't block the re-scan
+    setTimeout(go, 6000);   // safety cap so a stalled image can't block the re-scan
   }
 
   // from the candidates, keep only the dominant image(s) — the overview/assembly
