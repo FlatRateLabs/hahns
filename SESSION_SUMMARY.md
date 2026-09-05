@@ -5,6 +5,64 @@ permanent project reference.
 
 ---
 
+## Session close (2026-09-05) — old-issue triage: closed #10 & #11; v0.5.8.2-beta bottom-diagram fix — LIVE
+
+Worked through the backlog of old open issues ("are these even still real?"). Two closed as
+already/now-fixed, one real fix shipped, two features deferred by owner.
+
+### #10 — "Print doesn't always populate diagram" → CLOSED (already fixed)
+Verified by code+history, not touched: the print path already waits for the remote ELSA diagram
+images to finish downloading before firing `window.print()` (fixed **v0.3.5.9-alpha, 2026-06-27**, 4 days
+AFTER the issue was filed; `printJob` lines ~6579-6594, present in shipped `docs/app.js`). Old fixed-delay
+race → intermittent blank diagram ("worked on 2nd try once cached"). Closed with a note; edge case that
+remains: a diagram slower than the 3 s cap could still print blank (not the reported flaky-timing bug).
+
+### The new bay report (cylinder-head tightening sequence) → root cause → v0.5.8.2-beta
+Owner brought a live **Overview - Cylinder Head** diagnostic dump: scan "not grabbing torque sequence for
+bolt 5", no sequence values, no sequence picture. Traced against the REAL dump via a throwaway Node harness
+(`extractSegments` on segments 46-119):
+- **Bolt 5 IS captured** — `Torque: part=[5. Cylinder Head Bolt] text=[Tightening Specifications and
+  Sequence. Refer toFig. "…" .]` + `Replace: [5. Cylinder Head Bolt] Replace after removing`. The heading
+  detector (`/tightening/&&/sequence/&&!/refer to/`) correctly does NOT eat line 82 because "Refer to" is
+  present; `SEQ_REF_RE` then routes it to torque. So the pointer is grabbed.
+- **The sequence VALUES are not text on that page** — they're annotated *on the picture* (a numbered
+  bolt-pattern figure), not a `Step|Bolts|Spec` table. So capturing the **picture** is the whole fix.
+- **Why the picture was intermittent:** it sits at the **very bottom** of a long page; ELSA lazy-loads it
+  on scroll. Scanning from the top fires before it loads → `gatherImages` reads size 0 → skipped. The
+  one-shot rescan only waited on images already `!complete` (in-flight), never on a below-fold image that
+  hadn't *started* loading. Owner confirmed "working now, intermittent" = the load/timing race.
+
+**Fix (image-handling only, `src/helper.js`):** new **`forceEagerImages(doc)`** (called at the top of
+`scheduleImageRescan`) nudges every not-yet-loaded content `<img>` into loading — native `lazy`→`eager`,
+promote a parked `data-src`/`data-lazy-src`/`data-original`/`data-lazy` URL to `src`, call `im.decode()`;
+icon/sprite/logo filenames filtered out. `pendingImages` now also counts a **size-0 img that has a src**
+as pending (not just `!complete`) so the rescan waits for the freshly-nudged bottom figure. Rescan safety
+cap 4s→6s. No parser change, no loader change, zero new network. **Owner confirmed #11 ("transmission
+with different torque outline") is the same concern → CLOSED by this fix too.**
+
+**Verification:** `node --check` clean; the dump harness still shows bolt 5 captured; `tools/parser-test.js`
+= **65 files, 0 drift**; `forceEagerImages` present in built `docs/app.js`. VERSION → **0.5.8.2-beta**,
+`LOADER_VER` stays 2 (no re-drag). PR **#185** (squash `--admin`, merge `fcf180e`), **live-confirmed**
+`version.json` = `v0.5.8.2-beta · 2026-09-05 21:37 UTC`. Also flipped the stale `v0.5.8.1-beta` CHANGELOG
+heading to its release date (2026-09-05).
+
+**Caveat / carry-forward:** browser lazy-load is only fully provable on real ELSA — offline checks prove
+the wiring, not that ELSA's specific lazy mechanism responds to the nudge. **Owner to bay-test** the
+cylinder-head page (Scan from top, no scroll) and confirm the bottom sequence picture now grabs reliably;
+if it still misses, ELSA may defer that image by a mechanism the nudge doesn't trigger → follow-up.
+
+### Deferred this session (owner chose "skip for now")
+- **#117** "[Feature] html log translation" (from *jose*, body: "dtctext gff paperless symptom code") — reads
+  like a **diagnostics / GFF / DTC** workflow, likely **out of scope** for a repair-procedure reader; needs
+  the request decoded before it's actionable.
+- **#122** "[Feature] Keyboard shortcuts" (from owner) — buildable; a scope/design call (small fixed
+  Alt/Ctrl set for Scan/Print/New Vehicle/Minimize vs. a full rebinding UI). Watch for ELSA key clashes.
+- **#140** unchanged (2000–2009 mileage-indexed maintenance parser; blocked on the old PDFs).
+
+**Open issues after this session: #117, #122, #140.**
+
+---
+
 ## Session close (2026-09-05) — v0.5.8-beta: fluids display batch (#180, #181) + v0.5.8.1-beta (#183) — LIVE
 
 Two small in-app reports, both **render/CSS-only in the Fluids & Capacities window** — no parser touched.
