@@ -9,7 +9,27 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.8.2-beta — in progress
+## v0.5.9-beta — in progress
+
+### Added
+- **Keyboard shortcuts.** You can now trigger the main panel actions from the keyboard instead of
+  reaching for the mouse. The defaults use **Alt+Shift**:
+  - **Alt+Shift+S** — Scan page
+  - **Alt+Shift+P** — Print
+  - **Alt+Shift+C** — Copy list
+  - **Alt+Shift+N** — New Vehicle
+  - **Alt+Shift+M** — Minimize / Expand
+  - **Alt+Shift+G** — Settings
+  - **Alt+Shift+F** — Fluids & Capacities
+  - **Alt+Shift+D** — Maintenance due
+- **Change any shortcut to whatever you like.** ⚙ Settings has a new **Keyboard shortcuts** section:
+  click **Change** on a row, press the keys you want (Esc cancels), or clear one with the ✕. There’s a
+  master on/off switch and a **Reset to defaults** button. Shortcuts are ignored while you’re typing in
+  a field, so they never get in the way. Your choices are saved only on that computer. (No re-drag needed.)
+
+---
+
+## v0.5.8.2-beta — 2026-09-05
 
 ### Fixed
 - **Diagram at the very bottom of a long page was captured only sometimes.** On a page like
