@@ -5,7 +5,7 @@ permanent project reference.
 
 ---
 
-## Session close (2026-09-05) — v0.5.8-beta: fluids display batch (#180, #181) — LIVE
+## Session close (2026-09-05) — v0.5.8-beta: fluids display batch (#180, #181) + v0.5.8.1-beta (#183) — LIVE
 
 Two small in-app reports, both **render/CSS-only in the Fluids & Capacities window** — no parser touched.
 **App-only → no re-drag** (`LOADER_VER` stays 2), **no `MS_PARSER_VER` bump / no reparse**; `tools/parser-test.js`
@@ -42,6 +42,20 @@ removed (`TESTONLY` grep = 0). `node --check` + `node tools/build.js` + `node to
   need the real 2000–2009 Maintenance Schedule PDFs** before it can be built/verified.
 - Open issues after this batch: **#140, #122, #117, #11, #10.** Deferred maintenance gaps unchanged (partial
   BEV additional items, gas/coolant-pump belts → verify-in-ELSA, engine-conditional applicability).
+
+### Point release — v0.5.8.1-beta (#183), LIVE same day
+Bay feedback from a **2027 Atlas** (seen in class — not yet on sale). The 2027 "Atlas Family" is ONE fluid
+table whose A/C rows are split by **Sales Code** (DH1 = 650 g, DJ1 = 550 g); `fluidAcHTML` only filtered A/C
+by displacement (a no-op for modern years), so a DJ1 Atlas also saw the DH1 charge. Added **`acSalesFilter`**:
+keep only the A/C rows tagged with the vehicle's Sales Code (+ combined/untagged rows) via the existing
+`platformHit` prefix logic; fall back to show-all when the Sales Code is blank or unmatched (never empties the
+card). A sales-code token requires **both a letter and a digit** (`AC_CODE_RE`) — so the Arteon's date-based
+`Denso (…07/08/2019)` supplier split (08 / 2019 are digit-only) is correctly left unfiltered, and no English
+qualifier ("ALL"/"AWD") is mistaken for a code. Verified against the real 2027 PDF (DJ1 → DJ1 only, DH1 → DH1
+only, blank → all) and scanned every fluid year for false positives (2018 Beetle 5C2/5C8, 2020–2026 Atlas
+CA2/CA3, Arteon date split all behave correctly). Render-only, parser untouched. **App-only → no re-drag,
+no reparse.** PR **#184** (squash `--admin`, merge `5a2f510`), **live-confirmed** `version.json` =
+`v0.5.8.1-beta · 2026-09-05 20:38 UTC`. #183 auto-closed.
 
 ---
 
