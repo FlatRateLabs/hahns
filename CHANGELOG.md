@@ -9,7 +9,18 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.8-beta — in progress
+## v0.5.8.1-beta — in progress
+
+### Fixed
+- **2027 Atlas showed the wrong A/C refrigerant amount.** When two Atlas versions share one table
+  (Sales Code **DH1** vs **DJ1**), the Fluids window was listing *both* — so a DJ1 Atlas also saw the
+  DH1 charge. It now shows only the rows for the scanned vehicle’s Sales Code (plus any that apply to
+  both). If the Sales Code is blank or doesn’t match, it still shows everything so nothing is hidden.
+  (#183.)
+
+---
+
+## v0.5.8-beta — 2026-09-05
 
 A small fluids display batch from bay feedback.
 
