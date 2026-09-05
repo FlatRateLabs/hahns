@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.7-beta · 2026-08-30 05:42 UTC";
+var BUILD = "v0.5.8-beta · 2026-09-05 20:24 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -3787,7 +3787,7 @@ var rows = (m.airConditioning || []).filter(function (r) { return acAppliesTo(r.
 if (!rows.length) rows = m.airConditioning || [];   // never hide the whole card
 var inner = rows.map(function (r) {
 var name = String(r.component || "").replace(/\s*\(R\s?1234yf\)|\s*\(R\s?134a\)/ig, "").trim();
-return '<div class="row"><div class="lab">' + esc(name) +
+return '<div class="row"><div class="rname">' + esc(name) +
 (r.refrigerant ? '<span class="tag">' + esc(r.refrigerant) + "</span>" : "") +
 (r.application && !/^all/i.test(r.application) ? ' <span class="lab">· ' + esc(r.application) + "</span>" : "") +
 '</div><div class="cap">' + fCapHtml(r.fills) + "</div></div>";
@@ -3848,10 +3848,18 @@ matched = pickDrivetrain(matched, veh);
 subs = subs.filter(function (r) { return veh.awd || !/AWD/i.test(r.application); });
 subs = filterVariants(pickDrivetrain(subs, veh), veh);
 var rowHtml = function (r) {
-var qualOnly = /^(only\b|all\b|awd$|fwd$)/i.test(r.application || "");
-var name = qualOnly ? (r.component || r.application) : (r.application || r.component);
-var qual = (qualOnly && r.application) ? ' <span class="lab">· ' + esc(r.application) + "</span>" : "";
-return '<div class="row"><div class="lab">' + esc(name) + qual + "</div>" +
+var app = r.application || "";
+var qualOnly = /^(only\b|all\b|awd$|fwd$)/i.test(app);
+// A bare trans-code application ("0BR", "0CQ / 0CR") is a QUALIFIER, not a
+// name — the COMPONENT ("Rear Final Drive") is the real label. Left alone,
+// "application || component" shows just the code and drops "Rear Final
+// Drive" (issue #180, 2025 Tiguan). Treat it like the "Only AWD" case:
+// component is the name, the code becomes a "· <code>" suffix.
+var codeOnly = !!r.component && /^\(?[0-9][A-Z0-9]{2}(?:\s*\/\s*[0-9][A-Z0-9]{2})*\)?$/i.test(app.trim());
+var asQual = qualOnly || codeOnly;
+var name = asQual ? (r.component || app) : (app || r.component);
+var qual = (asQual && app && r.component) ? ' <span class="lab">· ' + esc(app) + "</span>" : "";
+return '<div class="row"><div class="rname">' + esc(name) + qual + "</div>" +
 '<div class="cap">' + fCapHtml(r.fills) + "</div></div>";
 };
 var inner = matched.map(rowHtml).join("") + subs.map(rowHtml).join("");
@@ -6133,6 +6141,10 @@ var FLUIDS_WIN_CSS =
 ".row:first-child{border-top:0}" +
 ".lab{font-size:12px;color:#5a6b8c;font-weight:600}" +
 ".lab.note{margin-top:6px;display:block}" +
+// the sub-category NAME at the head of a row (A/C component, drivetrain
+// component/transmission) — bold + VW blue so it stands out from the muted
+// fill labels and the "· code" qualifier beside it (issue #181)
+".rname{font-size:13px;font-weight:700;color:#001e50;margin-bottom:1px}" +
 ".cap{font-size:17px;font-weight:700;color:#1c1c1c;margin:2px 0}" +
 ".spec{font-size:12.5px;color:#3a4a63}" +
 ".tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.03em;padding:1px 7px;border-radius:20px;background:#eef1f6;color:#001e50;margin-left:6px;vertical-align:1px}" +
