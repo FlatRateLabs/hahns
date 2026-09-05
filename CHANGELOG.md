@@ -9,7 +9,19 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.8.1-beta — in progress
+## v0.5.8.2-beta — in progress
+
+### Fixed
+- **Diagram at the very bottom of a long page was captured only sometimes.** On a page like
+  *Overview - Cylinder Head*, the tightening-specifications-and-sequence picture sits at the bottom,
+  where ELSA doesn’t load it until you scroll down. If you scanned from the top, the scan could miss
+  it — so it showed up on some scans and not others. The scan now nudges those not-yet-loaded pictures
+  to load and waits for them before finishing, so the bottom diagram is grabbed reliably without having
+  to scroll down first. (No re-drag needed.)
+
+---
+
+## v0.5.8.1-beta — 2026-09-05
 
 ### Fixed
 - **2027 Atlas showed the wrong A/C refrigerant amount.** When two Atlas versions share one table
