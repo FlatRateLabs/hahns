@@ -42,9 +42,10 @@ freed rescan); Settings section renders 8 rows with correct chips; **no console 
 feature before + after the Pages flip. Flipped the stale `v0.5.8.2-beta` CHANGELOG heading to its date.
 
 ### Carry-forward
-- **Bay-check** the shortcuts on a real shop ELSA screen — confirm no clash with ELSA's own Alt+Shift keys
-  (the reason for the layout-independent `e.code` + typing-suppression design). If ELSA grabs one, the tech
-  can rebind it in Settings.
+- **Owner verified the shortcuts work** (off-ELSA) at session end. **Fuller shop bay-test planned for
+  Tuesday (2026-09-08)** — the key thing to confirm on a real ELSA screen is no clash with ELSA's own
+  Alt+Shift keys (the reason for the layout-independent `e.code` + typing-suppression design). If ELSA
+  grabs one, the tech can rebind it in Settings.
 - **Open issues after this session: #122 closed → #140, #10-carryforward bay-test.** Remaining backlog:
   **#140** (2000–2009 mileage-indexed maintenance parser; blocked on the old PDFs). The v0.5.8.2 bottom-
   diagram fix still wants an owner bay-test on the cylinder-head page.
