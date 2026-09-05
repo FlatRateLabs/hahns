@@ -34,6 +34,137 @@
   // before a vehicle is loaded). Cleared once shown — never persisted.
   var vehNotice = "";
 
+  // the panel host element's id (one panel per page). Hoisted so the global
+  // keyboard-shortcut listener can find the live shadow root by id.
+  var PANEL_ID = "vwjb-host-9a3f";
+
+  // ---- keyboard shortcuts (issue #122) -----------------------------------
+  // A global keydown listener maps a key combo to one of the panel's actions and
+  // just CLICKS the matching [data-act] button in the shadow root — so every
+  // shortcut reuses the exact same dispatch logic (confirms, window-opening,
+  // toggles) with zero duplication, and is a safe no-op when that button isn't
+  // present in the current state. Fully rebindable from ⚙ Settings. Bindings are
+  // a local user preference (localStorage, ELSA origin) — zero network, no
+  // re-drag. Combos are stored by e.code ("KeyS"), so they're keyboard-layout
+  // independent and immune to Mac Option composing a special character.
+  var KEYS_KEY = "hahns_keys_v1";
+  // display order + friendly labels for the rebinding menu
+  var KEY_ACTIONS = [
+    { act: "rescan",   label: "Scan page" },
+    { act: "print",    label: "Print" },
+    { act: "copy",     label: "Copy list" },
+    { act: "newjob",   label: "New Vehicle" },
+    { act: "min",      label: "Minimize / Expand" },
+    { act: "settings", label: "Settings" },
+    { act: "fluids",   label: "Fluids & Capacities" },
+    { act: "msdue",    label: "Maintenance due" }
+  ];
+  // out-of-box defaults: Alt+Shift+<letter> (owner-chosen — browsers use
+  // Ctrl/Cmd and ELSA content rarely binds Alt+Shift, so clashes are unlikely).
+  var DEFAULT_KEYS = {
+    rescan: "Alt+Shift+KeyS", print: "Alt+Shift+KeyP", copy: "Alt+Shift+KeyC",
+    newjob: "Alt+Shift+KeyN", min: "Alt+Shift+KeyM", settings: "Alt+Shift+KeyG",
+    fluids: "Alt+Shift+KeyF", msdue: "Alt+Shift+KeyD"
+  };
+  function loadKeys() {
+    var out = { enabled: true, map: {} };
+    try {
+      var raw = lsGet(KEYS_KEY);
+      if (raw) {
+        var o = JSON.parse(raw);
+        if (o && typeof o === "object") {
+          out.enabled = o.enabled !== false;         // default on
+          out.map = (o.map && typeof o.map === "object") ? o.map : {};
+          return out;
+        }
+      }
+    } catch (e) {}
+    // never configured → start from the defaults, enabled
+    var m = {}; for (var k in DEFAULT_KEYS) if (DEFAULT_KEYS.hasOwnProperty(k)) m[k] = DEFAULT_KEYS[k];
+    out.map = m;
+    return out;
+  }
+  function saveKeys(cfg) {
+    try { lsSet(KEYS_KEY, JSON.stringify({ enabled: cfg.enabled !== false, map: cfg.map || {} })); } catch (e) {}
+  }
+  // is this key-event code a bare modifier press (no real key yet)?
+  function isModCode(code) {
+    return code === "ShiftLeft" || code === "ShiftRight" || code === "ControlLeft" ||
+      code === "ControlRight" || code === "AltLeft" || code === "AltRight" ||
+      code === "MetaLeft" || code === "MetaRight";
+  }
+  // canonical combo string from a keydown event, or null for a bare modifier.
+  // Order is fixed (Ctrl+Alt+Shift+Meta+CODE) so building + matching agree.
+  function comboFromEvent(e) {
+    var code = e.code || "";
+    if (!code || isModCode(code)) return null;
+    var parts = [];
+    if (e.ctrlKey) parts.push("Ctrl");
+    if (e.altKey) parts.push("Alt");
+    if (e.shiftKey) parts.push("Shift");
+    if (e.metaKey) parts.push("Meta");
+    parts.push(code);
+    return parts.join("+");
+  }
+  // pretty-print a combo for the menu: "Alt+Shift+KeyS" -> "Alt+Shift+S"
+  function comboLabel(combo) {
+    if (!combo) return "";
+    return combo.split("+").map(function (p) {
+      if (p === "Meta") return "Cmd";
+      if (p.indexOf("Key") === 0) return p.slice(3);
+      if (p.indexOf("Digit") === 0) return p.slice(5);
+      if (p.indexOf("Numpad") === 0) return "Num " + p.slice(6);
+      if (p === "Escape") return "Esc";
+      return p;
+    }).join("+");
+  }
+  // does the keydown originate from a text field (ELSA's or the panel's own edit
+  // inputs, which live in the shadow root and retarget to the host)?
+  function isTypingTarget(e) {
+    function editable(el) {
+      if (!el) return false;
+      var t = (el.tagName || "").toUpperCase();
+      if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT") return true;
+      return !!el.isContentEditable;
+    }
+    if (editable(e.target)) return true;
+    try { if (editable(document.activeElement)) return true; } catch (_) {}
+    try {
+      var host = document.getElementById(PANEL_ID);
+      if (host && host.shadowRoot && editable(host.shadowRoot.activeElement)) return true;
+    } catch (_) {}
+    return false;
+  }
+  // register ONE document-level keydown listener (capture phase, so we see the
+  // key before ELSA) that fires the mapped action. Guarded so repeat run()s don't
+  // stack handlers. Reads the config fresh each keypress so a rebind takes effect
+  // immediately with no re-register.
+  function installKeyShortcuts() {
+    if (window.__hahnsKeyWatch) return;
+    window.__hahnsKeyWatch = true;
+    try {
+      document.addEventListener("keydown", function (e) {
+        if (window.__hahnsKeyCapture) return;      // a rebind is capturing keys
+        var cfg = loadKeys();
+        if (!cfg.enabled) return;
+        if (isTypingTarget(e)) return;             // don't hijack real typing
+        var combo = comboFromEvent(e);
+        if (!combo) return;
+        var map = cfg.map || {}, act = null;
+        for (var k in map) { if (map.hasOwnProperty(k) && map[k] === combo) { act = k; break; } }
+        if (!act) return;
+        var host = document.getElementById(PANEL_ID);
+        if (!host || !host.shadowRoot) return;
+        var btn = host.shadowRoot.querySelector('[data-act="' + act + '"]');
+        if (!btn) return;                          // action not available now → no-op
+        e.preventDefault(); e.stopPropagation();
+        try { btn.click(); } catch (_) {}
+      }, true);
+    } catch (e) {}
+  }
+  // teardown for an in-progress rebind capture (set while a row is listening)
+  var keyCaptureTeardown = null;
+
   // ---- pending-update badge (issue #178) ---------------------------------
   // When the self-updating loader's popup offers a newer version and the tech
   // clicks "Not now", the popup posts {dismissed:true, version:<latest>} back to
@@ -5936,6 +6067,24 @@
     ".setbtns .danger{border-color:#e6b0b0;color:#a32d2d}" +
     ".setbtns .danger:hover{background:#fff5f5}" +
     ".setnote{font-size:11px;color:#7a7a7a;line-height:1.4;margin:10px 0 0;border-top:1px solid #eee;padding-top:8px}" +
+    // keyboard shortcuts (#122)
+    ".keytoggle{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:#001e50;cursor:pointer;margin:2px 0 10px}" +
+    ".keytoggle input{width:15px;height:15px;cursor:pointer}" +
+    ".keylist[data-off]{opacity:.5;pointer-events:none}" +
+    ".keyrow{display:flex;align-items:center;gap:8px;padding:7px 2px;border-top:1px solid #eef1f6}" +
+    ".keyrow:first-child{border-top:none}" +
+    ".keylbl{flex:1 1 auto;font-size:12.5px;color:#2a3242}" +
+    ".keyval{flex:0 0 auto;min-width:96px;text-align:right}" +
+    ".keycombo{font-family:inherit;font-size:11.5px;font-weight:700;color:#001e50;background:#eef1f6;border:1px solid #cfd6e4;border-bottom-width:2px;border-radius:6px;padding:3px 7px;white-space:nowrap}" +
+    ".keynone{font-size:11.5px;color:#9aa3b3;font-style:italic}" +
+    ".keycap{font-size:11.5px;font-weight:700;color:#2fb84d}.keycap i{font-weight:400;color:#7a7a7a;font-size:10.5px}" +
+    ".keyrow.capturing{background:#f2fbf4;border-radius:6px}" +
+    ".keybtns{flex:0 0 auto;display:flex;gap:5px;align-items:center}" +
+    ".keychg{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:600;font-size:11.5px;padding:4px 10px;border-radius:7px;cursor:pointer;border:1px solid #cfd6e4;background:#fff;color:#001e50}" +
+    ".keychg:hover{background:#f3f6fb}" +
+    ".keyclr{appearance:none;-webkit-appearance:none;font-family:inherit;font-size:12px;line-height:1;width:22px;height:24px;border-radius:7px;cursor:pointer;border:1px solid #e6b0b0;background:#fff;color:#a32d2d}" +
+    ".keyclr:hover{background:#fff5f5}" +
+    ".keyhint{font-size:11px;color:#7a7a7a;line-height:1.4;margin:9px 2px 4px}" +
     ".maptbl{width:100%;border-collapse:collapse;margin:2px 0 4px;font-size:12px;table-layout:fixed}" +
     ".maptbl td{border:1px solid #e7e7e7;padding:4px 6px;color:#444;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
     ".maptbl th{padding:0 0 4px;vertical-align:top}" +
@@ -6855,7 +7004,34 @@
     if (!win && root) flash(root, "Please allow pop-ups to send feedback.");
   }
 
+  // the body of the "Keyboard shortcuts" Settings section (#122): a master
+  // enable toggle + one row per action (its current combo, Change, Clear).
+  function keySettingsHTML() {
+    var cfg = loadKeys();
+    var rows = KEY_ACTIONS.map(function (a) {
+      var combo = cfg.map[a.act] || "";
+      var chip = combo
+        ? '<kbd class="keycombo">' + esc(comboLabel(combo)) + "</kbd>"
+        : '<span class="keynone">not set</span>';
+      return '<div class="keyrow" data-keyact="' + a.act + '">' +
+        '<span class="keylbl">' + esc(a.label) + "</span>" +
+        '<span class="keyval">' + chip + "</span>" +
+        '<span class="keybtns">' +
+          '<button class="keychg">Change</button>' +
+          (combo ? '<button class="keyclr" title="Remove this shortcut" aria-label="Remove this shortcut">&#10005;</button>' : "") +
+        "</span>" +
+      "</div>";
+    }).join("");
+    return '<label class="keytoggle"><input type="checkbox" class="keyen"' + (cfg.enabled ? " checked" : "") + "> " +
+        "Enable keyboard shortcuts</label>" +
+      '<div class="keylist"' + (cfg.enabled ? "" : ' data-off="1"') + ">" + rows + "</div>" +
+      '<p class="keyhint">Click <b>Change</b>, then press the keys you want (Esc cancels). Shortcuts are ignored while you’re typing in a field. Defaults use Alt+Shift.</p>' +
+      '<div class="setbtns"><button class="keyreset">Reset to defaults</button></div>';
+  }
+
   function openSettings(host, r, options, root, expand) {
+    // cancel any in-progress key-rebind capture — the overlay is being rebuilt
+    if (keyCaptureTeardown) { try { keyCaptureTeardown(); } catch (e) {} keyCaptureTeardown = null; }
     var ov = root.querySelector(".setc-settings");
     var fresh = !ov;
     // remember which sections are open so an in-place refresh doesn't collapse them
@@ -7023,6 +7199,14 @@
           "</div>" +
         "</div>" +
       "</details>" +
+      // keyboard shortcuts (issue #122) — defaults + a rebinding menu
+      '<details class="setacc" data-sec="keys">' +
+        '<summary>Keyboard shortcuts</summary>' +
+        '<div class="setbody">' +
+          '<p class="setsub">Trigger the main panel actions from the keyboard. Change any shortcut to whatever you like — kept only on this computer.</p>' +
+          keySettingsHTML() +
+        "</div>" +
+      "</details>" +
       '<p class="setnote">Everything here is saved only on this computer (under ELSA) — never uploaded anywhere or sent to GitHub.</p>' +
       "</div>";
 
@@ -7160,6 +7344,68 @@
     if (cex) cex.addEventListener("click", function () { downloadShopConfig(root); });
     var cim = ov.querySelector(".cfgimport");
     if (cim) cim.addEventListener("click", function () { pickImportFile(host, r, options, root); });
+
+    // ---- keyboard shortcuts (issue #122) ----
+    // master enable toggle
+    var keyEn = ov.querySelector(".keyen");
+    if (keyEn) keyEn.addEventListener("change", function () {
+      var cfg = loadKeys(); cfg.enabled = keyEn.checked; saveKeys(cfg); refresh();
+    });
+    // reset all bindings to the built-in defaults
+    var keyRst = ov.querySelector(".keyreset");
+    if (keyRst) keyRst.addEventListener("click", function () {
+      confirmRemove(keyRst, "Reset all shortcuts to defaults?", function () {
+        var m = {}; for (var k in DEFAULT_KEYS) if (DEFAULT_KEYS.hasOwnProperty(k)) m[k] = DEFAULT_KEYS[k];
+        var cfg = loadKeys(); cfg.map = m; saveKeys(cfg); refresh();
+      });
+    });
+    // clear one binding
+    Array.prototype.forEach.call(ov.querySelectorAll(".keyclr"), function (btn) {
+      btn.addEventListener("click", function () {
+        var rowEl = btn.closest ? btn.closest(".keyrow") : null;
+        var act = rowEl ? rowEl.getAttribute("data-keyact") : null;
+        if (!act) return;
+        var cfg = loadKeys(); delete cfg.map[act]; saveKeys(cfg); refresh();
+      });
+    });
+    // rebind one action: capture the next real key combo (Esc cancels). A global
+    // flag suppresses the live shortcut handler while we're listening.
+    Array.prototype.forEach.call(ov.querySelectorAll(".keychg"), function (btn) {
+      btn.addEventListener("click", function () {
+        var rowEl = btn.closest ? btn.closest(".keyrow") : null;
+        var act = rowEl ? rowEl.getAttribute("data-keyact") : null;
+        if (!act || !rowEl) return;
+        // tear down any other capture already running
+        if (keyCaptureTeardown) { try { keyCaptureTeardown(); } catch (e) {} keyCaptureTeardown = null; }
+        var valCell = rowEl.querySelector(".keyval");
+        var prevHTML = valCell ? valCell.innerHTML : "";
+        if (valCell) valCell.innerHTML = '<span class="keycap">Press keys… <i>(Esc to cancel)</i></span>';
+        rowEl.classList.add("capturing");
+        window.__hahnsKeyCapture = true;
+        var onKey = function (e) {
+          e.preventDefault(); e.stopPropagation();
+          if (e.code === "Escape") { done(); if (valCell) valCell.innerHTML = prevHTML; return; }
+          if (isModCode(e.code)) return;                 // wait for a real key
+          var combo = comboFromEvent(e);
+          if (!combo) return;
+          var cfg = loadKeys();
+          // no duplicate combos — if another action already uses it, free that one
+          for (var k in cfg.map) { if (cfg.map.hasOwnProperty(k) && cfg.map[k] === combo && k !== act) delete cfg.map[k]; }
+          cfg.map[act] = combo;
+          saveKeys(cfg);
+          done();
+          refresh();
+        };
+        var done = function () {
+          window.__hahnsKeyCapture = false;
+          try { document.removeEventListener("keydown", onKey, true); } catch (e) {}
+          try { rowEl.classList.remove("capturing"); } catch (e) {}
+          keyCaptureTeardown = null;
+        };
+        keyCaptureTeardown = function () { window.__hahnsKeyCapture = false; try { document.removeEventListener("keydown", onKey, true); } catch (e) {} };
+        try { document.addEventListener("keydown", onKey, true); } catch (e) {}
+      });
+    });
   }
 
   // the column-mapper overlay — the tech tags which CSV column is which. Honors
@@ -7297,6 +7543,7 @@
     // and make sure that listener is registered (once) — issue #178.
     lastRenderCtx = { host: host, r: r, options: options };
     watchUpdates();
+    if (!options.embed) installKeyShortcuts();   // global keyboard shortcuts (#122) — once
     // remember the scroll position so a rebuild (add/delete/edit/scan) doesn't
     // snap the list back to the top
     var prevBody = root.querySelector(".body");
@@ -7721,7 +7968,7 @@
    * ------------------------------------------------------------------ */
 
   function run() {
-    var ID = "vwjb-host-9a3f";
+    var ID = PANEL_ID;
     var existing = document.getElementById(ID);
     if (existing) existing.remove();
 
@@ -7839,6 +8086,9 @@
     emptyResults: emptyResults, mergeInto: mergeInto, loadJob: loadJob,
     saveJob: saveJob, clearJob: clearJob, extractVehicle: extractVehicle,
     isVehicleSummaryPage: isVehicleSummaryPage,
+    // keyboard shortcuts (#122), exposed for dev harnesses
+    loadKeys: loadKeys, saveKeys: saveKeys, comboFromEvent: comboFromEvent,
+    comboLabel: comboLabel, DEFAULT_KEYS: DEFAULT_KEYS, KEY_ACTIONS: KEY_ACTIONS,
     // fluid-table pipeline, exposed so new-year PDFs can be sanity-checked
     // from a dev harness (PDF bytes → layout text → parsed models)
     fluidsFromPdf: fluidsFromPdf, pdfTextLines: pdfTextLines, pdfPages: pdfPages, parseFluidModels: parseFluidModels,
