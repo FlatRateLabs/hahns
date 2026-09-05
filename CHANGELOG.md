@@ -9,7 +9,15 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.9-beta — in progress
+## v0.5.9.1-beta — in progress
+
+### Fixed
+- **Keyboard shortcuts: the “Reset to defaults” confirm button said “Remove.”** It now says **Reset**.
+  (No re-drag needed.)
+
+---
+
+## v0.5.9-beta — 2026-09-05
 
 ### Added
 - **Keyboard shortcuts.** You can now trigger the main panel actions from the keyboard instead of

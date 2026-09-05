@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.9-beta · 2026-09-05 23:26 UTC";
+var BUILD = "v0.5.9.1-beta · 2026-09-05 23:37 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -6902,11 +6902,11 @@ var fb = ov.querySelector(".fbbtn");
 if (fb) fb.addEventListener("click", function () { close(); openReport(root); });
 // inline "Remove? [Remove] [Cancel]" so a stray click never wipes a list (#130).
 // Swaps the clicked control for a confirm bar; Cancel rebuilds Settings in place.
-function confirmRemove(btn, msg, onYes) {
+function confirmRemove(btn, msg, onYes, yesLabel) {
 var cf = document.createElement("span");
 cf.className = "confirm";
 cf.innerHTML = '<span class="ctxt">' + esc(msg) + "</span>" +
-'<button class="cyes">Remove</button><button class="cno">Cancel</button>';
+'<button class="cyes">' + esc(yesLabel || "Remove") + '</button><button class="cno">Cancel</button>';
 btn.replaceWith(cf);
 cf.querySelector(".cyes").addEventListener("click", onYes);
 cf.querySelector(".cno").addEventListener("click", refresh);
@@ -7016,7 +7016,7 @@ if (keyRst) keyRst.addEventListener("click", function () {
 confirmRemove(keyRst, "Reset all shortcuts to defaults?", function () {
 var m = {}; for (var k in DEFAULT_KEYS) if (DEFAULT_KEYS.hasOwnProperty(k)) m[k] = DEFAULT_KEYS[k];
 var cfg = loadKeys(); cfg.map = m; saveKeys(cfg); refresh();
-});
+}, "Reset");
 });
 // clear one binding
 Array.prototype.forEach.call(ov.querySelectorAll(".keyclr"), function (btn) {
