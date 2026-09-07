@@ -5,6 +5,82 @@ permanent project reference.
 
 ---
 
+## Session close (2026-09-07) — v0.5.10-beta: 2000–2009 maintenance schedules (#140) — LIVE
+
+The deferred hard one. **Issue #140** — maintenance schedules now cover **2000–2009** (was 2010–2027;
+older PDFs were politely *gated*). They use a wholly different **mileage-indexed** layout, so this is a
+dedicated legacy parser + matcher + display path, **branched entirely off** the modern code (modern path
+**byte-identical** — `parser-test.js` 0 drift on every 2010–2027 year throughout). **App-only → no re-drag**
+(`LOADER_VER` stays 2); `MS_PARSER_VER` **1.3.0 → 1.4.0** (stored maintenance PDFs auto-reparse).
+VERSION → **0.5.10-beta**. **Blocker cleared:** the 10 source PDFs were already in `~/Downloads`
+(`20xx VW Service Maintenance Schedule[s].pdf`) — last session's "blocked on PDFs" note was stale.
+
+### The format (2000–2009) — why it needed its own everything
+Flat lists under milestone headers (`1.1.N Service at/every N miles`), **NO** Minor/Standard/Extended tiers,
+**NO** Sales/trans-code columns. Applicability is **plain-English "(… only)"** on each item (engine size,
+TDI, model name, region). Two sub-eras: 2000–06 = 5K-mile steps, combined "USA and Canada" (2006 splits);
+2007–09 = 10K steps, split **USA (miles) / Canada (kilometers)** + a **Time-Dependent** section; **2009**
+adds a **Routan-only** schedule with an un-numbered `Every N miles (N km)` header form.
+
+### What shipped (all in `src/helper.js`)
+- **`MS.parseMaintenanceOld(pages)`** (in the MS closure) — flat text via `pdfPages` lines; splits by
+  top-level region section (`regionOfTitle` → usa/canada/routan, `both` for combined), reads each milestone
+  (`MILE` for `1.N.N Service…`, `MILE2` for the bare Routan `Every N miles (N km)`) into `{text, applic}`
+  items + the Time-Dependent section. **Wrap-join** (`joinWrapItems`): continuation = lowercase/`(`-start
+  OR a digit-start that CLOSES an open paren (so `…less than` / `40,000 miles in 4 years)` joins) — the
+  close-requirement stops a source **`((` typo** from cascading and swallowing a whole milestone (real bug,
+  caught in the browser render). **`LEGAL`-block skip** (copyright footer) until the next header, so it can't
+  leak as an item nor truncate a section. Output `{legacy:true, scheds:[{region,both,milestones:[{mi,km,
+  recurring,label,items}],time}]}`.
+- **Owner decision (AskUserQuestion): "show all, tag qualifiers; hide only when highly confident."**
+  `msLegacyItemApplies`/`msLegacyEvalClause`/`msLegacyMatchAlt`: recognise distinct nameplates (New Beetle/
+  Touareg/Phaeton/Routan/Tiguan/Passat/Eos/CC — safe to exclude on; Golf/GTI/Rabbit family = generous-match
+  only, never hide), displacement (`veh.liters` ±0.15 — a **mismatch always hides**; a match with an
+  unconfirmable fuel is ambiguous→show, never falsely claimed), fuel (`fuelOf`). `except`-clauses → always
+  shown, never hidden (un-parseable scope). `(USA/Canada only)` → `msRegion`. Matched→"this vehicle", else
+  →"all models".
+- **`msServicesDueLegacy`** (branched in `msDueForVehicle` on `yd.schedules.legacy`, BEFORE the ice/bev pick):
+  `msPickLegacySched` (Routan→own; combined `both` serves either market; else the region's), round the
+  odometer **in the vehicle's own unit** to the NEAREST milestone (irregular steps), split items. Reuses
+  `due.all`/`due.model` so `msBar`/`quickRow` amber trigger is unchanged.
+- **`msWinBodyLegacy`** (branched at top of `msWinBody`) — hero = the milestone label + "this vehicle" /
+  "all models" / "Time-based items (by age)" cards (no tiers, no Replace/Additional split). **`msSvcLabel`**
+  gives the bar/hero label from `due.label` for legacy (avoids the km mis-convert `msKLabel` would do).
+- **`MS_YEAR_MIN` 2010 → 2000** (Settings counter "/ 28"); `parser-test.js` `<2010` filter dropped; exposed
+  `parseMaintenanceOld`/`msServicesDueLegacy`/`msLegacyItemApplies` on `window.VWJB`.
+
+### Verification
+All 10 PDFs parse (structure summary hand-checked: scheds/milestones/items/time counts sane, Routan fixed
+from 0→17 milestones once `MILE2` added). Sample vehicles driven through `msServicesDueLegacy` against the
+real PDFs (Passat 1.8T, Jetta TDI, New Beetle 2.0, Touareg V8, 2007 Canada Rabbit/Touareg, 2009 Routan,
+2009 Canada Jetta) — hide decisions all correct (big-engine-only / New-Beetle-only / Phaeton-only / wrong-
+region items hidden; `except Touareg` no longer wrongly claims a Touareg). **Real-browser** round-trip on
+built `docs/app.js` (fetch PDF → `msFromPdf` → `msSaveFiles` → IDB → hydrate → `buildMsWindowHTML`): window
+renders "Service at 40,000 miles", correct cards, **no legal leak, no runaway merge, no `3 06.2023` junk**,
+only the known mascot-PNG 404. `node --check` + `node tools/build.js` + `parser-test.js` **74 files, 0 drift**
+(re-blessed twice as the parser was refined; modern years never drifted).
+
+### Known gap (documented, deferred)
+The **2009 Canada** Time-Dependent brake-fluid row is a 2-column sub-table the flat reader interleaves —
+**1 item in 1 of 28 year/region sections**, word-jumbled but still shown; every other time section is clean.
+A runs-based reader for one 2009 Canada row wasn't worth it. (Also unchanged: for most 2000–2009 gas cars
+`veh.fuel` is unknown, so TDI-only items show in "all models" tagged — safe per the owner rule.)
+
+### Deploy
+PR off `main` (branch-protected → `gh pr merge --admin`). App-only, no re-drag; stored PDFs auto-reparse via
+`MS_PARSER_VER` 1.4.0. #140 auto-closes. Flipped the stale `v0.5.9.2-beta` CHANGELOG heading to its date.
+Live-verify `version.json` = v0.5.10-beta after merge.
+
+### Carry-forward
+- **Open issues after this: #122 bay-test (Tue 2026-09-08 — keyboard shortcuts vs ELSA), v0.5.8.2 bottom-
+  diagram bay-test.** #140 was the last big deferred backlog item.
+- A **real-ELSA bay check on an actual 2000–2009 vehicle** is still worth doing (the parser is verified
+  against the PDFs and the browser, but not yet against a live old-car Vehicle Summary scan).
+- Deferred maintenance gaps unchanged: partial BEV additional items, gas/coolant-pump belts (verify-in-ELSA),
+  engine-conditional applicability; plus the new 2009-Canada time-row interleave above.
+
+---
+
 ## Session close (2026-09-05, later) — v0.5.9-beta: keyboard shortcuts + rebinding menu (#122) — LIVE
 
 Owner closed #117 (out of scope) and asked to build **#122**. Shipped configurable keyboard shortcuts

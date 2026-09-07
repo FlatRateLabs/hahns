@@ -9,6 +9,28 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.5.10-beta — 2026-09-07
+
+### Added
+- **Maintenance schedules now cover model years 2000–2009.** The older schedules use a completely
+  different layout than 2010-onward — a mileage-indexed list (“Service at 10,000 miles”, “Service at
+  40,000 miles”, …) with no Minor/Standard/Extended tiers and no Sales-code columns. Hahns used to
+  politely decline those PDFs; now it reads them. Load the year’s PDF in ⚙ Settings exactly as before,
+  enter the mileage, and the maintenance window shows the items VW lists at that service. So the
+  Settings counter now reads **“/ 28”** (2000–2027).
+- Handles all the old-format quirks: combined “USA and Canada” schedules (2000–2005), split USA
+  (miles) / Canada (kilometers) schedules (2006–2009), the 2009 **Routan-only** schedule, and the
+  age-based “Time-Dependent Maintenance Items”.
+
+### Changed
+- For 2000–2009, each service item shows VW’s own plain-English note right on it — e.g. “(1.8L Turbo
+  only)”, “(TDI Engines only)”, “(New Beetle only)”. Items that clearly match your vehicle are grouped
+  under **“this vehicle”**; the rest are under **“all models”** so you can still see them. Hahns only
+  hides an item when it’s sure it doesn’t apply (a clearly different engine size, the wrong fuel, or a
+  named model your car isn’t) — when in doubt, it shows the item with its note so you decide.
+
+---
+
 ## v0.5.9.2-beta — 2026-09-05
 
 ### Changed
