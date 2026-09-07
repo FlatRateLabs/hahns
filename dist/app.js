@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.9.2-beta · 2026-09-05 23:45 UTC";
+var BUILD = "v0.5.10-beta · 2026-09-07 19:13 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -2546,11 +2546,11 @@ return idbGet("sx_meta", key).then(function (m) { m = m || { key: key }; m.statu
 .then(function () { return idbGetAll("sx_meta"); }).then(function (l) { sxMetaList = l || []; }).catch(function () {});
 });
 }
-var MS_PARSER_VER = "1.3.0";        // bump → stored Maintenance PDFs auto-re-parse (1.3.0: DIESEL toothed-belt table now segmented by the PDF's own cell borders so each interval keeps its own wrapped applicability clause — a 2014 diesel Jetta resolves to 130K, issue #157; 1.2.0: BEV Additional Items now parse for all EV years — footer-bound the band + 2-column table support, issue #141; 1.1.0: 2022–2027 layout — tier-bleed fix, footnote filter, flexible Additional section #, 2000–2009 gate)
-// span for the "N / M loaded" counter. 2010–2027 = 18 (2000–2009 use the old
-// mileage-indexed layout that isn't supported yet — see msFromPdf gate; when it
-// lands, drop MS_YEAR_MIN to 2000 → 28).
-var MS_YEAR_MIN = 2010, MS_YEAR_MAX = 2027;
+var MS_PARSER_VER = "1.4.0";        // bump → stored Maintenance PDFs auto-re-parse (1.4.0: 2000–2009 mileage-indexed layout now READ by a dedicated legacy parser instead of gated — issue #140; 1.3.0: DIESEL toothed-belt table now segmented by the PDF's own cell borders so each interval keeps its own wrapped applicability clause — a 2014 diesel Jetta resolves to 130K, issue #157; 1.2.0: BEV Additional Items now parse for all EV years — footer-bound the band + 2-column table support, issue #141; 1.1.0: 2022–2027 layout — tier-bleed fix, footnote filter, flexible Additional section #, 2000–2009 gate)
+// span for the "N / M loaded" counter. 2000–2027 = 28 (2000–2009 use the old
+// mileage-indexed layout, read by MS.parseMaintenanceOld since v0.5.10; 2010–2027
+// use the tiered layout).
+var MS_YEAR_MIN = 2000, MS_YEAR_MAX = 2027;
 var MS_KEY = "vwjb_ms_v1";          // localStorage fallback (IDB down) — projection only, no blobs
 var msData = null;    // sync projection: null=unread, false=none, obj={byYear,files,years,count,updated}
 var msMetaList = [];  // sync mirror of ms_meta (info panel + reconcile)
@@ -2893,7 +2893,120 @@ ice: parseSchedule(iceStart, bevStart >= 0 ? bevStart : lines.length),
 bev: bevStart >= 0 ? parseSchedule(bevStart, lines.length) : null
 };
 }
-return { parseMaintenance: parseMaintenance, additionalFromPages: additionalFromPages };
+// ---- 2000–2009 mileage-indexed layout (issue #140) ---------------------
+// These older schedules have NO Minor/Standard/Extended tiers and NO per-vehicle
+// Sales/trans-code columns. Instead they are flat lists under milestone headers:
+//   1.1  USA [and Canada] Maintenance Schedule        (top-level region section)
+//     1.1.1  Service every 5,000 miles                (a recurring oil interval)
+//       Labor Item
+//         Change engine oil and oil filter (1.8L Turbo, 2.8L only)   <- inline applic
+//     1.1.2  Service at 10,000 miles                  (a milestone service)
+//     ...
+//     1.1.N  Time-Dependent Maintenance Items         (age-based)
+//   1.2  Canada Maintenance Schedule (km)             (split years 2007–2009)
+//   1.3  Maintenance Schedule (Routan Only)           (2009)
+// Applicability is plain-English text in parentheses on each item, so we KEEP the
+// full item text (the qualifier is shown to the tech) and only extract the parens
+// for conservative matching downstream (see legacyItemApplies).
+function regionOfTitle(t) {
+t = String(t || "");
+if (/routan\s+only/i.test(t)) return "routan";
+if (/canada/i.test(t) && !/usa/i.test(t)) return "canada";
+return "usa";
+}
+function oldJunk(t) {
+t = tidy(t);
+if (!t) return true;
+if (/^\d{1,3}$/.test(t)) return true;                    // page number
+if (/^©?\s*\d{1,2}\.20\d\d\b/.test(t)) return true;      // footer date
+if (/^\d{1,3}\s+©?\s*\d{1,2}\.20\d\d$/.test(t)) return true;  // "3 06.2023" / "17 06.2024" (page# + footer date on one line at a page break)
+if (/^©?\s*\d{1,2}\.20\d\d\s+\d{1,3}$/.test(t)) return true;  // "06.2023 3" (reversed)
+if (/^Labor Item$/i.test(t)) return true;
+if (/^⇒/.test(t)) return true;                           // table-of-contents arrow
+if (/^\d+\s+Maintenance Schedules?$/i.test(t)) return true;  // chapter title "1  Maintenance Schedules"
+if (/^\d{4}\s+VW\s+Service$/i.test(t)) return true;      // "2005 VW Service"
+if (/^(USA|CAN)[0-9A-Z].*-\s*\d/i.test(t)) return true;  // "USA5R5041.21 - 06.06.2022"
+return false;
+}
+// join wrapped item lines: a continuation starts lowercase or with "(" (e.g.
+// "valve if necessary (where applicable)", "and electrical systems").
+function joinWrapItems(raw) {
+var out = [];
+raw.forEach(function (t) {
+var prev = out.length ? out[out.length - 1] : "";
+// a continuation starts lowercase / "(", OR it FINISHES a parenthetical the
+// previous line left open (e.g. "…driven less than" / "40,000 miles in 4 years)"
+// — the tail starts with a digit). Requiring the tail to CLOSE a paren stops a
+// source typo like "Spark Plugs: Replace ((1.8L … only)" (a stray extra "(") from
+// cascading and swallowing every following item into one runaway line.
+var openPrev = prev && (prev.split("(").length - 1) > (prev.split(")").length - 1);
+var closesHere = (t.split(")").length - 1) > (t.split("(").length - 1);
+if (out.length && (/^[a-z(]/.test(t) || (openPrev && closesHere))) out[out.length - 1] += " " + t;
+else out.push(t);
+});
+return out.map(function (t) {
+var text = finalize(t);
+if (!text || /^Labor Item$/i.test(text)) return null;
+var applic = (text.match(/\(([^)]*)\)/g) || []).join(" ");
+return { text: text, applic: applic };
+}).filter(Boolean);
+}
+function parseMaintenanceOld(pages) {
+var lines = [];
+pages.forEach(function (p) { (p.lines || []).forEach(function (l) { lines.push(l); }); });
+var TOP  = /^\s*1\.(\d+)\s+(.*Maintenance Schedule.*)$/;
+var MILE = /^\s*1\.\d+\.\d+\s+Service\s+(every|at)\s+([\d,]+)\s*(miles|kilometers|km)\b/i;
+// the 2009 Routan schedule numbers nothing: "Every 6,000 miles or 1 Year after
+// Last Service (10,000 km)" — a bare Every/At + N miles [ (N km) ] header, no
+// "Labor Item" line. Anchored at line start so item text ("Change oil…") can't hit it.
+var MILE2 = /^\s*(Every|At)\s+([\d,]+)\s*miles\b.*?(?:\(\s*([\d,]+)\s*km\s*\))?\s*$/i;
+var TIME = /^\s*1\.\d+\.\d+\s+Time[-\s]?Dependent\s+Maintenance\s+Items/i;
+var SUB  = /^\s*1\.\d+\.\d+\s+/;
+var num = function (s) { return parseInt(String(s).replace(/,/g, ""), 10); };
+// the multi-line copyright/legal notice at the end of each schedule (and, on some
+// years, repeated as a page footer). Once seen, skip everything until the NEXT real
+// header resumes collection — so it can't leak in as an item nor truncate content.
+var LEGAL = /^(All rights reserved|Information contained in this document|Volkswagen Group of America|No part of this document|subject to the (?:copyright|intellectual)|reproduced, stored)/i;
+var scheds = [], cur = null, sub = null, pending = [], skipLegal = false;
+function flush() {
+if (cur && sub) {
+var items = joinWrapItems(pending);
+if (sub.kind === "time") cur.time = cur.time.concat(items);
+else cur.milestones.push({ mi: sub.mi, km: sub.km, recurring: sub.recurring, label: sub.label, items: items });
+}
+pending = [];
+}
+lines.forEach(function (raw) {
+var t = tidy(raw), mTop, mMile, mM2;
+if (!MILE.test(raw) && !MILE2.test(raw) && !TIME.test(raw) && (mTop = raw.match(TOP))) {
+flush(); sub = null; skipLegal = false;
+var title = tidy(mTop[2]);
+cur = { region: regionOfTitle(title), both: /usa\s+and\s+canada/i.test(title), title: title, milestones: [], time: [] };
+scheds.push(cur);
+return;
+}
+if ((mMile = raw.match(MILE))) {
+flush(); skipLegal = false;
+var mi = /mile/i.test(mMile[3]) ? num(mMile[2]) : null, km = /mile/i.test(mMile[3]) ? null : num(mMile[2]);
+sub = { kind: "mile", recurring: /every/i.test(mMile[1]), mi: mi, km: km, label: t.replace(/^1\.\d+\.\d+\s+/, "") };
+return;
+}
+if (cur && (mM2 = raw.match(MILE2))) {
+flush(); skipLegal = false;
+sub = { kind: "mile", recurring: /every/i.test(mM2[1]), mi: num(mM2[2]), km: mM2[3] ? num(mM2[3]) : null, label: t };
+return;
+}
+if (TIME.test(raw)) { flush(); skipLegal = false; sub = { kind: "time" }; return; }
+if (SUB.test(raw)) { flush(); sub = null; skipLegal = false; return; }   // some other subsection → stop collecting
+if (LEGAL.test(t)) { skipLegal = true; return; }   // copyright block → skip to next header
+if (skipLegal || oldJunk(raw)) return;
+if (cur && sub) pending.push(t);
+});
+flush();
+return { legacy: true, scheds: scheds };
+}
+return { parseMaintenance: parseMaintenance, additionalFromPages: additionalFromPages,
+parseMaintenanceOld: parseMaintenanceOld };
 })();
 // year from the file name (e.g. "2019 VW Maintenance Schedules.pdf"), fallback: first 20xx in the text
 function msYearOf(name, text) {
@@ -2908,9 +3021,18 @@ return pdfPages(buf).then(function (pages) {
 var text = pages.map(function (p) { return p.lines.join("\n"); }).join("\n");
 // 2000–2009 use a wholly different mileage-indexed layout ("Service at 10,000
 // miles", "Service every 15,000 miles", …) with no Minor/Standard/Extended
-// tiers — not supported yet. Refuse cleanly rather than emit wrong data.
-if (!/1\.1\s+Maintenance Schedule/.test(text) && /Service\s+(?:at|every)\s+[\d,]+\s*miles/i.test(text))
-throw new Error("this is a 2000–2009 (mileage-indexed) schedule — Hahns doesn’t read that older format yet");
+// tiers — route it to the dedicated legacy parser (issue #140). The modern
+// schedules put "1.1  Maintenance Schedule" (no region word between), so that
+// string is the clean discriminator; the old ones say "1.1  USA … Schedule".
+if (!/1\.1\s+Maintenance Schedule/.test(text) &&
+/Service\s+(?:at|every)\s+[\d,]+\s*(?:miles|kilometers|km)/i.test(text) && /Maintenance Schedule/i.test(text)) {
+var oldS = MS.parseMaintenanceOld(pages);
+if (!oldS.scheds.length || !oldS.scheds.some(function (s) { return s.milestones.length; }))
+throw new Error("couldn’t read this older maintenance schedule — is it a VW Maintenance Schedules PDF?");
+var yOld = msYearOf(name, text);
+if (!yOld) throw new Error("couldn’t tell the model year — put it in the file name (e.g. “2005 ….pdf”)");
+return { fileName: name, year: yOld, schedules: oldS };
+}
 var r = MS.parseMaintenance(text);
 if (!r.ice || (!r.ice.minor.length && !r.ice.standard.length))
 throw new Error("no maintenance schedule found — is this a VW Maintenance Schedules PDF?");
@@ -3189,6 +3311,132 @@ function msDisp(schedMi, reg) { return reg === "canada" ? Math.round((schedMi ||
 // milestone label: "90K km" for Canada; "80K" for USA (unchanged from before, so the
 // long-standing USA wording — "Possible 80K service due" — stays byte-identical).
 function msKLabel(schedMi, reg) { return (msDisp(schedMi, reg) / 1000) + "K" + (reg === "canada" ? " km" : ""); }
+// the mileage label to show in the amber bar / hero. Legacy (2000–2009) schedules
+// already carry the milestone value in the vehicle's own unit, so use it verbatim;
+// modern ones store schedule-miles and convert for Canada via msKLabel.
+function msSvcLabel(due) {
+if (!due) return "";
+if (due.legacy) return due.label || "";
+return due.rounded ? msKLabel(due.rounded, due.reg) : "";
+}
+// ---- 2000–2009 mileage-indexed matching (issue #140) ----------------------
+// Owner rule: SHOW every item at the milestone and let the tech read the inline
+// "(… only)" qualifier; hide an item ONLY when we're highly confident it doesn't
+// apply (wrong named nameplate, wrong fuel, or a clean displacement that's off).
+// Any ambiguity → show. Region (USA/Canada) is decided by which schedule we pick.
+function msLegacyMatchAlt(alt, veh) {
+var up = String(alt || "").trim().toUpperCase();
+if (!up) return { understood: true, matched: false };
+var vm = (veh.model || "").toUpperCase();
+// model nameplates. "matched" is generous (Golf/GTI/Rabbit/R32 are one family);
+// "understood" (safe to EXCLUDE on) is limited to nameplates that don't alias.
+var NP = ["NEW BEETLE", "TOUAREG", "PHAETON", "ROUTAN", "TIGUAN", "PASSAT", "EOS", "CC", "GTI", "GOLF", "RABBIT", "R32", "JETTA", "BEETLE", "CABRIO"];
+var hit = null, i;
+for (i = 0; i < NP.length; i++) { if (up.indexOf(NP[i]) >= 0) { hit = NP[i]; break; } }
+if (hit) {
+var matched = vm.indexOf(hit) >= 0;
+if (!matched && /GOLF|GTI|RABBIT|R32/.test(hit) && /GOLF|GTI|RABBIT|R32/.test(vm)) matched = true;
+// only these nameplates are distinct enough to safely hide on a non-match
+var understood = /^(NEW BEETLE|TOUAREG|PHAETON|ROUTAN|TIGUAN|PASSAT|EOS|CC)$/.test(hit) && !!vm;
+return { understood: understood, matched: matched };
+}
+// displacement, e.g. "1.8L Turbo", "2.8L", "6.0 L W12", "5.0L TDI", "2,8L"
+var dm = up.match(/(\d+)[.,](\d+)\s*L\b/);
+if (dm) {
+if (!veh.liters) return { understood: false, matched: false };
+var lit = parseFloat(dm[1] + "." + dm[2]);
+if (Math.abs(veh.liters - lit) > 0.15) return { understood: true, matched: false };  // wrong size → safely excludable
+var f = fuelOf(up);                          // the alt may pin a fuel ("2.0L TDI")
+if (f) {
+if (!veh.fuel) return { understood: false, matched: false };   // right size, fuel unknown → ambiguous → show (don't claim, don't hide)
+if (f !== veh.fuel) return { understood: true, matched: false };  // 2.0 TDI ≠ 2.0 gas → excludable
+}
+return { understood: true, matched: true };
+}
+// bare fuel restriction, e.g. "TDI", "diesel"
+var f2 = fuelOf(up);
+if (f2) { if (!veh.fuel) return { understood: false, matched: false }; return { understood: true, matched: f2 === veh.fuel }; }
+return { understood: false, matched: false };
+}
+function msLegacyEvalClause(clause, veh) {
+var inner = String(clause || "").replace(/[()]/g, "").trim();
+if (/^\s*(usa|canada)\s+only\s*$/i.test(inner))
+return { understood: true, matched: (/canada/i.test(inner) ? "canada" : "usa") === msRegion(veh) };
+// "…except Touareg and V8…" — the except-scope isn't reliably parseable (it can be
+// mixed with the INCLUDED engines: "All 3.2L except Touareg and V8, 4.0 L W8 only"),
+// so never hide or claim-for-this-vehicle on such a clause. Show it in the general
+// list with its full text intact so the tech reads the exception themselves.
+if (/\bexcept\b/i.test(inner)) return { understood: false, matched: false };
+var body = inner.replace(/\bonly\b/ig, "").replace(/\bengines?\b/ig, "");
+var alts = body.split(/,|\band\b/i).map(function (s) { return s.trim(); }).filter(Boolean);
+if (!alts.length) return { understood: false, matched: false };
+var understoodAll = true, matched = false;
+alts.forEach(function (a) {
+var r = msLegacyMatchAlt(a, veh);
+if (!r.understood) understoodAll = false;
+if (r.matched) matched = true;
+});
+return { understood: understoodAll, matched: matched };
+}
+// {show, specific}. specific = affirmatively matched to THIS vehicle (→ "this vehicle"
+// card). Restrictive-but-ambiguous → shown in the general list, qualifier still visible.
+function msLegacyItemApplies(text, veh) {
+var parens = String(text || "").match(/\(([^)]+)\)/g) || [];
+var restrictive = parens.filter(function (p) { return /\bonly\b/i.test(p); });
+if (!restrictive.length) return { show: true, specific: false };
+var anyMatched = false, allUnderstoodUnmatched = true;
+restrictive.forEach(function (c) {
+var r = msLegacyEvalClause(c, veh);
+if (r.matched) anyMatched = true;
+if (!(r.understood && !r.matched)) allUnderstoodUnmatched = false;
+});
+if (anyMatched) return { show: true, specific: true };
+if (allUnderstoodUnmatched) return { show: false, specific: false };
+return { show: true, specific: false };
+}
+function msLegacySplit(items, veh) {
+var out = [];
+(items || []).forEach(function (it) {
+var r = msLegacyItemApplies(it.text, veh);
+if (!r.show) return;
+out.push({ item: it.text, applic: it.applic || "", specific: r.specific });
+});
+return out;
+}
+// pick the schedule for this vehicle: Routan → its own; else the region's; a combined
+// "USA and Canada" schedule (2000–2005) serves both markets.
+function msPickLegacySched(scheds, veh, reg) {
+scheds = scheds || []; if (!scheds.length) return null;
+var i, model = (veh.model || "").toUpperCase();
+if (/ROUTAN/.test(model)) { for (i = 0; i < scheds.length; i++) if (scheds[i].region === "routan") return scheds[i]; }
+for (i = 0; i < scheds.length; i++) if (scheds[i].region === reg && scheds[i].region !== "routan") return scheds[i];
+for (i = 0; i < scheds.length; i++) if (scheds[i].both) return scheds[i];
+for (i = 0; i < scheds.length; i++) if (scheds[i].region !== "routan") return scheds[i];
+return scheds[0];
+}
+function msServicesDueLegacy(schedules, veh, mileageRaw) {
+var reg = msRegion(veh), unit = reg === "canada" ? "km" : "mi";
+var sc = msPickLegacySched(schedules.scheds, veh, reg);
+var out = { legacy: true, levels: [], replaceItems: [], all: [], model: [], verify: [], time: [],
+rounded: 0, milestone: "", label: "", reg: reg, unit: unit };
+if (!sc) return out;
+out.time = msLegacySplit(sc.time, veh);
+var raw = mileageRaw || 0;
+if (raw <= 0 || !sc.milestones.length) return out;
+// match the entered odometer against the milestone value in the SAME unit; when a
+// milestone only carries the other unit, convert at VW's ~1.6 print ratio.
+function valOf(m) {
+if (unit === "km") return m.km != null ? m.km : (m.mi != null ? Math.round(m.mi * 1.6) : null);
+return m.mi != null ? m.mi : (m.km != null ? Math.round(m.km / 1.6) : null);
+}
+var best = null, bd = Infinity;
+sc.milestones.forEach(function (m) { var v = valOf(m); if (v == null) return; var d = Math.abs(v - raw); if (d < bd) { bd = d; best = m; } });
+if (!best) return out;
+var bv = valOf(best);
+out.rounded = bv; out.milestone = best.label; out.label = Math.round(bv / 1000) + "K " + unit;
+msLegacySplit(best.items, veh).forEach(function (e) { (e.specific ? out.model : out.all).push(e); });
+return out;
+}
 // Which market(s) an interval clause is FOR. The schedule tags region-specific
 // clauses as "… -USA … -Canada" (combined) or, when the parser splits them, one
 // "…-USA" variant + one "…-Canada" variant; some (2026/2027 BEV heat-pump) use
@@ -3514,6 +3762,14 @@ function msDueForVehicle(r, mileage, delivOverride) {
 var st = loadMs(); if (!(st && st.byYear)) return null;
 var veh = fluidVeh(r); if (!veh.year) return null;
 var yd = st.byYear[veh.year]; if (!yd || !yd.schedules) return null;
+// 2000–2009 mileage-indexed schedules (issue #140) take a separate path: match the
+// odometer (in the vehicle's own unit) against the milestone list, no tiers/codes.
+if (yd.schedules.legacy) {
+var dueL = msServicesDueLegacy(yd.schedules, veh, mileage || 0);
+dueL.veh = veh; dueL.year = veh.year; dueL.isEV = false;
+dueL.mileage = mileage || 0; dueL.file = yd.file || "";
+return dueL;
+}
 var isEV = msIsEV(veh);
 var sched = isEV && yd.schedules.bev ? yd.schedules.bev : yd.schedules.ice;
 if (!sched) return null;
@@ -4161,9 +4417,36 @@ return '<div class="msctrl">' +
 // the hero + three item cards for a computed `due` — re-rendered in place whenever
 // the tech changes a dropdown (see wireMsWindow). Kept separate so the controls and
 // vehicle grid above it stay put.
+// 2000–2009 window body (issue #140): flat milestone lists, no tiers. Every item is
+// shown with its own inline "(… only)" qualifier; matched items go to the "this
+// vehicle" card, the rest to "all models". Time-based items show regardless of mileage.
+function msWinBodyLegacy(due, veh) {
+var delBtn = '<button class="msdel" title="Remove this item" aria-label="Remove this item"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="' + TRASH + '"/></svg></button>';
+function li(x) { return '<li data-svc="' + esc(x.item) + '"><span class="lbl">' + esc(x.item) + "</span>" + delBtn + "</li>"; }
+function card(title, arr, empty) {
+var inner = (arr && arr.length) ? "<ul>" + arr.map(li).join("") + "</ul>" : '<div class="none">' + esc(empty) + "</div>";
+return '<div class="card"><div class="chd">' + esc(title) + '</div><div class="cbody">' + inner + "</div></div>";
+}
+var hero;
+if (due.rounded > 0) {
+hero = '<div class="hero"><h2>' + esc(due.milestone || ("Service at " + due.label)) + "</h2>" +
+'<div class="sub">' + esc(veh.model || "") + " · " + (due.mileage || 0).toLocaleString() + " " + esc(due.unit || "mi") + (due.isEV ? " · Electric" : "") + "</div>" +
+'<div class="note">These are the items VW lists at this service. Qualifiers like “(1.8L Turbo only)” are printed right on each item — read them to confirm it applies to this exact car. Use the trash button ' +
+'<span class="dg"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="' + TRASH + '"/></svg></span>' +
+' next to any item to remove anything already done or not needed before printing.</div></div>';
+} else {
+hero = '<div class="hero"><h2>Choose a mileage above to see what’s due</h2>' +
+'<div class="sub">The ' + esc(veh.year) + " schedule is loaded. Time-based items are listed below regardless of mileage.</div></div>";
+}
+return hero +
+(due.rounded > 0 ? card("Service items — this vehicle", due.model, "none specific to this vehicle at this service") : "") +
+(due.rounded > 0 ? card("Service items — all models", due.all, "none listed at this service") : "") +
+card("Time-based items (by age)", due.time, "none listed");
+}
 function msWinBody(due, veh) {
 if (!due) return '<div class="none" style="padding:14px 2px">No maintenance schedule loaded for <b>' + esc(veh.year || "this year") +
 "</b> — open the ⚙ gear in Hahns to add that year’s VW Maintenance Schedules PDF.</div>";
+if (due.legacy) return msWinBodyLegacy(due, veh);
 var reg = due.reg || "usa";
 var svc = due.rounded ? msKLabel(due.rounded, reg) : "";
 var lvlTxt = due.levels.length ? due.levels.map(function (l) { return l + " Maintenance"; }).join(" + ") : "no scheduled level";
@@ -5926,7 +6209,7 @@ var mileage = msMileage(v);
 var due = msDueForVehicle(r, mileage);
 var hasDue = due && (due.replaceItems.length || due.all.length || due.model.length);
 if (mileage > 0 && hasDue) {
-var svc = due.rounded ? msKLabel(due.rounded, due.reg) : "";
+var svc = msSvcLabel(due);
 var lvl = due.levels.length ? " (" + due.levels.join(" + ") + ")" : "";
 return '<div class="msbar"><button class="msbtn due" data-act="msdue">' + svg(MS_CAL) +
 "Possible " + esc(svc) + " service due" + esc(lvl) + '<span class="arr">&#8599;</span></button></div>';
@@ -5964,7 +6247,7 @@ if (mst && mst.byYear && mst.byYear[v.year]) {
 var mileage = msMileage(v), due = msDueForVehicle(r, mileage);
 var hasDue = due && (due.replaceItems.length || due.all.length || due.model.length);
 ms = (mileage > 0 && hasDue)
-? quickChip("due", "msdue", "Possible " + msKLabel(due.rounded, due.reg) + " service due — click for details", WRENCH)
+? quickChip("due", "msdue", "Possible " + msSvcLabel(due) + " service due — click for details", WRENCH)
 : quickChip("ms", "msdue", mileage > 0 ? "Maintenance — nothing flagged, view schedule" : "Maintenance — enter mileage to check services due", WRENCH);
 } else ms = quickChip("load", "settings", "No maintenance schedule for " + esc(String(v.year || "this year")) + " — load the PDF in Settings", WRENCH);
 }
@@ -7721,7 +8004,8 @@ sxSaveFiles: sxSaveFiles, removeSx: removeSx, removeSxFile: removeSxFile, sxForV
 sxDrainText: sxDrainText, sxWheelText: sxWheelText,
 buildFluidsWindowHTML: buildFluidsWindowHTML,
 // Maintenance schedules (v0.5.0), exposed for dev harnesses
-msFromPdf: msFromPdf, parseMaintenance: MS.parseMaintenance,
+msFromPdf: msFromPdf, parseMaintenance: MS.parseMaintenance, parseMaintenanceOld: MS.parseMaintenanceOld,
+msServicesDueLegacy: msServicesDueLegacy, msLegacyItemApplies: msLegacyItemApplies,
 loadMs: loadMs, msSaveFiles: msSaveFiles, removeMs: removeMs, removeMsFile: removeMsFile,
 msDueForVehicle: msDueForVehicle, msServicesDue: msServicesDue, msApplies: msApplies,
 msRegion: msRegion, msSchedMiles: msSchedMiles, msDisp: msDisp, msKLabel: msKLabel, fluidVeh: fluidVeh,
