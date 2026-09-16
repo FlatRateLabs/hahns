@@ -5,6 +5,54 @@ permanent project reference.
 
 ---
 
+## Session close (2026-09-15) — v0.5.11-beta: three in-app bug reports (#191/#192/#193) — LIVE
+
+Cleared the three open tech-filed issues in one release. PR **#194** (squash `--admin`, merge `3bcb934`),
+**live-confirmed** `version.json` = `v0.5.11-beta`; all three issues auto-closed (per-issue `Closes`
+keywords). **App-only → no re-drag** (`LOADER_VER` stays 2).
+
+### #193 — 2024 Atlas spark plugs shown due at 40K (the real bug)
+Root cause: the maintenance Additional-Items table stacks the two spark-plug intervals (40K Arteon/Golf R,
+80K everyone else) in one box, and the applicability **model names wrap across rows**. The text-position
+pairing (`parseAdditionalRuns` fallback) pulled **"Atlas" up into the 40K row**, so Hahns told the tech
+spark plugs were due at 40K. **Fix:** extended the border-based interval-cell segmentation (the #157 diesel-
+belt fix — segment by the PDF's OWN drawn interval-column cell borders) to the **spark-plug item** too:
+added `isSparkSeg = /spark\s*plug/i.test(itemName)` and changed the guard to `if ((isBeltItem || isSparkSeg)
+&& divs.length >= 1)` in `MS.parseAdditionalRuns`. **Verified a STRICT improvement for every year 2000–2027**
+(also un-splits previously-broken wrapped codes like 2016 "Passat (A3* - 6 Cyl)" and 2010 "Golf/GTI (5K-
+2.0T)"; preserves the 2019 engine-size split #164). Real-PDF due check: 2024 Atlas → no spark @40K, spark
+@80K; Arteon → @40K. `MS_PARSER_VER` **1.4.0 → 1.5.0** (stored PDFs auto-reparse). `parser-test.js` **75
+files, 0 drift** after re-bless — the ONLY changed snapshots were the spark-plug `applic` regroupings (items
+`additional[7/8/10/11].variants`), no other item moved. **Narrow scope preserved:** transmission / brake-
+fluid / gas-belt items still use the original pairing (unverified under border-seg, untouched).
+
+### #192 — torque not named on the Fluids button (`fluidsBar` + `buildFluidsWindowHTML`)
+The window already carried the Service Xpress drain-plug + wheel-bolt torque card, but the button/label only
+said "Fluids & capacities". Now the active button label adapts: **"Fluids, capacities & torque specs"** (both
+loaded) / "Torque specs (drain plug & wheel bolts)" (torque only) / "Fluids & capacities" (fluids only), with
+a `title` tooltip; the pop-up `<title>`/`<h1>` become **"Fluids, Capacities & Torque"** when `sxWinHTML(r)` is
+non-empty (`hasTorque`/`winName`). The no-data prompt also names torque.
+
+### #191 — Copy-setup placement (`openSettings` HTML)
+Moved the `data-sec="transfer"` "Copy setup to another computer" `<details>` to **after** `data-sec="keys"`,
+so it's always the last section — same easy-to-find spot every time.
+
+### Verification / deploy
+`node --check` + `node tools/build.js` (v0.5.11-beta), artifact grep confirmed all edits in `docs/app.js`,
+panel boots in preview with `window.VWJB` defined (66 keys) + **zero console errors**. CHANGELOG entry added
+(feeds `notes.json` → `entries` now 91). Branch deleted local+remote after merge. Merged-tree grep on `main`
+confirmed `isSparkSeg` + `MS_PARSER_VER 1.5.0` before declaring done (PR-head-lag habit).
+
+### Carry-forward
+- **Bay test still wanted:** the #193 fix is verified against the PDFs + due-logic but **not yet against a
+  live 2024 Atlas Vehicle Summary scan** in real ELSA. Worth confirming at the bay.
+- Older open bay-tests unchanged: #122 keyboard-shortcuts-vs-ELSA, v0.5.8.2 bottom-diagram capture, a live
+  2000–2009 vehicle scan.
+- Deferred maintenance gaps unchanged (partial BEV additional items, gas/coolant-pump belts = verify-in-ELSA,
+  engine-conditional applicability, 2009-Canada time-row interleave).
+
+---
+
 ## Session close (2026-09-07) — v0.5.10-beta: 2000–2009 maintenance schedules (#140) — LIVE
 
 The deferred hard one. **Issue #140** — maintenance schedules now cover **2000–2009** (was 2010–2027;
