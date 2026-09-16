@@ -5,6 +5,36 @@ permanent project reference.
 
 ---
 
+## Session close (2026-09-15, later) — v0.5.12-beta: A/C sales-code filter, all-letter codes (#195) — LIVE
+
+One more in-app report after v0.5.11 shipped. PR **#196** (squash `--admin`, merge `6f55435`),
+**live-confirmed** `version.json` = `v0.5.12-beta`; #195 closed. **App-only → no re-drag** (`LOADER_VER` 2).
+Pure fluids MATCHING/display logic — **no parser change**, `parser-test.js` **75 files, 0 drift**.
+
+### #195 — 2024 Atlas showed BOTH A/C charges
+The 2024 "Atlas Family" fluid table splits A/C refrigerant by Sales Code — **CA3** 650 g vs **CMD** 550 g
+(+ a combined `CA3 / CMD` compressor-oil row). Vehicle CA34PR → platform CA3, so it should see only CA3.
+But `acSalesFilter`'s code-token test (`AC_CODE_RE`) required a **digit**, so the all-letter code **CMD**
+wasn't recognised → its row was treated as untagged → always shown. **Fix:** `acCodeTokens(app, declared)`
+now also treats any token the model's OWN `modelCode` cell declares (`acModelCodes(m)` → `["CA3","CMD"]`) as
+a split code, **unioned** with the letter+digit regex — so all-letter codes match while English/drivetrain
+qualifiers (ALL/AWD) and date fragments stay excluded. `acSalesFilter` also never empties the card
+(`kept.length ? kept : rows`). `fluidAcHTML` passes `acModelCodes(m)`.
+
+### Scope / verification
+Corpus scan across every fluid year: the ONLY rows newly recognised as code-tagged are the Atlas **CMC/CMD**
+splits — so this bug silently affected **2020–2026** Atlas (all the CMC/CMD years), now all fixed. **2027
+DH1/DJ1 (#183) unchanged** (digit codes, recognised by both paths). Unit-tested both directions on the real
+2024 PDF (CA3→CA3+oil hides CMD; CMD→CMD+oil hides CA3) and the 2020 CA1-vs-CA2 modelCode quirk degrades
+safely to show-all. `node --check` + build + parser-test (75/0) + panel boot smoke test (VWJB defined, only
+the known mascot-PNG 404s). Merged-tree grep confirmed `acModelCodes` on `main` before declaring done.
+
+### Carry-forward
+Same as the v0.5.11 entry below, plus: a real-ELSA bay confirm on a 2024 Atlas would validate BOTH tonight's
+Atlas fixes (spark-plug 80K #193 and this A/C CA3 #195) against a live Vehicle Summary scan.
+
+---
+
 ## Session close (2026-09-15) — v0.5.11-beta: three in-app bug reports (#191/#192/#193) — LIVE
 
 Cleared the three open tech-filed issues in one release. PR **#194** (squash `--admin`, merge `3bcb934`),
