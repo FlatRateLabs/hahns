@@ -9,7 +9,19 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.11-beta — in progress
+## v0.5.12-beta — in progress
+
+### Fixed
+- **A/C capacity showed both charges on an Atlas.** On a 2024 Atlas (Sales Code CA34PR → CA3), the
+  Air Conditioning card listed both the CA3 refrigerant charge (650 g) and the CMD one (550 g). The
+  filter that keeps only your vehicle’s charge required the code to contain a number, so the all-letter
+  code **CMD** wasn’t recognized and its row was always shown. Hahns now reads the split codes from the
+  table’s own model-code cell, so all-letter codes like CMD are matched correctly — you see only your
+  vehicle’s charge, plus any shared row. Fixes the Atlas for every year 2020–2026 (issue #195).
+
+---
+
+## v0.5.11-beta — 2026-09-15
 
 ### Fixed
 - **Spark plugs were shown due too early on some models (Atlas and others).** On a 2024 Atlas 40K
