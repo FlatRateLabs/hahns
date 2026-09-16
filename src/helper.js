@@ -2719,7 +2719,7 @@
    * (tools/wip-maintenance/parse-maint.js) — do not "tidy" the heuristics
    * without re-running that prototype's baseline.
    * ================================================================== */
-  var MS_PARSER_VER = "1.4.0";        // bump → stored Maintenance PDFs auto-re-parse (1.4.0: 2000–2009 mileage-indexed layout now READ by a dedicated legacy parser instead of gated — issue #140; 1.3.0: DIESEL toothed-belt table now segmented by the PDF's own cell borders so each interval keeps its own wrapped applicability clause — a 2014 diesel Jetta resolves to 130K, issue #157; 1.2.0: BEV Additional Items now parse for all EV years — footer-bound the band + 2-column table support, issue #141; 1.1.0: 2022–2027 layout — tier-bleed fix, footnote filter, flexible Additional section #, 2000–2009 gate)
+  var MS_PARSER_VER = "1.5.0";        // bump → stored Maintenance PDFs auto-re-parse (1.5.0: SPARK PLUGS item now segmented by the PDF's own interval-column cell borders (same fix as the diesel belt) so each interval keeps its own wrapped model list — a 2024 Atlas no longer shows spark plugs due at 40K (Arteon/Golf R's interval); Atlas is correctly 80K — issue #193; 1.4.0: 2000–2009 mileage-indexed layout now READ by a dedicated legacy parser instead of gated — issue #140; 1.3.0: DIESEL toothed-belt table now segmented by the PDF's own cell borders so each interval keeps its own wrapped applicability clause — a 2014 diesel Jetta resolves to 130K, issue #157; 1.2.0: BEV Additional Items now parse for all EV years — footer-bound the band + 2-column table support, issue #141; 1.1.0: 2022–2027 layout — tier-bleed fix, footnote filter, flexible Additional section #, 2000–2009 gate)
   // span for the "N / M loaded" counter. 2000–2027 = 28 (2000–2009 use the old
   // mileage-indexed layout, read by MS.parseMaintenanceOld since v0.5.10; 2010–2027
   // use the tiered layout).
@@ -2907,18 +2907,22 @@
         rws.forEach(function (row) { name.push(joinRuns(row.runs.filter(function (r) { return r.x < ivX; }))); });
         var itemName = finalize(name.join(" "));
         var variants = null;
-        // --- Border-based interval-cell segmentation (issue #157), scoped to the DIESEL
-        // toothed-belt item only. That table lays each interval's applicability as a
-        // paragraph that WRAPS across several lines with the interval number bottom-
-        // aligned, which the text-position pairing mis-groups (a 2014 diesel Jetta's
-        // "from 2010" clause drifted into the 100K row). Segmenting by the PDF's own
-        // drawn cell borders keeps each wrapped clause with its own interval. Kept
-        // deliberately NARROW: every other multi-interval item (spark plugs, transmission,
-        // brake fluid, and the GAS / coolant-pump belts — which key by ENGINE displacement
-        // we don't resolve) has its behaviour verified against the real PDFs under the
-        // original pairing (#154/#156/#160/#164), so we do NOT disturb it. Only the diesel
-        // belt — model + model-year keyed, the item this fix targets — is re-segmented.
+        // --- Border-based interval-cell segmentation (issue #157), for the DIESEL
+        // toothed-belt item AND the SPARK PLUGS item (issue #193). Those tables lay each
+        // interval's applicability as a paragraph that WRAPS across several lines with the
+        // interval number bottom-aligned, which the text-position pairing mis-groups (a
+        // 2014 diesel Jetta's "from 2010" clause drifted into the 100K row; a 2024 Atlas's
+        // 80K spark-plug interval had "Atlas" wrap up into the 40K Arteon/Golf R row, so
+        // Hahns wrongly told the tech spark plugs were due at 40K). Segmenting by the PDF's
+        // OWN drawn interval-column cell borders keeps each wrapped clause with its own
+        // interval. Verified a strict improvement for spark plugs across every year 2010–2027
+        // (also un-splits wrapped codes like 2016 "Passat (A3* - 6 Cyl)" and preserves the
+        // 2019 engine-size split #164). Still deliberately NARROW: the OTHER multi-interval
+        // items (transmission, brake fluid, and the GAS / coolant-pump belts — engine-
+        // displacement keyed, which we don't resolve) keep the original pairing verified
+        // under #154/#156/#160/#164, so we do NOT disturb them.
         var isBeltItem = /toothed belt|timing belt/i.test(itemName) && /diesel/i.test(itemName);
+        var isSparkSeg = /spark\s*plug/i.test(itemName);
         var ymax = Math.max.apply(null, rws.map(function (r) { return r.y; }));
         var ymin = Math.min.apply(null, rws.map(function (r) { return r.y; }));
         // Use interval-column borders as the INTERNAL dividers only; the top and bottom
@@ -2929,7 +2933,7 @@
         ivBorders.filter(function (y) { return y < ymax - 2 && y > ymin + 2; })
                  .sort(function (a, b) { return b - a; })
                  .forEach(function (y) { if (!divs.length || divs[divs.length - 1] - y > 4) divs.push(y); });
-        if (isBeltItem && divs.length >= 1) {   // belt item + ≥1 internal divider → ≥2 interval cells
+        if ((isBeltItem || isSparkSeg) && divs.length >= 1) {   // belt/spark item + ≥1 internal divider → ≥2 interval cells
           var edges = [ymax + 3].concat(divs, [ymin - 3]);
           var cv = [];
           for (var ci = 0; ci < edges.length - 1; ci++) {
@@ -4481,6 +4485,10 @@
     var veh = fluidVeh(r);
     var st = loadFluids();
     var yd = st && st.years && st.years[veh.year];
+    // Name torque in the heading/title when this window carries it, so the drain-plug +
+    // wheel-bolt specs aren't hidden behind a "Fluids & Capacities"-only label (issue #192).
+    var hasTorque = !!sxWinHTML(r);
+    var winName = hasTorque ? "Fluids, Capacities &amp; Torque" : "Fluids &amp; Capacities";
     var body;
     if (!yd) {
       body = '<div class="none" style="padding:14px 2px">No fluid tables loaded for <b>' + esc(veh.year || "this year") +
@@ -4494,11 +4502,11 @@
       .map(function (p) { return '<span class="k">' + esc(p[0]) + '</span><span class="v">' + esc(p[1] || "—") + "</span>"; }).join("");
     return '<!doctype html><html><head><meta charset="utf-8">' +
       '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-      "<title>Fluids &amp; Capacities" + (veh.model ? " — " + esc(veh.model) : "") + "</title>" +
+      "<title>" + winName + (veh.model ? " — " + esc(veh.model) : "") + "</title>" +
       "<style>" + FLUIDS_WIN_CSS + "</style></head><body>" +
       '<button id="hb_close" class="xclose" onclick="window.close()" title="Close" aria-label="Close">&#10005;</button>' +
       '<div class="bar"><button id="hb_print" onclick="window.print()">Print</button></div>' +
-      "<h1>Fluids &amp; Capacities</h1>" +
+      "<h1>" + winName + "</h1>" +
       '<div class="meta">from the ' + esc(veh.year || "?") + " tables on this computer" + (yd && yd.file ? " (" + esc(yd.file) + ")" : "") + "</div>" +
       '<div class="topcols">' +
         '<div class="veh"><div class="t">Vehicle</div><div class="grid">' + vehGrid + "</div></div>" +
@@ -6480,11 +6488,17 @@
     var hasSx = !!sxForVehicle(r);   // torque lives in this same window
     if (!hasFluids && !hasSx) {
       return '<div class="fluidbar"><button class="fluidbtn load" data-act="settings" data-tip="Open Settings (⚙) and load the yearly VW Fluid Capacity Tables / Service Xpress PDFs — kept only on this computer">' +
-        svg(DROPLET) + (st ? "No " + esc(String(v.year)) + " fluid tables on this computer — add the PDF in Settings"
-                           : "Fluids &amp; capacities — load the fluid PDFs in Settings") + "</button></div>";
+        svg(DROPLET) + (st ? "No " + esc(String(v.year)) + " fluid/torque tables on this computer — add the PDF in Settings"
+                           : "Fluids, capacities &amp; torque — load the PDFs in Settings") + "</button></div>";
     }
-    return '<div class="fluidbar"><button class="fluidbtn" data-act="fluids">' +
-      svg(DROPLET) + "Fluids &amp; capacities for this vehicle<span class=\"arr\">&#8599;</span></button></div>";
+    // Name what the window actually carries so the tech knows the drain-plug + wheel-bolt
+    // TORQUE specs live behind this button too, not just fluids (issue #192). The label
+    // adapts to what's loaded for this vehicle: fluids only, torque only, or both.
+    var label = hasFluids
+      ? (hasSx ? "Fluids, capacities &amp; torque specs" : "Fluids &amp; capacities")
+      : "Torque specs (drain plug &amp; wheel bolts)";
+    return '<div class="fluidbar"><button class="fluidbtn" data-act="fluids" title="Includes drain-plug &amp; wheel-bolt torque specs">' +
+      svg(DROPLET) + label + " for this vehicle<span class=\"arr\">&#8599;</span></button></div>";
   }
 
   // the "possible services due" bar, under the fluids bar. Only shown once a
@@ -7473,7 +7487,16 @@
           fluidsInfoHTML() +
         "</div>" +
       "</details>" +
-      // copy setup to another computer (backup / transfer)
+      // keyboard shortcuts (issue #122) — defaults + a rebinding menu
+      '<details class="setacc" data-sec="keys">' +
+        '<summary>Keyboard shortcuts</summary>' +
+        '<div class="setbody">' +
+          '<p class="setsub">Trigger the main panel actions from the keyboard. Change any shortcut to whatever you like — kept only on this computer.</p>' +
+          keySettingsHTML() +
+        "</div>" +
+      "</details>" +
+      // copy setup to another computer (backup / transfer) — kept LAST on purpose so
+      // it's always in the same easy-to-find spot at the bottom of Settings (issue #191)
       '<details class="setacc" data-sec="transfer">' +
         '<summary>Copy setup to another computer</summary>' +
         '<div class="setbody">' +
@@ -7482,14 +7505,6 @@
             '<button class="primary cfgexport">Save setup to a file</button>' +
             '<button class="primary cfgimport">Load setup from a file</button>' +
           "</div>" +
-        "</div>" +
-      "</details>" +
-      // keyboard shortcuts (issue #122) — defaults + a rebinding menu
-      '<details class="setacc" data-sec="keys">' +
-        '<summary>Keyboard shortcuts</summary>' +
-        '<div class="setbody">' +
-          '<p class="setsub">Trigger the main panel actions from the keyboard. Change any shortcut to whatever you like — kept only on this computer.</p>' +
-          keySettingsHTML() +
         "</div>" +
       "</details>" +
       '<p class="setnote">Everything here is saved only on this computer (under ELSA) — never uploaded anywhere or sent to GitHub.</p>' +

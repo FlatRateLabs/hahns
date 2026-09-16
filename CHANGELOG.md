@@ -9,6 +9,27 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.5.11-beta — in progress
+
+### Fixed
+- **Spark plugs were shown due too early on some models (Atlas and others).** On a 2024 Atlas 40K
+  service, Hahns said spark plugs were recommended — but the 40,000-mile / 4-year spark-plug interval
+  is only for the Arteon and Golf R. The Atlas is 80,000 miles / 6 years. The maintenance PDF stacks
+  those two intervals in one box and the model names wrapped between them, so “Atlas” was being read
+  into the wrong (40K) row. Hahns now splits that box by the PDF’s own drawn cell lines — the same fix
+  already used for the diesel timing belt — so each interval keeps the right list of models. Verified
+  correct for every year 2000–2027 (issue #193).
+
+### Changed
+- **The Fluids button now says it also carries torque specs.** When the Service Xpress torque chart is
+  loaded, the button reads **“Fluids, capacities & torque specs”** and the pop-up window is titled
+  **“Fluids, Capacities & Torque”**, so it’s clear the drain-plug and wheel-bolt torque live there too
+  (issue #192).
+- **“Copy setup to another computer” now always sits at the very bottom of ⚙ Settings**, so it’s in the
+  same easy-to-find spot every time (issue #191).
+
+---
+
 ## v0.5.10-beta — 2026-09-07
 
 ### Added
