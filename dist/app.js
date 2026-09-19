@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.12-beta · 2026-09-16 02:19 UTC";
+var BUILD = "v0.5.13-beta · 2026-09-19 16:31 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -4137,11 +4137,16 @@ if (byDisp) rows = [byDisp];
 var fallback = !rows.length && (m.engineOil || []).length;
 if (fallback) rows = m.engineOil;
 var inner = rows.map(function (r) {
+// Always name the row by displacement AND engine code(s) when the PDF has them,
+// so two same-displacement engines (a 2023 Golf R lists DRNA + DSFF, both 2.0L)
+// can be told apart — especially in the fallback, where the vehicle's own code
+// matched nothing and both capacities would otherwise read identically (#199).
+var lbl = [r.desc, (r.engines || []).join("/")].filter(Boolean).join("  ·  ");
 return '<div class="row"><div class="cap">' + esc(r.capacity || "—") + "</div>" +
 (r.specs && r.specs.length ? '<div class="spec">' + esc(r.specs.join("  ·  ")) + "</div>" : "") +
-(fallback ? '<div class="lab">' + esc(r.desc || (r.engines || []).join("/")) + "</div>" : "") + "</div>";
+(lbl ? '<div class="lab">' + esc(lbl) + "</div>" : "") + "</div>";
 }).join("");
-if (fallback && inner) inner += '<div class="lab note">No exact engine-code match for ' + esc(veh.engine) + " — all engines shown.</div>";
+if (fallback && inner) inner += '<div class="lab note">No exact engine-code match for ' + esc(veh.engineCode || veh.engine) + " — all engines shown.</div>";
 return fCard("oil", FL_ICON.oil, "Engine Oil", inner);
 }
 function fluidCoolHTML(m, veh) {
@@ -4261,13 +4266,57 @@ var vr = variantOf(r);
 return !vr || vm.indexOf(modelNorm(vr)) >= 0;
 });
 }
-function fluidDriveHTML(m, veh) {
+// Nameplate tokens for finding SIBLING models of the same family — "Golf / GTI"
+// → {GOLF,GTI}; "Golf Sportwagen / Alltrack" → {GOLF,ALLTRACK}. First alpha word
+// (≥3 chars) of each "/"-split part. Used only for the cross-family trans lookup.
+function familyTokens(name) {
+var set = {};
+String(name || "").toUpperCase().split("/").forEach(function (part) {
+var w = (part.match(/[A-Z]{3,}/) || [])[0];
+if (w) set[w] = 1;
+});
+return set;
+}
+function shareFamily(a, b) {
+var ta = familyTokens(a), tb = familyTokens(b);
+return Object.keys(ta).some(function (k) { return !!tb[k]; });
+}
+// A given transmission CODE (e.g. a Golf Sportwagen's 09G) is the same physical
+// gearbox across the nameplate family, but a specific model's table doesn't always
+// list every trans the platform can carry — the 2018 BX6 "Golf Sportwagen /
+// Alltrack" table has no 09G, yet the AU2 "Golf / GTI" table does (issue #198). So
+// when the vehicle's trans isn't under its own model, look for that exact code in a
+// sibling model of the same family and use its real capacity. Returns {rows, from}.
+function crossFamilyTrans(m, veh, siblings) {
+if (!veh.transCodes.length || !siblings) return null;
+for (var i = 0; i < siblings.length; i++) {
+var s = siblings[i];
+if (s === m || !shareFamily(s.model, m.model)) continue;
+var hit = (s.drivetrain || []).filter(function (r) {
+return TRANS_RE.test(r.application) && transHit(r.application, veh);
+});
+if (hit.length) return { rows: hit, from: s.model || "another model" };
+}
+return null;
+}
+function fluidDriveHTML(m, veh, siblings) {
 var all = m.drivetrain || [];
 var trans = all.filter(function (r) { return TRANS_RE.test(r.application); });
 var subs = all.filter(function (r) { return !TRANS_RE.test(r.application); });
 var matched = trans.filter(function (r) { return transHit(r.application, veh); });
 var noMatch = !matched.length && trans.length;
-if (noMatch) matched = trans;                       // fallback: show all transmissions
+var crossNote = "";
+if (noMatch) {
+// before the blunt "show all transmissions" fallback, try the family sibling (#198)
+var cross = crossFamilyTrans(m, veh, siblings);
+if (cross && cross.rows.length) {
+matched = cross.rows; noMatch = false;
+crossNote = "Transmission " + esc(veh.transCode || veh.trans) + " isn’t listed under " +
+esc(m.model || "this model") + " — capacity shown from the " + esc(cross.from) + " table (same transmission).";
+} else {
+matched = trans;                                // fallback: show all transmissions
+}
+}
 matched = pickDrivetrain(matched, veh);
 // hide "only AWD" sub-components on a FWD vehicle
 subs = subs.filter(function (r) { return veh.awd || !/AWD/i.test(r.application); });
@@ -4288,7 +4337,8 @@ return '<div class="row"><div class="rname">' + esc(name) + qual + "</div>" +
 '<div class="cap">' + fCapHtml(r.fills) + "</div></div>";
 };
 var inner = matched.map(rowHtml).join("") + subs.map(rowHtml).join("");
-if (noMatch && inner) inner += '<div class="lab note">No match for transmission ' + esc(veh.transCode || veh.trans) + " — all transmissions shown.</div>";
+if (crossNote && inner) inner += '<div class="lab note">' + crossNote + "</div>";
+else if (noMatch && inner) inner += '<div class="lab note">No match for transmission ' + esc(veh.transCode || veh.trans) + " — all transmissions shown.</div>";
 return fCard("drive", FL_ICON.drive, "Drivetrain", inner);
 }
 function buildFluidsWindowHTML(r) {
@@ -4306,7 +4356,7 @@ body = '<div class="none" style="padding:14px 2px">No fluid tables loaded for <b
 } else {
 var m = pickFluidModel(yd.models || [], veh);
 if (!m) body = '<div class="err">No fluid entry found for <b>' + esc(veh.model || "this model") + "</b> in the " + esc(veh.year) + " tables.</div>";
-else body = fluidOilHTML(m, veh) + fluidCoolHTML(m, veh) + fluidAcHTML(m, veh) + fluidDriveHTML(m, veh);
+else body = fluidOilHTML(m, veh) + fluidCoolHTML(m, veh) + fluidAcHTML(m, veh) + fluidDriveHTML(m, veh, yd.models || []);
 }
 var vehGrid = [["Model Year", veh.year], ["Model", veh.model], ["Engine Code", veh.engine], ["Trans Type", veh.trans + (veh.awd ? " · AWD" : "")]]
 .map(function (p) { return '<span class="k">' + esc(p[0]) + '</span><span class="v">' + esc(p[1] || "—") + "</span>"; }).join("");
@@ -6258,8 +6308,11 @@ var fl;
 if (!fluidsReady) fl = quickChip("off", "", "Fluids & capacities — loading…", DROPLET);
 else {
 var fst = loadFluids(), hasFluids = !!(fst && fst.years && fst.years[v.year]), hasSx = !!sxForVehicle(r);
+// name torque in the hover tip too, adapting like the full-width bar (issue #197)
+var ftip = hasFluids ? (hasSx ? "Fluids, capacities & torque specs for this vehicle" : "Fluids & capacities for this vehicle")
+: "Torque specs (drain plug & wheel bolts) for this vehicle";
 fl = (hasFluids || hasSx)
-? quickChip("fl", "fluids", "Fluids & capacities for this vehicle", DROPLET)
+? quickChip("fl", "fluids", ftip, DROPLET)
 : quickChip("load", "settings", "No fluid tables for " + esc(String(v.year || "this year")) + " — load the PDF in Settings", DROPLET);
 }
 // Maintenance chip — mirror msBar; amber when a service is actually due.
