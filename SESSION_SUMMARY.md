@@ -5,6 +5,50 @@ permanent project reference.
 
 ---
 
+## Session close (2026-09-19) — v0.5.13-beta: three fluids-window bug reports (#197/#198/#199) — LIVE
+
+Cleared the three open tech-filed issues. PR **#200** (squash `--admin`, merge on `main`),
+**live-confirmed** `version.json` = `v0.5.13-beta`; all three auto-closed (per-issue `Closes`).
+All **display-only** — no parser touched, `parser-test.js` **75 files, 0 drift**. **App-only → no
+re-drag** (`LOADER_VER` stays 2). Also flipped the stale v0.5.12 CHANGELOG heading "in progress" → 2026-09-15.
+
+### #198 — 2018 Golf Sportwagen (BX6) showed no 09G transmission (the real one)
+That year's BX6 "Golf Sportwagen / Alltrack" fluid table doesn't list the 6-speed automatic **09G**, but
+the AU2 "Golf / GTI" table does. A trans CODE is the same physical gearbox across a nameplate family, so
+`fluidDriveHTML` now takes the year's other models and, when the vehicle's trans isn't under its own model
+(`noMatch`), calls new **`crossFamilyTrans(m, veh, siblings)`** → finds the exact code in a sibling of the
+same family (`shareFamily`/`familyTokens` = first alpha word ≥3 of each "/"-split name part, e.g. GOLF) and
+shows THAT row, labeled "capacity shown from the Golf / GTI table (same transmission)". Only fires on
+`noMatch`; the old blunt "show all transmissions" is now the last resort. Generic across years/families
+(reporter asked for that). Verified: BX6 → 09G 7.0 L/3.0 L from AU2; control plain Golf (AU2) unchanged.
+
+### #199 — 2023 Golf R (DSFE) showed two identical "2.0L" oil rows
+DSFE matches neither listed 2.0L engine (DRNA/508 00, DSFF/504 00) → fallback shows both, but each row's
+label was `desc || engines` = just "2.0L" for both. `fluidOilHTML` now labels every row with displacement
+**AND** engine code(s): `[r.desc, engines.join("/")].filter(Boolean).join(" · ")` → "2.0L · DRNA" / "2.0L ·
+DSFF" (shown in the matched case too, not only fallback). No-match note uses `veh.engineCode` (bare "DSFE").
+
+### #197 — collapsed Fluids quick-chip hover tip didn't name torque
+The full-width bar label was fixed in #192, but `quickRow`'s icon-only chip `data-tip` still read only
+"Fluids & capacities". Now adapts like the bar: "Fluids, capacities & torque specs" / "Torque specs (drain
+plug & wheel bolts)" / "Fluids & capacities".
+
+### Verification / deploy
+`node --check` + `node tools/build.js` (v0.5.13-beta), artifact grep (`crossFamilyTrans` in docs/app.js),
+`parser-test.js` 75/0, panel boots in preview (VWJB 66 keys, zero console errors), Node harness against the
+real 2018 & 2023 PDFs for all three. Merged-tree grep on `main` confirmed `crossFamilyTrans` before done.
+Branch deleted local+remote.
+
+### Carry-forward
+- **Bay tests still wanted:** the #198 cross-family lookup and #199 label are verified against the PDFs +
+  logic but not yet against a live ELSA Vehicle Summary scan; a real 2018 Golf Sportwagen + 2023 Golf R
+  would confirm. Prior unchanged: #193/#195 (2024 Atlas), #122 keyboard-vs-ELSA, v0.5.8.2 bottom-diagram,
+  a live 2000–2009 scan.
+- Deferred maintenance gaps unchanged (partial BEV additional items, gas/coolant-pump belts = verify-in-ELSA,
+  engine-conditional applicability, 2009-Canada time-row interleave).
+
+---
+
 ## Session close (2026-09-15, later) — v0.5.12-beta: A/C sales-code filter, all-letter codes (#195) — LIVE
 
 One more in-app report after v0.5.11 shipped. PR **#196** (squash `--admin`, merge `6f55435`),
