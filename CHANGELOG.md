@@ -9,7 +9,27 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.12-beta — in progress
+## v0.5.13-beta — in progress
+
+### Fixed
+- **Fluids button hover tip didn’t mention torque.** When the Fluids bar was collapsed to its small
+  icon, hovering it still read only “Fluids & capacities” even though drain-plug and wheel-bolt torque
+  specs are behind it. The hover tip now names torque too — “Fluids, capacities & torque specs” (or
+  “Torque specs” when only the Service Xpress chart is loaded) (issue #197).
+- **Two same-size engines looked identical in the fluids window.** On a 2023 Golf R (engine code DSFE),
+  the PDF lists two 2.0L engine-oil entries (DRNA with 508 00, DSFF with 504 00). When your engine code
+  isn’t an exact match, Hahns shows both — but they both just read “2.0L”, with no way to tell them
+  apart. Each engine-oil line now shows the displacement **and** the engine code(s) from the PDF, so you
+  can pick the right one (issue #199).
+- **Missing transmission capacity on a Golf Sportwagen.** A 2018 Golf Sportwagen (Sales Code BX6) with a
+  6-speed automatic (09G) showed no 09G capacity, because that year’s Sportwagen table doesn’t list 09G —
+  but the regular Golf table does. Since a transmission code is the same gearbox across the family, Hahns
+  now pulls the capacity from the matching family model (here, Golf / GTI) and labels where it came from,
+  instead of falling back to “all transmissions” (issue #198).
+
+---
+
+## v0.5.12-beta — 2026-09-15
 
 ### Fixed
 - **A/C capacity showed both charges on an Atlas.** On a 2024 Atlas (Sales Code CA34PR → CA3), the
