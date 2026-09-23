@@ -1159,19 +1159,37 @@
     return "";
   }
 
+  // a digit-less upload row is kept only if it isn't a repeated header, a
+  // section/page/total line, or other obvious non-tool text (#201)
+  function toolRowPlausible(name, drawer) {
+    if (guessToolRole(name) || guessToolRole(drawer)) return false;          // "Tool #" / "Drawer" header repeats
+    if (/^(?:page|total|subtotal|count|notes?|updated|printed|date)\b/i.test(name)) return false;
+    if (name.length > 80) return false;                                      // a sentence, not a tool name
+    return true;
+  }
+
   // build the stored list from parsed rows + the chosen column roles
   function buildToolMap(rows, dataStart, cols) {
-    var map = {}, count = 0, i, num, key, drawer, desc, st, row;
+    var map = {}, count = 0, i, num, key, drawer, desc, st, row, named;
     for (i = dataStart; i < rows.length; i++) {
-      row = rows[i] || [];
-      num = String(row[cols.num] == null ? "" : row[cols.num]).trim();
-      if (!num || !/\d/.test(num)) continue;                       // skip blanks / non-tool junk
-      if (/^table\b/i.test(num) || /^print\s+date/i.test(num)) continue;
-      key = normTool(num);
-      if (!key) continue;
+      row = rows[i] || []; named = false;
+      num = String(row[cols.num] == null ? "" : row[cols.num]).replace(/\s+/g, " ").trim();
       drawer = cols.drawer >= 0 ? String(row[cols.drawer] == null ? "" : row[cols.drawer]).trim() : "";
       desc = cols.desc >= 0 ? String(row[cols.desc] == null ? "" : row[cols.desc]).replace(/\s+/g, " ").trim() : "";
+      if (/^table\b/i.test(num) || /^print\s+date/i.test(num)) continue;
+      // #201: shops also list tools with no VW number — a plain-text name in the
+      // tool column ("SET PICK I"), or a blank tool column with just a description
+      // ("CHASIS EARS"; the description becomes the name). Without a digit there's
+      // no "looks like a tool number" signal, so such a row must HAVE a drawer and
+      // must not look like a header / page / total line.
+      if (!/\d/.test(num)) {
+        if (!num) { num = desc; named = true; }
+        if (!num || !drawer || !toolRowPlausible(num, drawer)) continue;
+      }
+      key = normTool(num);
+      if (!key) continue;
       st = toolStatus(desc);
+      if (named) desc = "";   // it's the name now — don't repeat it as the description
       // keep the shop's description too (v0.3.16) so the "Find these tools" window
       // and the printout can show what each tool is, not just its number.
       if (!map[key]) { map[key] = { n: num, d: drawer, s: st, desc: desc }; count++; }
@@ -8753,6 +8771,7 @@
     // shop tool-list store (IndexedDB v0.3.16), exposed for dev harnesses
     loadShopTools: loadShopTools, saveShopTools: saveShopTools, removeShopTools: removeShopTools,
     toolListPut: toolListPut, toolListDel: toolListDel, toolListKeepHand: toolListKeepHand, toolListHandCount: toolListHandCount,
+    parseCSV: parseCSV, findToolHeader: findToolHeader, guessToolRole: guessToolRole, buildToolMap: buildToolMap,
     // Service Xpress torque (v0.4.1), exposed for dev harnesses
     parseServiceXpress: parseServiceXpress, sxFromPdf: sxFromPdf, loadSx: loadSx,
     sxSaveFiles: sxSaveFiles, removeSx: removeSx, removeSxFile: removeSxFile, sxForVehicle: sxForVehicle,

@@ -9,6 +9,16 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.5.15-beta — 2026-09-23
+
+### Changed
+- **Uploaded tool lists now include tools without a VW number.** Rows whose tool column is a plain name
+  (e.g. “SET PICK I”, “VWMICROPOD”) — or blank, with just a description (e.g. “CHASIS EARS” in Left O/H,
+  where the description becomes the tool’s name) — used to be skipped. They now load with their drawer.
+  To keep headings and other stray lines out, a row without a number must have a drawer location.
+
+---
+
 ## v0.5.14-beta — 2026-09-23
 
 ### Added
