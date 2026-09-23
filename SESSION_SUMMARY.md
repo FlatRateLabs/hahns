@@ -5,6 +5,74 @@ permanent project reference.
 
 ---
 
+## Session close (2026-09-23) — v0.5.14-beta: add & edit special tools in the app (#201)
+
+Owner-filed feature request #201 (add/edit shop special tools without editing the spreadsheet). PR **#202**
+(squash `--admin`), #201 auto-closed. **App-only → no re-drag** (`LOADER_VER` 2); no parser touched.
+
+### What shipped (`src/helper.js`)
+- **Manage tools** overlay (`openToolManager`) in ⚙ Settings → Shop special-tool list: search, + Add tool,
+  Edit, ✕ remove (inline confirm); entries typed/edited in-app carry `hand:1` and show a "hand" tag.
+- **Confirm before save** (owner ask, added after first test): `confirmView` shows tool/description/drawer
+  (+ "was:" on edits, + MISSING flag) — nothing written until **Confirm & save**; then the list filters to the
+  tool with a green "✓ Saved to your tool list" (owner ask).
+- **Plain-text tool names** (owner ask — shops keep non-VW tools): `toolListPut` only needs ≥1 alnum;
+  `toolDict` now skips digit-less keys so ordinary ELSA words ("floor jack", "pliers") are never scanned as
+  tools; a hand-added job row with the same name is located in Find these tools.
+- **"not in list" badge** → clickable, opens the Add form pre-filled (number + ELSA description).
+- **Replace list** keeps hand edits (ticked checkbox in the column mapper, `toolListKeepHand`, hand wins).
+- Pure helpers `toolListPut/Del/HandCount/KeepHand` exposed on `window.VWJB`. Fixed "1 tools" plural.
+- Owner considered splitting the tag into added/edited + tagging spreadsheet tools → **declined, keep "hand"**.
+
+### Verification
+`node --check` + build; Node harness 13/13 (add/edit/renumber/dup-block/delete/keep-on-reupload) + plain-text
+not scanned; in-browser flow on built app.js (add, dup error, confirm/back/confirm, badge quick-add, simulated
+CSV re-upload with keep box, search+delete), no console errors except the known preview mascot-PNG 404s.
+**Owner tested on real ELSA** via a one-off local TEST bookmark (standalone `dist/bookmarklet.txt`, ~760 KB —
+worked as a bookmark URL). Useful pre-ship pattern: a scratchpad page with a drag link to the standalone
+bookmarklet; nobody else is affected.
+
+### Carry-forward
+- Possible follow-up: spreadsheet uploads still drop digit-less rows (`buildToolMap`), so plain-text tools
+  only come in via Manage tools.
+- Prior bay tests + deferred maintenance gaps unchanged (see v0.5.13 entry).
+
+---
+
+## Session close (2026-09-23) — v0.5.14-beta: add & edit special tools in the app (#201)
+
+Owner-filed feature request #201 (add/edit shop special tools without editing the spreadsheet). PR **#202**
+(squash `--admin`), #201 auto-closed. **App-only → no re-drag** (`LOADER_VER` 2); no parser touched.
+
+### What shipped (`src/helper.js`)
+- **Manage tools** overlay (`openToolManager`) in ⚙ Settings → Shop special-tool list: search, + Add tool,
+  Edit, ✕ remove (inline confirm); entries typed/edited in-app carry `hand:1` and show a "hand" tag.
+- **Confirm before save** (owner ask, added after first test): `confirmView` shows tool/description/drawer
+  (+ "was:" on edits, + MISSING flag) — nothing written until **Confirm & save**; then the list filters to the
+  tool with a green "✓ Saved to your tool list" (owner ask).
+- **Plain-text tool names** (owner ask — shops keep non-VW tools): `toolListPut` only needs ≥1 alnum;
+  `toolDict` now skips digit-less keys so ordinary ELSA words ("floor jack", "pliers") are never scanned as
+  tools; a hand-added job row with the same name is located in Find these tools.
+- **"not in list" badge** → clickable, opens the Add form pre-filled (number + ELSA description).
+- **Replace list** keeps hand edits (ticked checkbox in the column mapper, `toolListKeepHand`, hand wins).
+- Pure helpers `toolListPut/Del/HandCount/KeepHand` exposed on `window.VWJB`. Fixed "1 tools" plural.
+- Owner considered splitting the tag into added/edited + tagging spreadsheet tools → **declined, keep "hand"**.
+
+### Verification
+`node --check` + build; Node harness 13/13 (add/edit/renumber/dup-block/delete/keep-on-reupload) + plain-text
+not scanned; in-browser flow on built app.js (add, dup error, confirm/back/confirm, badge quick-add, simulated
+CSV re-upload with keep box, search+delete), no console errors except the known preview mascot-PNG 404s.
+**Owner tested on real ELSA** via a one-off local TEST bookmark (standalone `dist/bookmarklet.txt`, ~760 KB —
+worked as a bookmark URL) — a useful pre-ship pattern: build a scratchpad page with a drag link to the
+standalone bookmarklet; nobody else is affected.
+
+### Carry-forward
+- Possible follow-up: spreadsheet uploads still drop digit-less rows (`buildToolMap`), so plain-text tools
+  only come in via Manage tools.
+- Prior bay tests + deferred maintenance gaps unchanged (see v0.5.13 entry).
+
+---
+
 ## Session close (2026-09-19) — v0.5.13-beta: three fluids-window bug reports (#197/#198/#199) — LIVE
 
 Cleared the three open tech-filed issues. PR **#200** (squash `--admin`, merge on `main`),
