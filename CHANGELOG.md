@@ -9,7 +9,33 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.13-beta — in progress
+## v0.5.14-beta — 2026-09-23
+
+### Added
+- **Add and edit special tools right in Hahns — no spreadsheet editing.** ⚙ Settings → Shop
+  special-tool list now has a **Manage tools** button (or **Add tools by hand** if no list is loaded
+  yet). Search your list, **+ Add tool**, **Edit** a tool’s number, description or drawer, or remove
+  one. Type “MISSING” in a description to flag it, same as in the spreadsheet. A number that’s already
+  on the list is caught instead of overwritten (issue #201).
+- **Check before it saves.** Clicking Save shows the tool number, description and drawer (and what they
+  were, when editing) — nothing is saved until you click **Confirm & save**. Afterwards the list jumps
+  to that tool with a green “✓ Saved to your tool list”.
+- **Tools without a VW number.** A tool can be named in plain words (“Floor jack”, “Pink pry bar”) —
+  handy for shop tools that aren’t VW special tools. Hahns won’t go looking for plain-word names in the
+  ELSA page (so “pliers” in a procedure doesn’t become a tool), but if you add that tool to a job by
+  hand with the same name, **Find these tools** shows its drawer.
+- **Add a tool straight from a scan.** A scanned tool marked **not in list** is now clickable — it opens
+  the Add form with the tool number (and the description from ELSA) filled in, so you only type the
+  drawer.
+
+### Changed
+- **Re-uploading your spreadsheet keeps your hand edits.** When you Replace the list, a ticked box keeps
+  every tool you added or edited in Hahns (untick it to start clean from the file). Hand edits also
+  travel with “Copy setup to another computer”.
+
+---
+
+## v0.5.13-beta — 2026-09-19
 
 ### Fixed
 - **Fluids button hover tip didn’t mention torque.** When the Fluids bar was collapsed to its small
