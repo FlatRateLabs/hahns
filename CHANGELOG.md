@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.14-beta — in progress
+## v0.5.14-beta — 2026-09-23
 
 ### Added
 - **Add and edit special tools right in Hahns — no spreadsheet editing.** ⚙ Settings → Shop
