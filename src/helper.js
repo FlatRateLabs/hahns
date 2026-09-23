@@ -1179,6 +1179,54 @@
     return { updated: todayISO(), count: count, map: map };
   }
 
+  // ---- hand edits to the shop list (#201) ----
+  // Pure helpers: each takes the current list (or null) and returns a NEW list
+  // object — the caller saves it with saveShopTools. Entries typed/edited in the
+  // app carry `hand:1` so a later spreadsheet re-upload can keep them.
+  function toolListCopy(st) {
+    var out = { updated: todayISO(), count: 0, map: {} }, k;
+    if (st) { for (k in st) if (k !== "map" && Object.prototype.hasOwnProperty.call(st, k)) out[k] = st[k]; }
+    if (st && st.map) { for (k in st.map) if (Object.prototype.hasOwnProperty.call(st.map, k)) out.map[k] = st.map[k]; }
+    if (!st) out.fmt = "manual";
+    out.updated = todayISO();
+    return out;
+  }
+  function toolListRecount(st) { st.count = Object.keys(st.map).length; return st; }
+  // add (oldKey falsy) or edit (oldKey = the entry's current key). A renumber
+  // moves the entry; a number already used by ANOTHER tool is refused, never
+  // overwritten. Returns {ok, st} or {ok:false, err}.
+  function toolListPut(st, oldKey, f) {
+    f = f || {};
+    var n = String(f.n == null ? "" : f.n).replace(/\s+/g, " ").trim();
+    var desc = String(f.desc == null ? "" : f.desc).replace(/\s+/g, " ").trim();
+    var d = String(f.d == null ? "" : f.d).replace(/\s+/g, " ").trim();
+    if (!n) return { ok: false, err: "Enter the tool number." };
+    if (!/\d/.test(n)) return { ok: false, err: "A tool number needs at least one digit (e.g. VAS 6909, T10663)." };
+    var key = normTool(n);
+    var out = toolListCopy(st);
+    if (key !== oldKey && out.map[key]) return { ok: false, err: "“" + out.map[key].n + "” is already on the list — edit that one instead." };
+    if (oldKey) delete out.map[oldKey];
+    out.map[key] = { n: n, d: d, s: toolStatus(desc), desc: desc, hand: 1 };
+    return { ok: true, st: toolListRecount(out), key: key };
+  }
+  function toolListDel(st, key) {
+    var out = toolListCopy(st);
+    delete out.map[key];
+    return toolListRecount(out);
+  }
+  function toolListHandCount(st) {
+    var n = 0, k;
+    if (st && st.map) for (k in st.map) if (st.map[k] && st.map[k].hand) n++;
+    return n;
+  }
+  // a freshly uploaded list + the old list's hand entries (hand wins on a clash:
+  // the tech typed it on purpose). Mutates + returns `built`.
+  function toolListKeepHand(built, old) {
+    var k;
+    if (old && old.map) for (k in old.map) if (old.map[k] && old.map[k].hand) built.map[k] = old.map[k];
+    return toolListRecount(built);
+  }
+
   // sort locations: numeric drawers ascending, then text (LARGE, Right O/H, …)
   function locSort(a, b) {
     var na = parseInt(a, 10), nb = parseInt(b, 10);
@@ -6447,6 +6495,31 @@
     ".tbadge{display:inline-block;margin-left:6px;font-size:10px;font-weight:700;letter-spacing:.01em;padding:1px 7px;border-radius:8px;white-space:nowrap;text-transform:none}" +
     ".tbadge.warn{background:#fff4e6;color:#8a4708;border:1px solid #f0d4a6}" +
     ".tbadge.order{background:#fdecec;color:#a32d2d;border:1px solid #efbcbc}" +
+    "button.tbadge{appearance:none;-webkit-appearance:none;font-family:inherit;line-height:inherit;cursor:pointer}" +
+    "button.tbadge.addtl:hover{background:#fbdada}" +
+    // Manage tools editor (#201)
+    ".setc-tools .setbox{width:520px}" +
+    ".tmtop{display:flex;gap:8px;margin:0 0 8px}" +
+    ".tmtop .tmq{flex:1;min-width:0;font:13px inherit;font-family:inherit;padding:7px 9px;border:1px solid #cfd6e4;border-radius:8px;outline:none}" +
+    ".tmtop .tmq:focus,.tmform input:focus{border-color:#001e50}" +
+    ".tmtop button,.tmrow button{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:600;font-size:12px;border-radius:7px;cursor:pointer;border:1px solid #cfd6e4;background:#fff;color:#001e50}" +
+    ".tmtop .tmadd{background:#2fb84d;border-color:#2fb84d;color:#0a0a0a;padding:7px 12px;white-space:nowrap}" +
+    ".tmtop .tmadd:hover{background:#28a344}" +
+    ".tmlist{border:1px solid #e7e7e7;border-radius:8px;max-height:52vh;overflow:auto}" +
+    ".tmrow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-top:1px solid #f0f0f0;font-size:12.5px}" +
+    ".tmrow:first-child{border-top:0}" +
+    ".tmrow .tmn{font-weight:700;color:#001e50;white-space:nowrap}" +
+    ".tmrow .tmd{flex:1;min-width:0;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".tmrow .tml{color:#3a4a63;white-space:nowrap;font-weight:600}" +
+    ".tmrow .tmh{font-size:10px;font-weight:700;color:#1a5fb4;background:#eef4fc;border:1px solid #cfe0f5;border-radius:6px;padding:0 5px;white-space:nowrap}" +
+    ".tmrow button{padding:3px 8px}" +
+    ".tmrow button:hover{background:#f3f6fb}" +
+    ".tmrow .tmdel{color:#a32d2d;border-color:#e6b0b0}" +
+    ".tmrow .confirm{display:flex;gap:6px;align-items:center;font-size:12px;color:#a32d2d;font-weight:600}" +
+    ".tmmore,.tmempty{padding:8px;font-size:12px;color:#666;text-align:center}" +
+    ".tmform label{display:block;font-size:12px;font-weight:700;color:#001e50;margin:8px 0 3px}" +
+    ".tmform input{width:100%;box-sizing:border-box;font-family:inherit;font-size:13px;padding:7px 9px;border:1px solid #cfd6e4;border-radius:8px;outline:none}" +
+    ".tmkeep{display:flex;gap:7px;align-items:flex-start;font-size:12px;color:#3a4a63;margin:8px 0 0;line-height:1.4}" +
     // "Find these tools" button (opens the printable locations pop-up)
     ".findtools{appearance:none;-webkit-appearance:none;display:inline-flex;align-items:center;gap:6px;background:#534ab7;color:#fff;border:0;font-family:inherit;font-weight:700;font-size:11.5px;letter-spacing:.02em;padding:7px 11px;border-radius:8px;cursor:pointer;margin:2px 0 8px}" +
     ".findtools:hover{background:#4640a0}" +
@@ -6670,9 +6743,13 @@
   // PROBLEM is shown inline — missing/check or not-on-the-list — so the tech is
   // warned at a glance. The drawer LOCATIONS live in the "Find these tools"
   // window, to keep the main panel uncluttered.)
-  function toolBadge(it) {
+  function toolBadge(it, embed) {
     if (!it || !it.num || !loadShopTools()) return "";
     var hit = matchShopTool(it.num);
+    // #201: click the badge to add the tool to the list (number + scanned
+    // description pre-filled — the tech just types the drawer)
+    if (!hit && !embed) return ' <button class="tbadge order addtl" data-addtool="' + esc(it.num) + '" data-adddesc="' + esc(it.desc || "") +
+      '" data-tip="Not in your shop list — click to add it">not in list</button>';
     if (!hit) return ' <span class="tbadge order" data-tip="Not in your shop list — order the tool, or update your list">not in list</span>';
     if (hit.s) return ' <span class="tbadge warn">' + esc(hit.s) + "</span>";
     return "";
@@ -6809,7 +6886,7 @@
       // tools show the number in bold, then the description (when we found one)
       if (s.key === "tools") {
         var t = it.num ? "<b>" + esc(it.num) + "</b>" + (it.desc ? " — " + esc(it.desc) : "") : esc(it.text);
-        return '<div class="item tool">' + find + txtOpen(s, it, idx) + t + toolBadge(it) + "</span>" + del + "</div>";
+        return '<div class="item tool">' + find + txtOpen(s, it, idx) + t + toolBadge(it, embed) + "</span>" + del + "</div>";
       }
       var lbl = "";
       if (s.label) {
@@ -7412,9 +7489,11 @@
 
     var st = loadShopTools();
     var fmtLabel = st ? (st.fmt === "xlsx" ? "Excel (.xlsx)" : st.fmt === "csv" ? "CSV" : "") : "";
-    var meta = st ? [fmtLabel, st.updated ? "uploaded " + st.updated : ""].filter(function (x) { return x; }).join(" · ") : "";
+    var handN = toolListHandCount(st);
+    var meta = st ? [fmtLabel, st.updated ? (st.file ? "updated " : "saved ") + st.updated : "",
+      handN ? handN + " added/edited by hand" : ""].filter(function (x) { return x; }).join(" · ") : "";
     var status = st
-      ? '<div class="setstat">Tool list loaded: <b>' + esc(String(st.count || 0)) + "</b> tools" +
+      ? '<div class="setstat">Tool list loaded: <b>' + esc(String(st.count || 0)) + "</b> tool" + ((st.count || 0) === 1 ? "" : "s") +
           (st.file ? '<div class="setfile">' + esc(st.file) + "</div>" : "") +
           (meta ? '<div class="setmeta">' + esc(meta) + "</div>" : "") + "</div>"
       : '<div class="setstat none">No tool list loaded yet. Upload your shop’s list to see drawer locations next to each special tool.</div>';
@@ -7494,10 +7573,11 @@
       '<details class="setacc" data-sec="tools">' +
         '<summary>Shop special-tool list<span class="sccount">' + esc(toolCount) + "</span></summary>" +
         '<div class="setbody">' +
-          '<p class="setsub">Upload your shop’s tool list (a CSV or Excel <b>.xlsx</b> file). Hahns shows each special tool’s drawer location and flags tools that aren’t on the list.</p>' +
+          '<p class="setsub">Upload your shop’s tool list (a CSV or Excel <b>.xlsx</b> file), or add tools by hand with <b>Manage tools</b>. Hahns shows each special tool’s drawer location and flags tools that aren’t on the list.</p>' +
           status +
           '<div class="setbtns">' +
             (st ? '<button class="danger remove">Remove list</button>' : "") +
+            '<button class="manage">' + (st ? "Manage tools" : "Add tools by hand") + "</button>" +
             '<button class="primary upload">' + (st ? "Replace list" : "Upload list") + "</button>" +
           "</div>" +
         "</div>" +
@@ -7617,6 +7697,8 @@
     // upload buttons DON'T close Settings — the tech may have more to do here
     var up = ov.querySelector(".upload");
     if (up) up.addEventListener("click", function () { pickToolFile(host, r, options, root); });
+    var mng = ov.querySelector(".manage");
+    if (mng) mng.addEventListener("click", function () { openToolManager(host, r, options, root); });
     var rm = ov.querySelector(".remove");
     if (rm) rm.addEventListener("click", function () {
       confirmRemove(rm, "Remove the tool list?", function () {
@@ -7831,6 +7913,8 @@
       body += "</tr>";
     }
 
+    // #201: tools typed/edited in Hahns survive a re-upload unless unticked
+    var oldList = loadShopTools(), keepN = toolListHandCount(oldList);
     var ov = document.createElement("div");
     ov.className = "setc";
     ov.innerHTML = '<div class="setbox">' +
@@ -7838,6 +7922,8 @@
       '<p class="settl">Set up your tool list</p>' +
       '<p class="setsub">Pick which column is which. <b>Description</b> is only read to flag tools marked “missing” or “check part number” — it’s never shown on its own.</p>' +
       '<table class="maptbl"><tr>' + head + "</tr>" + body + "</table>" +
+      (keepN ? '<label class="tmkeep"><input type="checkbox" class="keephand" checked> <span>Keep the <b>' + keepN + "</b> tool" + (keepN === 1 ? "" : "s") +
+        " you added or edited by hand in Hahns (they win over the file if the same number is in both).</span></label>" : "") +
       '<div class="maperr" style="display:none"></div>' +
       '<div class="setbtns"><button class="cancel">Cancel</button><button class="primary save">Save list</button></div>' +
       '<p class="setnote">Saved only on this computer (under ELSA) — never uploaded anywhere.</p>' +
@@ -7879,6 +7965,8 @@
         err.textContent = "No tools found in that column — double-check the Tool number selection.";
         err.style.display = "block"; return;
       }
+      var kh = ov.querySelector(".keephand");
+      if (kh && kh.checked) toolListKeepHand(built, oldList);
       if (meta.name) built.file = meta.name;   // remember what was uploaded
       if (meta.fmt) built.fmt = meta.fmt;
       // saveShopTools updates the sync cache immediately then persists to IDB
@@ -7895,6 +7983,142 @@
         okModal(root, "✓ Tool list saved", "Saved to this computer: " + built.count + " tool" + (built.count === 1 ? "" : "s") + (meta.name ? " from " + meta.name : "") + ".");
       });
     });
+  }
+
+  // "Manage tools" (#201): search / add / edit / remove shop-list tools by hand,
+  // no spreadsheet editing needed. `prefill` ({n, desc}) opens straight into the
+  // Add form — used by a scanned tool's "not in list" badge. Every save goes
+  // through saveShopTools (local IndexedDB only — zero network).
+  function openToolManager(host, r, options, root, prefill) {
+    var old = root.querySelector(".setc-tools");
+    if (old) { try { old.remove(); } catch (e) {} }
+    var ov = document.createElement("div");
+    ov.className = "setc setc-tools";
+    root.appendChild(ov);
+    var query = "", SHOW = 50;
+
+    var close = function () { try { ov.remove(); } catch (e) {} };
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    // after any save: repaint the panel (badges) + Settings if it's open behind us
+    function afterSave() {
+      renderInto(host, r, options);
+      if (root.querySelector(".setc-settings")) openSettings(host, r, options, root);
+    }
+
+    function entries() {
+      var st = loadShopTools(), out = [], k;
+      if (st && st.map) for (k in st.map) if (Object.prototype.hasOwnProperty.call(st.map, k)) out.push({ key: k, e: st.map[k] });
+      out.sort(function (a, b) { return String(a.e.n).localeCompare(String(b.e.n), undefined, { numeric: true }); });
+      return out;
+    }
+
+    function listView() {
+      var all = entries();
+      ov.innerHTML = '<div class="setbox">' +
+        '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
+        '<p class="settl">Manage tools</p>' +
+        '<p class="setsub">Add a tool, or fix a tool’s number, description or drawer. Saved only on this computer — your spreadsheet file isn’t changed.</p>' +
+        '<div class="tmtop"><input class="tmq" type="search" placeholder="Search number, description or drawer…" value="' + esc(query) + '">' +
+          '<button class="tmadd">+ Add tool</button></div>' +
+        '<div class="tmlist"></div>' +
+        '<div class="setbtns"><button class="cancel">Done</button></div>' +
+        "</div>";
+      var list = ov.querySelector(".tmlist"), q = ov.querySelector(".tmq");
+      function paint() {
+        var needle = query.toUpperCase(), nk = normTool(query), hits = [];
+        all.forEach(function (o) {
+          if (!needle) { hits.push(o); return; }
+          var e = o.e;
+          if ((nk && o.key.indexOf(nk) >= 0) ||
+              String(e.desc || "").toUpperCase().indexOf(needle) >= 0 ||
+              String(e.d || "").toUpperCase().indexOf(needle) >= 0) hits.push(o);
+        });
+        var html = hits.slice(0, SHOW).map(function (o) {
+          var e = o.e;
+          return '<div class="tmrow" data-k="' + esc(o.key) + '">' +
+            '<span class="tmn">' + esc(e.n) + "</span>" +
+            '<span class="tmd" title="' + esc(e.desc || "") + '">' + esc(e.desc || "") + "</span>" +
+            (e.hand ? '<span class="tmh" title="Added or edited in Hahns">hand</span>' : "") +
+            '<span class="tml">' + esc(e.d || "—") + "</span>" +
+            '<button class="tmedit">Edit</button>' +
+            '<button class="tmdel" title="Remove this tool" aria-label="Remove this tool">&#10005;</button></div>';
+        }).join("");
+        if (!all.length) html = '<div class="tmempty">No tools yet — click <b>+ Add tool</b> to start your list.</div>';
+        else if (!hits.length) html = '<div class="tmempty">No tools match “' + esc(query) + "”.</div>";
+        else if (hits.length > SHOW) html += '<div class="tmmore">' + (hits.length - SHOW) + " more — type to narrow the search</div>";
+        list.innerHTML = html;
+        Array.prototype.forEach.call(list.querySelectorAll(".tmrow"), function (row) {
+          var key = row.getAttribute("data-k");
+          row.querySelector(".tmedit").addEventListener("click", function () {
+            var st = loadShopTools(), e = st && st.map ? st.map[key] : null;
+            if (e) formView(key, { n: e.n, desc: e.desc || "", d: e.d || "" });
+          });
+          var del = row.querySelector(".tmdel");
+          del.addEventListener("click", function () {
+            var cf = document.createElement("span");
+            cf.className = "confirm";
+            cf.innerHTML = "Remove?" + '<button class="cyes tmdel">Remove</button><button class="cno">Cancel</button>';
+            row.querySelector(".tmedit").style.display = "none";
+            del.replaceWith(cf);
+            cf.querySelector(".cno").addEventListener("click", paint);
+            cf.querySelector(".cyes").addEventListener("click", function () {
+              var next = toolListDel(loadShopTools(), key);
+              var done = function () { all = entries(); paint(); afterSave(); };
+              // last tool gone → no list at all (otherwise every scanned tool
+              // would read "not in list" against an empty list)
+              if (!next.count) { removeShopTools(); done(); }
+              else saveShopTools(next).then(done);
+            });
+          });
+        });
+      }
+      q.addEventListener("input", function () { query = q.value; paint(); });
+      ov.querySelector(".tmadd").addEventListener("click", function () { formView(null, { n: "", desc: "", d: "" }); });
+      ov.querySelector(".cancel").addEventListener("click", close);
+      ov.querySelector(".xclose").addEventListener("click", close);
+      paint();
+      try { q.focus(); } catch (e) {}
+    }
+
+    function formView(key, f) {
+      ov.innerHTML = '<div class="setbox tmform">' +
+        '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
+        '<p class="settl">' + (key ? "Edit tool" : "Add a tool") + "</p>" +
+        "<label>Tool number</label><input class=\"fn\" placeholder=\"e.g. VAS 6909 or T10663\" value=\"" + esc(f.n) + "\">" +
+        "<label>Description</label><input class=\"fdesc\" placeholder=\"e.g. Counterholder (type MISSING to flag it)\" value=\"" + esc(f.desc) + "\">" +
+        "<label>Drawer / location</label><input class=\"fd\" placeholder=\"e.g. 12 or Right O/H\" value=\"" + esc(f.d) + "\">" +
+        '<div class="maperr" style="display:none"></div>' +
+        '<div class="setbtns"><button class="cancel">Back</button><button class="primary save">' + (key ? "Save" : "Add tool") + "</button></div>" +
+        "</div>";
+      var err = ov.querySelector(".maperr");
+      var back = function () { if (prefill) close(); else listView(); };
+      function save() {
+        var res = toolListPut(loadShopTools(), key, {
+          n: ov.querySelector(".fn").value, desc: ov.querySelector(".fdesc").value, d: ov.querySelector(".fd").value
+        });
+        if (!res.ok) { err.textContent = res.err; err.style.display = "block"; return; }
+        saveShopTools(res.st).then(function (ok) {
+          if (!ok) { err.textContent = "Couldn’t save (storage blocked on this machine)."; err.style.display = "block"; return; }
+          afterSave();
+          if (prefill) { close(); flash(root, "✓ Added " + res.st.map[res.key].n + " to your tool list"); return; }
+          query = ""; listView();
+        });
+      }
+      ov.querySelector(".save").addEventListener("click", save);
+      ov.querySelector(".cancel").addEventListener("click", back);
+      ov.querySelector(".xclose").addEventListener("click", close);
+      Array.prototype.forEach.call(ov.querySelectorAll("input"), function (inp) {
+        inp.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") { e.preventDefault(); save(); }
+          else if (e.key === "Escape") { e.preventDefault(); back(); }
+        });
+      });
+      // pre-filled from a scan → the drawer is what's missing; else start at the number
+      try { ov.querySelector(prefill && f.n ? ".fd" : ".fn").focus(); } catch (e) {}
+    }
+
+    if (prefill) formView(null, { n: prefill.n || "", desc: prefill.desc || "", d: "" });
+    else listView();
   }
 
   function renderInto(host, r, options) {
@@ -8120,6 +8344,15 @@
         r.tools = (r.tools || []).filter(function (it) { return (it.num || "").toLowerCase() !== num; });
         persist();
         renderInto(host, r, options);
+      });
+    });
+
+    // "not in list" badge on a scanned tool → add it to the shop list (#201)
+    root.querySelectorAll("[data-addtool]").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (e.preventDefault) e.preventDefault();
+        openToolManager(host, r, options, root, { n: btn.getAttribute("data-addtool") || "", desc: btn.getAttribute("data-adddesc") || "" });
       });
     });
 
@@ -8460,6 +8693,7 @@
     reparseYear: reparseYear, fluidsInfoHTML: fluidsInfoHTML, removeFluidYear: removeFluidYear,
     // shop tool-list store (IndexedDB v0.3.16), exposed for dev harnesses
     loadShopTools: loadShopTools, saveShopTools: saveShopTools, removeShopTools: removeShopTools,
+    toolListPut: toolListPut, toolListDel: toolListDel, toolListKeepHand: toolListKeepHand, toolListHandCount: toolListHandCount,
     // Service Xpress torque (v0.4.1), exposed for dev harnesses
     parseServiceXpress: parseServiceXpress, sxFromPdf: sxFromPdf, loadSx: loadSx,
     sxSaveFiles: sxSaveFiles, removeSx: removeSx, removeSxFile: removeSxFile, sxForVehicle: sxForVehicle,
