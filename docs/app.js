@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.14-beta · 2026-09-23 16:45 UTC";
+var BUILD = "v0.5.14-beta · 2026-09-23 16:54 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -863,6 +863,7 @@ if (_toolDict && _toolDictSig === sig) return _toolDict;
 var pats = [];
 Object.keys(st.map).forEach(function (norm) {
 if (norm.length < 3 || !/[A-Z]/.test(norm)) return;      // skip short / pure-number keys
+if (!/\d/.test(norm)) return;   // plain-text names ("FLOOR JACK", #201) — would match ordinary words
 var orig = (st.map[norm] && st.map[norm].n) || norm;
 var parts = String(orig).toUpperCase().match(/[A-Z0-9]+/g);
 if (!parts || !parts.length) return;
@@ -1116,9 +1117,11 @@ f = f || {};
 var n = String(f.n == null ? "" : f.n).replace(/\s+/g, " ").trim();
 var desc = String(f.desc == null ? "" : f.desc).replace(/\s+/g, " ").trim();
 var d = String(f.d == null ? "" : f.d).replace(/\s+/g, " ").trim();
-if (!n) return { ok: false, err: "Enter the tool number." };
-if (!/\d/.test(n)) return { ok: false, err: "A tool number needs at least one digit (e.g. VAS 6909, T10663)." };
+// plain-text names are fine ("Floor jack") — shops list non-VW tools too.
+// They're never hunted for in ELSA text (see toolDict), only matched by name.
+if (!n) return { ok: false, err: "Enter the tool number or name." };
 var key = normTool(n);
+if (!key) return { ok: false, err: "Use at least one letter or number in the tool number or name." };
 var out = toolListCopy(st);
 if (key !== oldKey && out.map[key]) return { ok: false, err: "“" + out.map[key].n + "” is already on the list — edit that one instead." };
 if (oldKey) delete out.map[oldKey];
@@ -6214,6 +6217,13 @@ var CSS = "" +
 ".tmrow button:hover{background:#f3f6fb}" +
 ".tmrow .tmdel{color:#a32d2d;border-color:#e6b0b0}" +
 ".tmrow .confirm{display:flex;gap:6px;align-items:center;font-size:12px;color:#a32d2d;font-weight:600}" +
+".tmcf{display:flex;gap:10px;padding:7px 0;border-top:1px solid #f0f0f0;font-size:13px}" +
+".tmcl{width:130px;flex:none;color:#3a4a63;font-weight:600}" +
+".tmcv{flex:1;min-width:0;color:#001e50;font-weight:700;word-break:break-word}" +
+".tmcv i{color:#888;font-weight:400}" +
+".tmcw{display:block;font-size:11.5px;font-weight:400;color:#8a4708}" +
+".tmok{background:#e9f8ee;border:1px solid #bfe8cb;color:#1d7a36;font-weight:700;font-size:12.5px;border-radius:8px;padding:7px 10px;margin:0 0 8px}" +
+".tmrow.saved{background:#f1fbf4}" +
 ".tmmore,.tmempty{padding:8px;font-size:12px;color:#666;text-align:center}" +
 ".tmform label{display:block;font-size:12px;font-weight:700;color:#001e50;margin:8px 0 3px}" +
 ".tmform input{width:100%;box-sizing:border-box;font-family:inherit;font-size:13px;padding:7px 9px;border:1px solid #cfd6e4;border-radius:8px;outline:none}" +
@@ -6461,7 +6471,14 @@ if (vehLoaded(r)) veh = [r.__vehicle.year, r.__vehicle.model].filter(function (x
 // by location so same-drawer tools sit together (still a one-trip grab list).
 var items = [], missing = [];
 (r.tools || []).forEach(function (it) {
-if (!it || !it.num) return;
+if (!it) return;
+// a hand-typed job row with no number: include it only if it names a tool
+// on the shop list (e.g. a plain-text "Floor jack" entry, #201)
+if (!it.num) {
+var hh = byHand(it) ? matchShopTool(it.text) : null;
+if (hh) items.push({ num: hh.n, desc: hh.desc || "", loc: hh.d || "(no location)", flag: hh.s || "" });
+return;
+}
 var hit = matchShopTool(it.num);
 var desc = (hit && hit.desc) || it.desc || "";
 if (!hit) { missing.push({ num: it.num, desc: desc }); return; }
@@ -7655,7 +7672,7 @@ if (st && st.map) for (k in st.map) if (Object.prototype.hasOwnProperty.call(st.
 out.sort(function (a, b) { return String(a.e.n).localeCompare(String(b.e.n), undefined, { numeric: true }); });
 return out;
 }
-function listView() {
+function listView(savedKey) {
 var all = entries();
 ov.innerHTML = '<div class="setbox">' +
 '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
@@ -7663,6 +7680,7 @@ ov.innerHTML = '<div class="setbox">' +
 '<p class="setsub">Add a tool, or fix a tool’s number, description or drawer. Saved only on this computer — your spreadsheet file isn’t changed.</p>' +
 '<div class="tmtop"><input class="tmq" type="search" placeholder="Search number, description or drawer…" value="' + esc(query) + '">' +
 '<button class="tmadd">+ Add tool</button></div>' +
+(savedKey ? '<div class="tmok">✓ Saved to your tool list</div>' : "") +
 '<div class="tmlist"></div>' +
 '<div class="setbtns"><button class="cancel">Done</button></div>' +
 "</div>";
@@ -7678,7 +7696,7 @@ String(e.d || "").toUpperCase().indexOf(needle) >= 0) hits.push(o);
 });
 var html = hits.slice(0, SHOW).map(function (o) {
 var e = o.e;
-return '<div class="tmrow" data-k="' + esc(o.key) + '">' +
+return '<div class="tmrow' + (o.key === savedKey ? " saved" : "") + '" data-k="' + esc(o.key) + '">' +
 '<span class="tmn">' + esc(e.n) + "</span>" +
 '<span class="tmd" title="' + esc(e.desc || "") + '">' + esc(e.desc || "") + "</span>" +
 (e.hand ? '<span class="tmh" title="Added or edited in Hahns">hand</span>' : "") +
@@ -7715,18 +7733,62 @@ else saveShopTools(next).then(done);
 });
 });
 }
-q.addEventListener("input", function () { query = q.value; paint(); });
+q.addEventListener("input", function () {
+query = q.value; savedKey = null;
+var ok = ov.querySelector(".tmok"); if (ok) ok.remove();
+paint();
+});
 ov.querySelector(".tmadd").addEventListener("click", function () { formView(null, { n: "", desc: "", d: "" }); });
 ov.querySelector(".cancel").addEventListener("click", close);
 ov.querySelector(".xclose").addEventListener("click", close);
 paint();
-try { q.focus(); } catch (e) {}
+if (!savedKey) { try { q.focus(); } catch (e) {} }
+}
+function confirmView(key, typed, res) {
+var e = res.st.map[res.key];
+var was = key ? (loadShopTools() || {}).map : null;
+was = was ? was[key] : null;
+function line(label, val, oldVal) {
+var changed = was && String(oldVal || "") !== String(val || "");
+return '<div class="tmcf"><span class="tmcl">' + label + "</span><span class=\"tmcv\">" + (val ? esc(val) : '<i>(blank)</i>') +
+(changed ? '<span class="tmcw">was: ' + (oldVal ? esc(oldVal) : "(blank)") + "</span>" : "") + "</span></div>";
+}
+ov.innerHTML = '<div class="setbox">' +
+'<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
+'<p class="settl">' + (key ? "Save these changes?" : "Add this tool?") + "</p>" +
+'<p class="setsub">Check it’s right before saving.</p>' +
+line("Tool", e.n, was && was.n) +
+line("Description", e.desc, was && was.desc) +
+line("Drawer / location", e.d, was && was.d) +
+(e.s ? '<div class="tmcf"><span class="tmcl">Flag</span><span class="tmcv"><span class="tbadge warn">' + esc(e.s) + "</span></span></div>" : "") +
+'<div class="maperr" style="display:none"></div>' +
+'<div class="setbtns"><button class="cancel">Back to edit</button><button class="primary cfok">Confirm &amp; save</button></div>' +
+"</div>";
+var err = ov.querySelector(".maperr"), busy = false;
+var back = function () { formView(key, typed); };
+function commit() {
+if (busy) return; busy = true;
+saveShopTools(res.st).then(function (ok) {
+busy = false;
+if (!ok) { err.textContent = "Couldn’t save (storage blocked on this machine)."; err.style.display = "block"; return; }
+afterSave();
+if (prefill) { close(); flash(root, "✓ Saved " + e.n + " to your tool list"); return; }
+// show what was just saved: filter to it + a green confirmation
+query = e.n; listView(res.key);
+});
+}
+var okb = ov.querySelector(".cfok");
+okb.addEventListener("click", commit);
+ov.querySelector(".cancel").addEventListener("click", back);
+ov.querySelector(".xclose").addEventListener("click", close);
+okb.addEventListener("keydown", function (ev) { if (ev.key === "Escape") { ev.preventDefault(); back(); } });
+try { okb.focus(); } catch (x) {}
 }
 function formView(key, f) {
 ov.innerHTML = '<div class="setbox tmform">' +
 '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
 '<p class="settl">' + (key ? "Edit tool" : "Add a tool") + "</p>" +
-"<label>Tool number</label><input class=\"fn\" placeholder=\"e.g. VAS 6909 or T10663\" value=\"" + esc(f.n) + "\">" +
+"<label>Tool number or name</label><input class=\"fn\" placeholder=\"e.g. VAS 6909, T10663 or Floor jack\" value=\"" + esc(f.n) + "\">" +
 "<label>Description</label><input class=\"fdesc\" placeholder=\"e.g. Counterholder (type MISSING to flag it)\" value=\"" + esc(f.desc) + "\">" +
 "<label>Drawer / location</label><input class=\"fd\" placeholder=\"e.g. 12 or Right O/H\" value=\"" + esc(f.d) + "\">" +
 '<div class="maperr" style="display:none"></div>' +
@@ -7734,17 +7796,13 @@ ov.innerHTML = '<div class="setbox tmform">' +
 "</div>";
 var err = ov.querySelector(".maperr");
 var back = function () { if (prefill) close(); else listView(); };
+// Save → validate, then a confirm step showing exactly what will be stored;
+// nothing is written until the tech confirms (#201)
 function save() {
-var res = toolListPut(loadShopTools(), key, {
-n: ov.querySelector(".fn").value, desc: ov.querySelector(".fdesc").value, d: ov.querySelector(".fd").value
-});
+var typed = { n: ov.querySelector(".fn").value, desc: ov.querySelector(".fdesc").value, d: ov.querySelector(".fd").value };
+var res = toolListPut(loadShopTools(), key, typed);
 if (!res.ok) { err.textContent = res.err; err.style.display = "block"; return; }
-saveShopTools(res.st).then(function (ok) {
-if (!ok) { err.textContent = "Couldn’t save (storage blocked on this machine)."; err.style.display = "block"; return; }
-afterSave();
-if (prefill) { close(); flash(root, "✓ Added " + res.st.map[res.key].n + " to your tool list"); return; }
-query = ""; listView();
-});
+confirmView(key, typed, res);
 }
 ov.querySelector(".save").addEventListener("click", save);
 ov.querySelector(".cancel").addEventListener("click", back);

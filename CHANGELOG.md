@@ -17,6 +17,13 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
   yet). Search your list, **+ Add tool**, **Edit** a tool’s number, description or drawer, or remove
   one. Type “MISSING” in a description to flag it, same as in the spreadsheet. A number that’s already
   on the list is caught instead of overwritten (issue #201).
+- **Check before it saves.** Clicking Save shows the tool number, description and drawer (and what they
+  were, when editing) — nothing is saved until you click **Confirm & save**. Afterwards the list jumps
+  to that tool with a green “✓ Saved to your tool list”.
+- **Tools without a VW number.** A tool can be named in plain words (“Floor jack”, “Pink pry bar”) —
+  handy for shop tools that aren’t VW special tools. Hahns won’t go looking for plain-word names in the
+  ELSA page (so “pliers” in a procedure doesn’t become a tool), but if you add that tool to a job by
+  hand with the same name, **Find these tools** shows its drawer.
 - **Add a tool straight from a scan.** A scanned tool marked **not in list** is now clickable — it opens
   the Add form with the tool number (and the description from ELSA) filled in, so you only type the
   drawer.
