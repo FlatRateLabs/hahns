@@ -33,8 +33,11 @@ worked as a bookmark URL). Useful pre-ship pattern: a scratchpad page with a dra
 bookmarklet; nobody else is affected.
 
 ### Carry-forward
-- Possible follow-up: spreadsheet uploads still drop digit-less rows (`buildToolMap`), so plain-text tools
-  only come in via Manage tools.
+- **Shipped same day as v0.5.15-beta (PR #203):** uploads now keep digit-less rows — plain names in the
+  tool column (SET PICK I/L, VWMICROPOD) and blank-tool# rows whose description becomes the name (CHASIS
+  EARS, INJECTOR CLEANER, …) — guarded by "must have a drawer" + `toolRowPlausible`. Owner's MASTER LIST
+  2026: 1018 → 1026, 0 existing entries changed. `parseCSV/findToolHeader/guessToolRole/buildToolMap` now on
+  `window.VWJB`. Lesson: rebuild AFTER dating the CHANGELOG heading, or notes.json ships "in progress".
 - Prior bay tests + deferred maintenance gaps unchanged (see v0.5.13 entry).
 
 ---
