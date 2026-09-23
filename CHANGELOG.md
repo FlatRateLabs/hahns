@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.15-beta — in progress
+## v0.5.15-beta — 2026-09-23
 
 ### Changed
 - **Uploaded tool lists now include tools without a VW number.** Rows whose tool column is a plain name
