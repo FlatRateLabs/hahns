@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.15-beta · 2026-09-23 17:09 UTC";
+var BUILD = "v0.5.16-beta · 2026-09-26 23:09 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -18,6 +18,18 @@ var REPORT_URL = "https://flatratelabs.github.io/hahns/report.html";
 // transient one-line note for the vehicle bar (e.g. a blocked procedure scan
 // before a vehicle is loaded). Cleared once shown — never persisted.
 var vehNotice = "";
+// a DIFFERENT vehicle read off the Vehicle Summary while one is loaded (#204):
+// held in memory only until the tech answers the "switch vehicle?" box.
+var vehSwitch = null;
+function vehSwitchBox() {
+if (!vehSwitch) return "";
+var desc = [vehSwitch.year, vehSwitch.model].filter(Boolean).join(" ");
+return '<div class="vwarn vswitch"><b>New VIN detected:</b> ' + esc(vehSwitch.vin) +
+(desc ? " (" + esc(desc) + ")" : "") +
+'. Clear everything and use this vehicle?<span class="confirm">' +
+'<button class="cyes" data-act="vehswitch">Yes, switch</button>' +
+'<button class="cno" data-act="vehkeep">No, keep current</button></span></div>';
+}
 // the panel host element's id (one panel per page). Hoisted so the global
 // keyboard-shortcut listener can find the live shadow root by id.
 var PANEL_ID = "vwjb-host-9a3f";
@@ -5943,6 +5955,7 @@ var CSS = "" +
 ".vval{color:#1c1c1c;font-weight:600;cursor:text;word-break:break-all}" +
 ".vval.miss{color:#b06a00;font-style:italic;font-weight:600}" +
 ".vvalin{font-family:inherit;font-weight:600;font-size:12px;padding:2px 5px;border:1px solid #001e50;border-radius:5px;outline:none;width:100%;max-width:190px}" +
+".vswitch .confirm{display:flex;gap:6px;margin-top:6px}" +
 ".vwarn{margin-top:7px;font-size:11px;color:#8a5a00;background:#fff6e0;border:1px solid #f0dca6;border-radius:6px;padding:5px 8px;line-height:1.35}" +
 ".sub{padding:6px 13px;background:#eef1f6;display:flex;align-items:center}" +
 ".bld{font-size:11px;color:#5a6b8c;white-space:nowrap;cursor:pointer}" +
@@ -6286,9 +6299,9 @@ return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
 // (the greyed Fluids & Capacities row already prompts to scan the Summary),
 // only surfacing a transient scan note if there is one.
 function vehicleBar(r) {
-var note = vehNotice
+var note = (vehNotice
 ? '<div class="vwarn">' + esc(vehNotice) + "</div>"
-: "";
+: "") + vehSwitchBox();
 if (!vehLoaded(r)) {
 return note ? '<div class="vbar empty">' + note + "</div>" : "";
 }
@@ -6433,6 +6446,7 @@ var vtog = '<button class="qveh" data-act="vehexpand" data-tip="Show vehicle det
 // New Vehicle sits between the wrench and the Vehicle toggle (owner request, #149)
 var newv = '<button class="qchip newv" data-act="newjob" data-tip="Start over with a NEW vehicle — clears the loaded vehicle and all collected info">' + svg(RESTART) + "</button>";
 var note = vehNotice ? '<div class="vwarn" style="margin:6px 13px 0">' + esc(vehNotice) + "</div>" : "";
+if (vehSwitch) note += '<div style="margin:6px 13px 0">' + vehSwitchBox() + "</div>";
 return '<div class="quickrow">' + fl + ms + newv + vtog + "</div>" + note;
 }
 // Service Xpress torque card for the Fluids & Capacities WINDOW — sits at the top,
@@ -8109,6 +8123,11 @@ host.remove();
 } else if (act === "min") {
 setMin(!isMin());
 renderInto(host, r, options);
+} else if (act === "vehswitch" && typeof options.onVehSwitch === "function") {
+options.onVehSwitch();
+} else if (act === "vehkeep") {
+vehSwitch = null;
+renderInto(host, r, options);
 } else if (act === "rescan" && typeof onRescan === "function") {
 onRescan();
 } else if (act === "newjob" && typeof options.onNewJob === "function") {
@@ -8258,7 +8277,7 @@ if (existing) existing.remove();
 var host = document.createElement("div");
 host.id = ID;
 document.documentElement.appendChild(host);
-var opts = { onRescan: scan, onNewJob: newJob, persist: true };
+var opts = { onRescan: scan, onNewJob: newJob, onVehSwitch: switchVehicle, persist: true };
 var show = function (job) {
 saveJob(job);
 renderInto(host, job, opts);
@@ -8271,6 +8290,7 @@ renderInto(host, job, opts);
 //    required, so a repair page can be scanned straight away.
 function scan() {
 var job = loadJob() || emptyResults();
+vehSwitch = null;   // any unanswered switch box is superseded by this scan
 var segs = gatherSegments(document);
 lastSegments = segs;   // keep the diagnostic dump in sync
 // opportunistically load the vehicle from the Vehicle Summary page. A VIN in
@@ -8285,6 +8305,36 @@ vehNotice = "Vehicle loaded — Fluids & Capacities is now available.";
 } else {
 vehNotice = "Read the Vehicle Summary but couldn’t find a VIN — click SCAN again.";
 }
+show(job);
+return;
+}
+// re-scanning the Vehicle Summary once a vehicle is loaded (issue #204): the
+// tech typed the mileage into ELSA after the first scan, so refresh the
+// vehicle in place instead of needing New Vehicle. Same VIN only — ELSA's live
+// mileage wins, other fields fill only if still blank (hand edits kept); the
+// collected specs are untouched. A different VIN never mixes into this job.
+if (vehLoaded(job) && isVehicleSummaryPage(segs)) {
+var cur = job.__vehicle, fresh = extractVehicle(segs) || {};
+var norm = function (s) { return String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); };
+if (fresh.vin && norm(fresh.vin) !== norm(cur.vin)) {
+// ask before wiping the current job — nothing changes until "Yes, switch"
+if (!fresh.mileage) { try { fresh.mileage = readVehMileage(document) || ""; } catch (e) {} }
+vehSwitch = fresh;
+show(job);
+return;
+}
+var got = [];
+var liveMi = "";
+try { liveMi = readVehMileage(document) || ""; } catch (e) {}
+if (!liveMi) liveMi = fresh.mileage || "";
+if (liveMi && String(liveMi) !== String(cur.mileage || "")) { cur.mileage = String(liveMi); got.push("Mileage"); }
+VEH_FIELDS.forEach(function (f) {
+if (f.k === "mileage" || f.k === "vin") return;
+if (!cur[f.k] && fresh[f.k]) { cur[f.k] = fresh[f.k]; got.push(f.label); }
+});
+vehNotice = got.length
+? "Vehicle updated: " + got.join(", ") + "."
+: (cur.mileage ? "Vehicle already up to date." : "No mileage found on this page — type it into ELSA’s Mileage box (or the green bar) and SCAN again.");
 show(job);
 return;
 }
@@ -8348,8 +8398,21 @@ scheduleImageRescan(scan);
 // wipe everything — empty list, empty title, cleared storage. The next
 // "Scan page" starts collecting the new job from scratch.
 function newJob() {
+vehSwitch = null;
 clearJob();
 show(emptyResults());
+}
+// "Yes, switch" on the new-VIN box: New Vehicle + load the pending car in one step
+function switchVehicle() {
+var v = vehSwitch;
+vehSwitch = null;
+clearJob();
+var job = emptyResults();
+if (v && v.vin) {
+job.__vehicle = v;
+vehNotice = "Switched to the new vehicle — previous job cleared.";
+}
+show(job);
 }
 // open showing the current job (blank if nothing collected yet) WITHOUT
 // auto-scanning — scanning the page is a deliberate "Scan page" click

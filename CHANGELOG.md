@@ -9,6 +9,24 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.5.16-beta — 2026-09-26
+
+### Fixed
+- **Scanning the Vehicle Summary again now updates the mileage.** If the mileage
+  wasn't there the first time, type it into ELSA's Mileage box and press **SCAN**
+  on the Vehicle Summary again. The mileage (and any other blank vehicle details)
+  fill in and the maintenance "service due" check updates. You no longer need to
+  click New Vehicle and start over. Your collected specs stay put, details you
+  already have (or typed yourself) aren't changed. (#204)
+
+### Added
+- **New-VIN check.** If you scan a Vehicle Summary for a *different* car while
+  one is loaded, a box asks "New VIN detected … Clear everything and use this
+  vehicle?" **Yes, switch** clears the old job and loads the new car in one step;
+  **No, keep current** leaves everything as it was.
+
+---
+
 ## v0.5.15-beta — 2026-09-23
 
 ### Changed
