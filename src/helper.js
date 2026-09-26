@@ -6429,7 +6429,8 @@
     // ⚙ settings + tool-list mapper overlays
     ".setc{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(0,8,30,.28);padding:14px}" +
     ".setbox{position:relative;background:#fff;border:1px solid #d4d4d4;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.3);padding:16px;width:440px;max-width:92vw;max-height:88vh;overflow:auto;text-align:left}" +
-    ".setbox .xclose{position:absolute;top:9px;right:9px;width:30px;height:30px;padding:0;border-radius:8px;border:1px solid #cfd6e4;background:#fff;color:#3a4a63;font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}" +
+    // sticky (not absolute) so the ✕ stays in the corner while a long box scrolls
+    ".setbox .xclose{position:sticky;top:-7px;float:right;margin:-7px -7px 0 8px;z-index:5;box-shadow:0 2px 6px rgba(0,30,80,.12);width:30px;height:30px;padding:0;border-radius:8px;border:1px solid #cfd6e4;background:#fff;color:#3a4a63;font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}" +
     ".setbox .xclose:hover{background:#f3f6fb;color:#001e50}" +
     ".settl{font-size:14px;font-weight:700;color:#001e50;margin:0 0 4px;padding-right:26px}" +
     ".setsub{font-size:12px;color:#3a4a63;line-height:1.45;margin:0 0 12px}" +
@@ -6440,6 +6441,8 @@
     ".setitems{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}" +
     ".setitem{display:inline-flex;align-items:center;gap:5px;max-width:100%;background:#fff;border:1px solid #cce6cf;border-radius:7px;padding:3px 4px 3px 9px;font-size:12px;font-weight:700;color:#13502a}" +
     ".siyr{word-break:break-word}" +
+    ".sipdf{all:unset;cursor:pointer;word-break:break-word;text-decoration:underline dotted;text-underline-offset:2px}" +
+    ".sipdf:hover{color:#0b3d1f;text-decoration:underline}" +
     ".siremove{appearance:none;-webkit-appearance:none;border:0;background:#f0f4f1;color:#a32d2d;border-radius:5px;cursor:pointer;font-size:12px;line-height:1;padding:3px 6px;font-family:inherit}" +
     ".siremove:hover{background:#fdeaea}" +
     ".setitem .confirm{margin:0}" +
@@ -7416,6 +7419,60 @@
   // open (Settings) — for results that shouldn't vanish on their own like a toast, e.g.
   // "setup loaded" when standing up another shop computer (issue #158). Appended after
   // the Settings overlay; both use z-index max, so later-in-DOM paints on top.
+  // ---- open a saved source PDF (issue #205) ----
+  // Each stored year in Settings is a button that opens the ORIGINAL PDF the tech
+  // loaded (kept as a Blob in hahns_db for auto re-parse). Local only: a blob: URL
+  // of the tech's own file — zero network. The window is opened synchronously on
+  // the click (so popup blockers allow it), then pointed at the PDF once read.
+  function pdfYearBtn(store, key, year) {
+    return '<button class="siyr sipdf" data-pdfstore="' + esc(store) + '" data-pdfkey="' + esc(key) +
+      '" title="Open the ' + esc(year) + ' PDF">' + esc(year) + "</button>";
+  }
+  function openStoredPdf(store, key, root) {
+    var w = null;
+    try { w = window.open("", "_blank"); } catch (e) {}
+    var fail = function (title, msg) {
+      try { if (w) w.close(); } catch (e) {}
+      okModal(root, title, msg);
+    };
+    if (!w) { okModal(root, "Pop-up blocked", "Your browser blocked the PDF window. Allow pop-ups for this site and try again."); return; }
+    try { w.document.title = "Opening PDF…"; w.document.body.innerHTML = '<p style="font:15px system-ui;padding:24px">Opening PDF…</p>'; } catch (e) {}
+    if (!appDB) { fail("PDF not available", "The saved PDFs can’t be read in this browser right now."); return; }
+    idbGet(store, key).then(function (pdf) {
+      if (!pdf || !pdf.blob) {
+        fail("PDF not saved", "This year was loaded before Hahns kept the original PDF. Load the PDF again in Settings and it will open here next time.");
+        return;
+      }
+      var url = URL.createObjectURL(new Blob([pdf.blob], { type: "application/pdf" }));
+      try { w.location.href = url; } catch (e) { fail("Couldn’t open PDF", "The PDF window couldn’t be opened."); return; }
+      setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) {} }, 600000);
+    }).catch(function () { fail("Couldn’t open PDF", "The saved PDF couldn’t be read."); });
+  }
+
+  // the "Open PDF" year picker — same window/layout as the Update picker
+  function openPdfPicker(root, title, yrs) {
+    var list = yrs.map(function (o, i) {
+      return '<button class="updpick" data-i="' + i + '"><b>' + esc(o.year) + "</b></button>";
+    }).join("");
+    var ov = document.createElement("div");
+    ov.className = "setc";
+    ov.innerHTML = '<div class="setbox">' +
+      '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
+      '<p class="settl">' + esc(title) + "</p>" +
+      '<p class="setsub">Pick the year you want to open. It opens in a new window.</p>' +
+      '<div class="updlist">' + list + "</div>" +
+      '<div class="setbtns"><button class="cancel">Cancel</button></div>' +
+      "</div>";
+    root.appendChild(ov);
+    var close = function () { try { ov.remove(); } catch (e) {} };
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    ov.querySelector(".cancel").addEventListener("click", close);
+    ov.querySelector(".xclose").addEventListener("click", close);
+    Array.prototype.forEach.call(ov.querySelectorAll(".updpick"), function (b) {
+      b.addEventListener("click", function () { var o = yrs[+b.getAttribute("data-i")]; close(); openStoredPdf(o.store, o.key, root); });
+    });
+  }
+
   function okModal(root, title, msg) {
     var ov = document.createElement("div");
     ov.className = "setc";
@@ -7550,7 +7607,7 @@
     var fl = loadFluids();
     var flYears = fl && fl.years ? Object.keys(fl.years).sort(function (a, b) { return a < b ? 1 : a > b ? -1 : 0; }) : [];
     var flItems = flYears.map(function (y) {
-      return '<span class="setitem"><span class="siyr">' + esc(y) + "</span>" +
+      return '<span class="setitem">' + pdfYearBtn("pdfs", y, y) +
         '<button class="siremove" data-flrmyear="' + esc(y) + '" title="Remove ' + esc(y) + '" aria-label="Remove ' + esc(y) + '">&#10005;</button></span>';
     }).join("");
     var flStatus = flYears.length
@@ -7573,7 +7630,7 @@
     var sxByYear = sxFiles.map(function (f) { return { key: f.key, year: sxFileYear(f) }; })
       .sort(function (a, b) { return a.year < b.year ? 1 : a.year > b.year ? -1 : 0; });
     var sxItems = sxByYear.map(function (o) {
-      return '<span class="setitem"><span class="siyr">' + esc(o.year) + "</span>" +
+      return '<span class="setitem">' + pdfYearBtn("sx_pdfs", o.key, o.year) +
         '<button class="siremove" data-sxrmkey="' + esc(o.key) + '" title="Remove ' + esc(o.year) + '" aria-label="Remove ' + esc(o.year) + '">&#10005;</button></span>';
     }).join("");
     var sxStatus = sxFiles.length
@@ -7588,7 +7645,7 @@
     var msByYear = msFilesL.map(function (f) { return { key: f.key, year: msFileYear(f) }; })
       .sort(function (a, b) { return a.year < b.year ? 1 : a.year > b.year ? -1 : 0; });
     var msItems = msByYear.map(function (o) {
-      return '<span class="setitem"><span class="siyr">' + esc(o.year) + "</span>" +
+      return '<span class="setitem">' + pdfYearBtn("ms_pdfs", o.key, o.year) +
         '<button class="siremove" data-msrmkey="' + esc(o.key) + '" title="Remove ' + esc(o.year) + '" aria-label="Remove ' + esc(o.year) + '">&#10005;</button></span>';
     }).join("");
     var msStatus = msFilesL.length
@@ -7639,6 +7696,7 @@
           flStatus +
           '<div class="setbtns">' +
             (flYears.length > 1 ? '<button class="danger flremove">Remove all</button>' : "") +
+            (flYears.length ? '<button class="openpdf" data-pdftitle="Open a fluid table">Open PDF</button>' : "") +
             (flYears.length ? '<button class="primary flupdate">Update</button>' : "") +
             '<button class="primary flupload">' + (flYears.length ? "Add PDFs" : "Load PDFs") + "</button>" +
           "</div>" +
@@ -7652,6 +7710,7 @@
           sxStatus +
           '<div class="setbtns">' +
             (sxFiles.length > 1 ? '<button class="danger sxremove">Remove all</button>' : "") +
+            (sxFiles.length ? '<button class="openpdf" data-pdftitle="Open a torque chart">Open PDF</button>' : "") +
             (sxFiles.length ? '<button class="primary sxupdate">Update</button>' : "") +
             '<button class="primary sxupload">' + (sxFiles.length ? "Add PDFs" : "Load PDFs") + "</button>" +
           "</div>" +
@@ -7665,6 +7724,7 @@
           msStatus +
           '<div class="setbtns">' +
             (msFilesL.length > 1 ? '<button class="danger msremove">Remove all</button>' : "") +
+            (msFilesL.length ? '<button class="openpdf" data-pdftitle="Open a maintenance schedule">Open PDF</button>' : "") +
             (msFilesL.length ? '<button class="primary msupdate">Update</button>' : "") +
             '<button class="primary msupload">' + (msFilesL.length ? "Add PDFs" : "Load PDFs") + "</button>" +
           "</div>" +
@@ -7705,6 +7765,28 @@
     // restore / apply section open-state
     Array.prototype.forEach.call(ov.querySelectorAll("details.setacc"), function (d) {
       if (openState[d.getAttribute("data-sec")]) d.open = true;
+    });
+    // opening a section scrolls it to the top of the Settings box so its contents
+    // are in view (sections lower down opened off-screen). Tied to the tech's click
+    // on the header only — an in-place refresh that restores open sections won't jump.
+    Array.prototype.forEach.call(ov.querySelectorAll("details.setacc > summary"), function (sm) {
+      sm.addEventListener("click", function () {
+        var d = sm.parentNode;
+        setTimeout(function () {
+          var box = d.closest(".setbox"); if (!box) return;
+          box.style.paddingBottom = "";   // drop any spacer from a previous open
+          if (!d.open) return;
+          var top = d.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop - 8;
+          // a section near the bottom can't scroll to the top on its own — add just
+          // enough temporary space below it (cleared on the next header click)
+          var short = top - (box.scrollHeight - box.clientHeight);
+          if (short > 0) box.style.paddingBottom = (16 + Math.ceil(short)) + "px";
+          var start = box.scrollTop;
+          try { box.scrollTo({ top: top, behavior: "smooth" }); } catch (e) { box.scrollTop = top; }
+          // backup: if smooth scrolling didn't run (unsupported / throttled), jump there
+          setTimeout(function () { if (box.scrollTop === start && Math.abs(top - start) > 2) box.scrollTop = top; }, 500);
+        }, 0);
+      });
     });
 
     var close = function () { try { ov.remove(); } catch (e) {} };
@@ -7797,6 +7879,24 @@
       });
     });
     // per-item removal (#129) — one year of fluids, or one Service Xpress chart file
+    // "Open PDF" (one per section) — works like Update: one year loaded → open it;
+    // several → the same year-picker window. The year chips stay clickable too.
+    Array.prototype.forEach.call(ov.querySelectorAll(".openpdf"), function (btn) {
+      btn.addEventListener("click", function () {
+        var sec = btn.closest(".setbody"); if (!sec) return;
+        var yrs = Array.prototype.map.call(sec.querySelectorAll(".setitems [data-pdfstore]"), function (y) {
+          return { store: y.getAttribute("data-pdfstore"), key: y.getAttribute("data-pdfkey"), year: y.textContent };
+        });
+        if (!yrs.length) return;
+        if (yrs.length === 1) { openStoredPdf(yrs[0].store, yrs[0].key, root); return; }
+        openPdfPicker(root, btn.getAttribute("data-pdftitle") || "Open a PDF", yrs);
+      });
+    });
+    Array.prototype.forEach.call(ov.querySelectorAll("[data-pdfstore]"), function (btn) {
+      btn.addEventListener("click", function () {
+        openStoredPdf(btn.getAttribute("data-pdfstore"), btn.getAttribute("data-pdfkey"), root);
+      });
+    });
     Array.prototype.forEach.call(ov.querySelectorAll("[data-flrmyear]"), function (btn) {
       btn.addEventListener("click", function () {
         var y = btn.getAttribute("data-flrmyear");

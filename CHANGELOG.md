@@ -9,6 +9,28 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.5.16.1-beta — 2026-09-26
+
+### Added
+- **Open your saved PDFs from Settings.** In ⚙ Settings, each PDF section
+  (Fluid capacity tables, Service Xpress, Maintenance schedules) has an
+  **Open PDF** button. With one year loaded it opens straight away; with several
+  it shows the years to pick from, the same way the Update button does. You can
+  also just click a year to open it.
+  The PDF opens in a new window. It opens the copy already saved on this
+  computer, so nothing is downloaded. Years loaded on a very old version (before
+  Hahns kept the PDF) show a note asking you to load that PDF once more. (#205)
+
+### Changed
+- **Settings sections scroll into view.** Opening a section lower in ⚙ Settings
+  (like Maintenance schedules) now scrolls it to the top of the Settings window,
+  so you can see what's inside without scrolling by hand.
+- **The Settings ✕ stays in view.** The close button now stays pinned in the
+  top-right corner while you scroll, so you can close Settings (or any Hahns
+  pop-up box) from anywhere.
+
+---
+
 ## v0.5.16-beta — 2026-09-26
 
 ### Fixed
