@@ -5,6 +5,42 @@ permanent project reference.
 
 ---
 
+## Session close (2026-09-26) — v0.5.16-beta (#204) + v0.5.16.1-beta (#205) — both merged
+
+Two owner-filed issues, two releases, both **app-only → no re-drag** (`LOADER_VER` 2), no parser touched.
+Each was owner-tested on real ELSA via the local TEST bookmark before merge.
+
+### v0.5.16-beta — PR #206, closes #204
+- **Re-scanning the Vehicle Summary refreshes the loaded vehicle** (was: fell through to spec extraction,
+  so a missing mileage needed New Vehicle → Scan). Same VIN → ELSA's live Mileage input (`readVehMileage`)
+  wins, other blank `VEH_FIELDS` fill, hand edits + specs kept, notice lists what changed.
+- **New-VIN prompt** (owner ask during testing): different VIN → in-memory `vehSwitch` + `vehSwitchBox()`
+  "New VIN detected … Clear everything and use this vehicle?" → Yes = `switchVehicle()` (clear + load),
+  No = dismiss. Shown in both the full vehicle bar and the compact quick row.
+
+### v0.5.16.1-beta — PR #207, closes #205
+- **Open PDF** per Settings PDF section (owner chose per-section over per-chip icons, then asked it to
+  behave exactly like Update): one year → opens; several → `openPdfPicker` modal (same markup as the
+  Update picker). Year chips also clickable (`pdfYearBtn`). `openStoredPdf` opens the window
+  synchronously on the click (popup blockers) then points it at a blob: URL of the saved Blob.
+- **Settings sections scroll to the top** of the box when opened (click-only; temporary bottom spacer so
+  low sections can reach the top; smooth + 500 ms jump backup).
+- **Pinned ✕** on every `.setbox` modal (`position:sticky;float:right`).
+- Note: v0.5.16 merged before the owner said "add something else to this release" — so #205 shipped
+  as a `.1` follow-up rather than being folded in. Ask before merging if a release might still grow.
+
+### Verification
+`node --check` + build each step; preview-harness tests for every path (mock Vehicle Summary; IDB-seeded
+SX PDFs with a stubbed `window.open`, since the built-in preview pane blocks popups and doesn't animate
+smooth scroll while hidden). Merged-tree greps on `main` confirmed both.
+
+### Carry-forward
+- No open issues after this session.
+- Bay tests + deferred maintenance gaps unchanged (see v0.5.13 entry).
+- Tidy: the v0.5.14 entry below is duplicated.
+
+---
+
 ## Session close (2026-09-23) — v0.5.14-beta: add & edit special tools in the app (#201)
 
 Owner-filed feature request #201 (add/edit shop special tools without editing the spreadsheet). PR **#202**
