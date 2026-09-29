@@ -18,6 +18,14 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
   shown, **Open Service Xpress PDF** next to Print. Each opens the exact PDF
   that window's info came from — the copy saved on this computer. (#208)
 
+### Changed
+- **PDFs open in their own window**, not a browser tab, parked on the right side
+  of the screen — so you can flip between Hahns's Maintenance (or Fluids) window
+  and VW's actual PDF. Clicking the same Open PDF again brings that window back
+  to the front. This applies to the Open PDF buttons in ⚙ Settings too.
+- **Open PDF buttons are green** everywhere (Settings, Fluids window,
+  Maintenance window).
+
 ### Fixed
 - **"New VIN detected" now shows while Hahns is minimized.** Scanning a
   different car's Vehicle Summary with the panel minimized now shows the

@@ -4648,8 +4648,8 @@
       "<style>" + FLUIDS_WIN_CSS + "</style></head><body>" +
       '<button id="hb_close" class="xclose" onclick="window.close()" title="Close" aria-label="Close">&#10005;</button>' +
       '<div class="bar"><button id="hb_print" onclick="window.print()">Print</button>' +
-        (yd ? '<button class="sec" data-pdfstore="pdfs" data-pdfkey="' + esc(String(veh.year)) + '" title="Open the VW Fluid Capacity Tables PDF this came from">Open Fluid PDF</button>' : "") +
-        (sxHit && sxHit.entry && sxHit.entry.file ? '<button class="sec" data-pdfstore="sx_pdfs" data-pdfkey="' + esc(sxHit.entry.file) + '" title="Open the VW Service Xpress chart the torque specs came from">Open Service Xpress PDF</button>' : "") +
+        (yd ? '<button data-pdfstore="pdfs" data-pdfkey="' + esc(String(veh.year)) + '" title="Open the VW Fluid Capacity Tables PDF this came from">Open Fluid PDF</button>' : "") +
+        (sxHit && sxHit.entry && sxHit.entry.file ? '<button data-pdfstore="sx_pdfs" data-pdfkey="' + esc(sxHit.entry.file) + '" title="Open the VW Service Xpress chart the torque specs came from">Open Service Xpress PDF</button>' : "") +
       "</div>" +
       "<h1>" + winName + "</h1>" +
       '<div class="meta">from the ' + esc(veh.year || "?") + " tables on this computer" + (yd && yd.file ? " (" + esc(yd.file) + ")" : "") + "</div>" +
@@ -4728,7 +4728,8 @@
     ".msctrl .sep{align-self:center;color:#9aa4b6;font-size:12px;font-weight:700;padding-bottom:8px}" +
     ".msreset{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:12px;padding:8px 13px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4;background:#f3f6fb;color:#1c2b3a;margin-left:auto}" +
     ".msreset:hover{background:#e7eefc;border-color:#185fa5}" +
-    ".msreset.mspdf{margin-left:0}" +
+    ".mspdf{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:12px;padding:8px 13px;border-radius:8px;cursor:pointer;border:1px solid #2fb84d;background:#2fb84d;color:#0a0a0a}" +
+    ".mspdf:hover{background:#28a344}" +
     "@media print{.msctrl{display:none}}" +
     ".hero{background:#fff5e6;border:1px solid #f0d9a8;border-left:5px solid #e0910f;border-radius:12px;padding:12px 15px;margin:14px 0}" +
     ".hero h2{margin:0;font-size:18px;color:#7a4d00}" +
@@ -4777,7 +4778,7 @@
       '<div class="sep">and&#47;or</div>' +
       '<div class="ctl"><label>Time in service</label><select id="ms_yr">' + yrOpts + "</select></div>" +
       '<button id="ms_reset" class="msreset" title="Back to what the scan pulled">Reset</button>' +
-      (pdfKey ? '<button id="hb_pdf" class="msreset mspdf" data-pdfstore="ms_pdfs" data-pdfkey="' + esc(pdfKey) + '" title="Open the VW Maintenance Schedules PDF this came from">Open PDF</button>' : "") +
+      (pdfKey ? '<button id="hb_pdf" class="mspdf" data-pdfstore="ms_pdfs" data-pdfkey="' + esc(pdfKey) + '" title="Open the VW Maintenance Schedules PDF this came from">Open PDF</button>' : "") +
       "</div>";
   }
   // the hero + three item cards for a computed `due` — re-rendered in place whenever
@@ -6528,6 +6529,8 @@
     ".setbtns button:hover{background:#f3f6fb}" +
     ".setbtns .primary{background:#2fb84d;border-color:#2fb84d;color:#0a0a0a}" +
     ".setbtns .primary:hover{background:#28a344}" +
+    ".setbtns .openpdf{background:#2fb84d;border-color:#2fb84d;color:#0a0a0a}" +
+    ".setbtns .openpdf:hover{background:#28a344}" +
     ".setbtns .danger{border-color:#e6b0b0;color:#a32d2d}" +
     ".setbtns .danger:hover{background:#fff5f5}" +
     ".setnote{font-size:11px;color:#7a7a7a;line-height:1.4;margin:10px 0 0;border-top:1px solid #eee;padding-top:8px}" +
@@ -7461,8 +7464,17 @@
   // (Fluids / Maintenance), open the PDF tab FROM that window — it holds the click's
   // user gesture — and report problems in the new tab itself (no panel modal there).
   function openStoredPdf(store, key, root, srcWin) {
-    var w = null;
-    try { w = (srcWin || window).open("", "_blank"); } catch (e) {}
+    // its own WINDOW (not a tab) so the tech can flip between it and Hahns's window;
+    // one window per PDF (named), parked on the right so it doesn't cover the Hahns window
+    var w = null, feats = "";
+    try {
+      var sw = screen.availWidth || 1280, sh = screen.availHeight || 900;
+      var ww = Math.min(900, sw - 40), wh = Math.max(400, sh - 60);
+      feats = "width=" + ww + ",height=" + wh + ",left=" + Math.max(0, sw - ww - 10) + ",top=10,scrollbars=yes,resizable=yes";
+    } catch (e) {}
+    var wname = "hahns_pdf_" + String(store + "_" + key).replace(/[^A-Za-z0-9_]/g, "_");
+    try { w = (srcWin || window).open("", wname, feats); } catch (e) {}
+    if (!w) { try { w = (srcWin || window).open("", "_blank"); } catch (e) {} }
     var fail = function (title, msg) {
       if (srcWin) {
         try { w.document.title = title; w.document.body.innerHTML = '<p style="font:15px system-ui;padding:24px"><b>' + esc(title) + "</b><br>" + esc(msg) + "</p>"; } catch (e) {}
@@ -7485,6 +7497,7 @@
       }
       var url = URL.createObjectURL(new Blob([pdf.blob], { type: "application/pdf" }));
       try { w.location.href = url; } catch (e) { fail("Couldn’t open PDF", "The PDF window couldn’t be opened."); return; }
+      try { w.focus(); } catch (e) {}
       setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) {} }, 600000);
     }).catch(function () { fail("Couldn’t open PDF", "The saved PDF couldn’t be read."); });
   }
