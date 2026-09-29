@@ -6533,6 +6533,9 @@
     ".setbtns .openpdf:hover{background:#28a344}" +
     ".setbtns .danger{border-color:#e6b0b0;color:#a32d2d}" +
     ".setbtns .danger:hover{background:#fff5f5}" +
+    // Settings sections: every button on ONE centered row (dialogs keep the right-aligned row)
+    ".setacc .setbtns{justify-content:center}" +
+    ".setacc .setbtns button{padding:8px 10px;white-space:nowrap}" +
     ".setnote{font-size:11px;color:#7a7a7a;line-height:1.4;margin:10px 0 0;border-top:1px solid #eee;padding-top:8px}" +
     // keyboard shortcuts (#122)
     ".keytoggle{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:#001e50;cursor:pointer;margin:2px 0 10px}" +

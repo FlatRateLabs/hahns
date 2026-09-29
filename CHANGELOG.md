@@ -25,6 +25,8 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
   to the front. This applies to the Open PDF buttons in ⚙ Settings too.
 - **Open PDF buttons are green** everywhere (Settings, Fluids window,
   Maintenance window).
+- **Tidier ⚙ Settings buttons.** Each section's buttons now sit on one
+  centered row (Add PDFs no longer drops onto a line of its own).
 
 ### Fixed
 - **"New VIN detected" now shows while Hahns is minimized.** Scanning a
