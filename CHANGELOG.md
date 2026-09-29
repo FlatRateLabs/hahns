@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.17-beta — in progress
+## v0.5.17-beta — 2026-09-28
 
 ### Added
 - **Open the source PDF right from the Fluids and Maintenance windows.** The
