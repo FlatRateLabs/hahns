@@ -5,6 +5,43 @@ permanent project reference.
 
 ---
 
+## Session close (2026-09-28) — v0.5.17-beta (#208/#209/#210) — merged + live
+
+Three owner-filed issues shipped as ONE release (owner's call). PR **#211** (squash `--admin`, merged by the
+owner — auto mode blocked the admin merge from the session; opening the PR was fine). **App-only → no re-drag**
+(`LOADER_VER` 2); no parser touched. Owner-tested on real ELSA via 3 rounds of TEST bookmarks.
+
+### What shipped (`src/helper.js`)
+- **#208 Open PDF inside the windows:** Maintenance window → green **Open PDF** in the `.msctrl` row (after
+  Reset; `msControls(…, pdfKey)` = `msData.byYear[Y].file`). Fluids window → **Open Fluid PDF** (`pdfs`, key =
+  year) + **Open Service Xpress PDF** (`sx_pdfs`, key = the matched `sxForVehicle().entry.file`) in the `.bar`
+  beside Print. `wirePdfButtons(win)` wires any `[data-pdfstore]` in a pop-up (onReady for fluids, end of
+  `wireMsWindow`). `openStoredPdf(store,key,root,srcWin)` — `srcWin` opens FROM the pop-up (it holds the user
+  gesture) and reports failures in the new window (no panel modal there).
+- **PDFs open in their own WINDOW** (owner ask, all Open PDF paths incl. Settings): named per PDF
+  (`hahns_pdf_<store>_<key>` → re-click refocuses), ~900 px wide × near-full height, parked on the right so it
+  doesn't cover the Hahns window; `_blank` fallback. **All Open PDF buttons green** (Settings `.setbtns .openpdf`
+  were white; window buttons now plain green `.bar button` / `.mspdf`).
+- **#209** new-VIN prompt while minimized: `.minswitch` box under the header when `mini && vehSwitch`; the
+  quick-row copy is wrapped `.qswitch` and hidden under `.wrap.min` (the quick row DOES show while minimized, by
+  design — without that the prompt appeared twice).
+- **#210** new vehicle re-expands: `resetVehAuto()` (cancel timer, `vehAutoArmed=false`, drop
+  `vwjb_vehexp_v1`) on first load via scan and in `switchVehicle()` → details show, auto-collapse after 3 s.
+- **Settings buttons one centered row** (owner ask): `.setacc .setbtns{justify-content:center}` +
+  `button{padding:8px 10px;white-space:nowrap}` — scoped to Settings sections so dialog Cancel/OK rows stay
+  right-aligned. (4 PDF buttons needed 372 px in a 363 px row → Add PDFs wrapped.)
+
+### Verification
+`node --check` + build each step; preview harness with a mock Vehicle Summary page (`dist/_t.html`, deleted) and
+the real 2019 fluid/SX/MS PDFs seeded into IDB via `VWJB.*SaveYears/Files`; `window.open` stubbed with iframes
+(preview blocks pop-ups) → each button hit the right store/key, blob: URL set, window features right; no console
+errors. Preview IDB cleared after. Merged-tree grep on `main` + `version.json` = 0.5.17-beta; owner verified live.
+
+### Carry-forward
+- No open issues. Bay tests + deferred maintenance gaps unchanged (see v0.5.13 entry).
+
+---
+
 ## Session close (2026-09-26) — v0.5.16-beta (#204) + v0.5.16.1-beta (#205) — both merged
 
 Two owner-filed issues, two releases, both **app-only → no re-drag** (`LOADER_VER` 2), no parser touched.
