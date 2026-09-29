@@ -9,6 +9,35 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.5.17-beta — 2026-09-28
+
+### Added
+- **Open the source PDF right from the Fluids and Maintenance windows.** The
+  Maintenance window has an **Open PDF** button beside the Mileage / Time
+  selectors. The Fluids window has **Open Fluid PDF** and, when torque specs are
+  shown, **Open Service Xpress PDF** next to Print. Each opens the exact PDF
+  that window's info came from — the copy saved on this computer. (#208)
+
+### Changed
+- **PDFs open in their own window**, not a browser tab, parked on the right side
+  of the screen — so you can flip between Hahns's Maintenance (or Fluids) window
+  and VW's actual PDF. Clicking the same Open PDF again brings that window back
+  to the front. This applies to the Open PDF buttons in ⚙ Settings too.
+- **Open PDF buttons are green** everywhere (Settings, Fluids window,
+  Maintenance window).
+- **Tidier ⚙ Settings buttons.** Each section's buttons now sit on one
+  centered row (Add PDFs no longer drops onto a line of its own).
+
+### Fixed
+- **"New VIN detected" now shows while Hahns is minimized.** Scanning a
+  different car's Vehicle Summary with the panel minimized now shows the
+  switch question right under the title bar, instead of nothing until you
+  expanded the panel. (#209)
+- **A new vehicle's details show again.** After switching to a new VIN (or
+  loading a vehicle after New Vehicle), the green vehicle info opens up so
+  you can check it, then folds back up after the same few seconds as
+  before. It used to stay folded up. (#210)
+
 ## v0.5.16.1-beta — 2026-09-26
 
 ### Added

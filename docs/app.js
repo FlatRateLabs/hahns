@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.16.1-beta · 2026-09-26 23:28 UTC";
+var BUILD = "v0.5.17-beta · 2026-09-29 03:57 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -4427,6 +4427,7 @@ var yd = st && st.years && st.years[veh.year];
 // Name torque in the heading/title when this window carries it, so the drain-plug +
 // wheel-bolt specs aren't hidden behind a "Fluids & Capacities"-only label (issue #192).
 var hasTorque = !!sxWinHTML(r);
+var sxHit = hasTorque ? sxForVehicle(r) : null;
 var winName = hasTorque ? "Fluids, Capacities &amp; Torque" : "Fluids &amp; Capacities";
 var body;
 if (!yd) {
@@ -4444,7 +4445,10 @@ return '<!doctype html><html><head><meta charset="utf-8">' +
 "<title>" + winName + (veh.model ? " — " + esc(veh.model) : "") + "</title>" +
 "<style>" + FLUIDS_WIN_CSS + "</style></head><body>" +
 '<button id="hb_close" class="xclose" onclick="window.close()" title="Close" aria-label="Close">&#10005;</button>' +
-'<div class="bar"><button id="hb_print" onclick="window.print()">Print</button></div>' +
+'<div class="bar"><button id="hb_print" onclick="window.print()">Print</button>' +
+(yd ? '<button data-pdfstore="pdfs" data-pdfkey="' + esc(String(veh.year)) + '" title="Open the VW Fluid Capacity Tables PDF this came from">Open Fluid PDF</button>' : "") +
+(sxHit && sxHit.entry && sxHit.entry.file ? '<button data-pdfstore="sx_pdfs" data-pdfkey="' + esc(sxHit.entry.file) + '" title="Open the VW Service Xpress chart the torque specs came from">Open Service Xpress PDF</button>' : "") +
+"</div>" +
 "<h1>" + winName + "</h1>" +
 '<div class="meta">from the ' + esc(veh.year || "?") + " tables on this computer" + (yd && yd.file ? " (" + esc(yd.file) + ")" : "") + "</div>" +
 '<div class="topcols">' +
@@ -4487,7 +4491,15 @@ win.focus();
 } catch (e7) {}
 return true;
 }
-function openFluidsWindow(r) { return openDocWindow("hahns_fluids", 620, 820, buildFluidsWindowHTML(r)); }
+// wire every [data-pdfstore] button in a pop-up window to open that saved PDF (#208)
+function wirePdfButtons(win) {
+try {
+Array.prototype.forEach.call(win.document.querySelectorAll("[data-pdfstore]"), function (b) {
+b.onclick = function () { openStoredPdf(b.getAttribute("data-pdfstore"), b.getAttribute("data-pdfkey"), null, win); };
+});
+} catch (e) {}
+}
+function openFluidsWindow(r) { return openDocWindow("hahns_fluids", 620, 820, buildFluidsWindowHTML(r), wirePdfButtons); }
 // ---- Maintenance "services due" window (v0.5.0) ----
 var MS_WIN_CSS =
 "*{box-sizing:border-box}" +
@@ -4512,6 +4524,8 @@ var MS_WIN_CSS =
 ".msctrl .sep{align-self:center;color:#9aa4b6;font-size:12px;font-weight:700;padding-bottom:8px}" +
 ".msreset{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:12px;padding:8px 13px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4;background:#f3f6fb;color:#1c2b3a;margin-left:auto}" +
 ".msreset:hover{background:#e7eefc;border-color:#185fa5}" +
+".mspdf{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:12px;padding:8px 13px;border-radius:8px;cursor:pointer;border:1px solid #2fb84d;background:#2fb84d;color:#0a0a0a}" +
+".mspdf:hover{background:#28a344}" +
 "@media print{.msctrl{display:none}}" +
 ".hero{background:#fff5e6;border:1px solid #f0d9a8;border-left:5px solid #e0910f;border-radius:12px;padding:12px 15px;margin:14px 0}" +
 ".hero h2{margin:0;font-size:18px;color:#7a4d00}" +
@@ -4546,7 +4560,7 @@ function msSynthDeliv(years) { if (!years) return ""; var d = new Date(); d.setF
 // the Mileage + Time override dropdowns (issue #148). Default-select the scanned
 // mileage (rounded to 10K) and the delivery-date age (rounded to whole years); the
 // tech can override either for one-off cases. Wired from the opener in wireMsWindow.
-function msControls(selMi, selYr, reg) {
+function msControls(selMi, selYr, reg, pdfKey) {
 // The dropdown lists — and its VALUES are — the vehicle's own unit: km (in 15K
 // steps, VW's Canada milestone spacing) for a Canada car, else miles (10K steps).
 // msDueForVehicle converts the chosen value to schedule miles (#165 km).
@@ -4559,7 +4573,9 @@ return '<div class="msctrl">' +
 '<div class="ctl"><label>Mileage</label><select id="ms_mi">' + miOpts + "</select></div>" +
 '<div class="sep">and&#47;or</div>' +
 '<div class="ctl"><label>Time in service</label><select id="ms_yr">' + yrOpts + "</select></div>" +
-'<button id="ms_reset" class="msreset" title="Back to what the scan pulled">Reset</button></div>';
+'<button id="ms_reset" class="msreset" title="Back to what the scan pulled">Reset</button>' +
+(pdfKey ? '<button id="hb_pdf" class="mspdf" data-pdfstore="ms_pdfs" data-pdfkey="' + esc(pdfKey) + '" title="Open the VW Maintenance Schedules PDF this came from">Open PDF</button>' : "") +
+"</div>";
 }
 // the hero + three item cards for a computed `due` — re-rendered in place whenever
 // the tech changes a dropdown (see wireMsWindow). Kept separate so the controls and
@@ -4645,7 +4661,8 @@ body = msWinBody(null, veh);
 var step = reg === "canada" ? 15000 : 10000;
 var selMi = mileage ? Math.round(mileage / step) * step : 0;
 var selYr = due.actualAge != null ? Math.round(due.actualAge) : 0;
-body = msControls(selMi, selYr, reg) + '<div id="msbody">' + msWinBody(due, veh) + "</div>";
+var mst = loadMs(), msFile = mst && mst.byYear && mst.byYear[veh.year] ? mst.byYear[veh.year].file : "";
+body = msControls(selMi, selYr, reg, msFile) + '<div id="msbody">' + msWinBody(due, veh) + "</div>";
 }
 var vehGrid = [["Model Year", veh.year], ["Model", veh.model], ["Sales Code", v.sales],
 ["Mileage", mileage ? mileage.toLocaleString() + " " + msUnit(reg) : ""], ["Delivery Date", v.delivery],
@@ -4708,6 +4725,7 @@ if (yrSel) yrSel.value = age != null ? String(Math.round(age)) : "";
 recompute();
 };
 wireTrash();
+wirePdfButtons(win);
 }
 function openMsWindow(r) { return openDocWindow("hahns_maint", 620, 820, buildMsWindowHTML(r), function (win) { wireMsWindow(win, r); }); }
 // pick the year PDFs (several at once is fine) and convert each LOCALLY.
@@ -5814,6 +5832,12 @@ function setVehExp(v) { try { sessionStorage.setItem("vwjb_vehexp_v1", v ? "1" :
 var vehAutoArmed = false;   // arm the 3s auto-collapse only once per page load
 var vehCollapseTimer = null;
 function cancelVehAuto() { if (vehCollapseTimer) { clearTimeout(vehCollapseTimer); vehCollapseTimer = null; } }
+// a NEW vehicle was just loaded (#210): forget the collapsed state so its details
+// show expanded, and re-arm the same 3 s auto-collapse as a fresh page load.
+function resetVehAuto() {
+cancelVehAuto(); vehAutoArmed = false;
+try { sessionStorage.removeItem("vwjb_vehexp_v1"); } catch (e) {}
+}
 // tags that end the current line
 var LINEBREAK = { DIV: 1, P: 1, LI: 1, TR: 1, UL: 1, OL: 1, TABLE: 1, BR: 1,
 H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1, SECTION: 1, ARTICLE: 1, HEADER: 1,
@@ -5934,6 +5958,9 @@ var CSS = "" +
 // SCAN in the header: hidden while expanded, shown as plain green text (no
 // button box) only when minimized, sitting just left of the minimize icon.
 ".hdscan{display:none}" +
+".minswitch{padding:0 11px 9px;background:#fff;font-size:12px}" +
+".minswitch .vwarn{margin-top:9px}" +
+".wrap.min .qswitch{display:none}" +   // the header copy (.minswitch) covers it
 ".wrap.min .hdscan{display:inline-flex;align-items:center;background:transparent;border:0;color:#2fb84d;font-family:inherit;font-size:12px;font-weight:800;letter-spacing:.08em;padding:3px 6px;cursor:pointer}" +
 ".wrap.min .hdscan:hover{color:#4bd268;background:rgba(255,255,255,.12)}" +
 // vehicle bar — the up-front "what car is this" identity strip
@@ -6199,8 +6226,13 @@ var CSS = "" +
 ".setbtns button:hover{background:#f3f6fb}" +
 ".setbtns .primary{background:#2fb84d;border-color:#2fb84d;color:#0a0a0a}" +
 ".setbtns .primary:hover{background:#28a344}" +
+".setbtns .openpdf{background:#2fb84d;border-color:#2fb84d;color:#0a0a0a}" +
+".setbtns .openpdf:hover{background:#28a344}" +
 ".setbtns .danger{border-color:#e6b0b0;color:#a32d2d}" +
 ".setbtns .danger:hover{background:#fff5f5}" +
+// Settings sections: every button on ONE centered row (dialogs keep the right-aligned row)
+".setacc .setbtns{justify-content:center}" +
+".setacc .setbtns button{padding:8px 10px;white-space:nowrap}" +
 ".setnote{font-size:11px;color:#7a7a7a;line-height:1.4;margin:10px 0 0;border-top:1px solid #eee;padding-top:8px}" +
 // keyboard shortcuts (#122)
 ".keytoggle{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:#001e50;cursor:pointer;margin:2px 0 10px}" +
@@ -6449,7 +6481,7 @@ var vtog = '<button class="qveh" data-act="vehexpand" data-tip="Show vehicle det
 // New Vehicle sits between the wrench and the Vehicle toggle (owner request, #149)
 var newv = '<button class="qchip newv" data-act="newjob" data-tip="Start over with a NEW vehicle — clears the loaded vehicle and all collected info">' + svg(RESTART) + "</button>";
 var note = vehNotice ? '<div class="vwarn" style="margin:6px 13px 0">' + esc(vehNotice) + "</div>" : "";
-if (vehSwitch) note += '<div style="margin:6px 13px 0">' + vehSwitchBox() + "</div>";
+if (vehSwitch) note += '<div class="qswitch" style="margin:6px 13px 0">' + vehSwitchBox() + "</div>";
 return '<div class="quickrow">' + fl + ms + newv + vtog + "</div>" + note;
 }
 // Service Xpress torque card for the Fluids & Capacities WINDOW — sits at the top,
@@ -6569,6 +6601,9 @@ var html = "" +
 (embed ? "" : '<button data-act="settings" class="hbtn" title="Settings — shop tool list &amp; fluid tables">' + svg(GEAR) + "</button>") +
 (embed ? "" : '<button data-act="min" class="hbtn" title="' + (mini ? "Expand" : "Minimize") + '">' + svg(mini ? "M7 7h10v10H7z" : "M6 12h12") + "</button>") +
 '<button data-act="close" title="Close">&#10005;</button></div>' +
+// new-VIN prompt while minimized (#209): everything else is hidden in the
+// collapsed bar, so surface the switch box right under the header.
+((mini && vehSwitch) ? '<div class="minswitch">' + vehSwitchBox() + "</div>" : "") +
 // version stamp — pinned to the very top, directly under the title bar
 '<div class="sub">' +
 '<span class="bld" title="Click to copy a diagnostic of what the tool saw">' + esc(BUILD) + "</span>" +
@@ -7093,14 +7128,34 @@ function pdfYearBtn(store, key, year) {
 return '<button class="siyr sipdf" data-pdfstore="' + esc(store) + '" data-pdfkey="' + esc(key) +
 '" title="Open the ' + esc(year) + ' PDF">' + esc(year) + "</button>";
 }
-function openStoredPdf(store, key, root) {
-var w = null;
-try { w = window.open("", "_blank"); } catch (e) {}
+// srcWin (issue #208): when the click came from one of Hahns's pop-up windows
+// (Fluids / Maintenance), open the PDF tab FROM that window — it holds the click's
+// user gesture — and report problems in the new tab itself (no panel modal there).
+function openStoredPdf(store, key, root, srcWin) {
+// its own WINDOW (not a tab) so the tech can flip between it and Hahns's window;
+// one window per PDF (named), parked on the right so it doesn't cover the Hahns window
+var w = null, feats = "";
+try {
+var sw = screen.availWidth || 1280, sh = screen.availHeight || 900;
+var ww = Math.min(900, sw - 40), wh = Math.max(400, sh - 60);
+feats = "width=" + ww + ",height=" + wh + ",left=" + Math.max(0, sw - ww - 10) + ",top=10,scrollbars=yes,resizable=yes";
+} catch (e) {}
+var wname = "hahns_pdf_" + String(store + "_" + key).replace(/[^A-Za-z0-9_]/g, "_");
+try { w = (srcWin || window).open("", wname, feats); } catch (e) {}
+if (!w) { try { w = (srcWin || window).open("", "_blank"); } catch (e) {} }
 var fail = function (title, msg) {
+if (srcWin) {
+try { w.document.title = title; w.document.body.innerHTML = '<p style="font:15px system-ui;padding:24px"><b>' + esc(title) + "</b><br>" + esc(msg) + "</p>"; } catch (e) {}
+return;
+}
 try { if (w) w.close(); } catch (e) {}
 okModal(root, title, msg);
 };
-if (!w) { okModal(root, "Pop-up blocked", "Your browser blocked the PDF window. Allow pop-ups for this site and try again."); return; }
+if (!w) {
+if (srcWin) { try { srcWin.alert("Your browser blocked the PDF window. Allow pop-ups for this site and try again."); } catch (e) {} }
+else okModal(root, "Pop-up blocked", "Your browser blocked the PDF window. Allow pop-ups for this site and try again.");
+return;
+}
 try { w.document.title = "Opening PDF…"; w.document.body.innerHTML = '<p style="font:15px system-ui;padding:24px">Opening PDF…</p>'; } catch (e) {}
 if (!appDB) { fail("PDF not available", "The saved PDFs can’t be read in this browser right now."); return; }
 idbGet(store, key).then(function (pdf) {
@@ -7110,6 +7165,7 @@ return;
 }
 var url = URL.createObjectURL(new Blob([pdf.blob], { type: "application/pdf" }));
 try { w.location.href = url; } catch (e) { fail("Couldn’t open PDF", "The PDF window couldn’t be opened."); return; }
+try { w.focus(); } catch (e) {}
 setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) {} }, 600000);
 }).catch(function () { fail("Couldn’t open PDF", "The saved PDF couldn’t be read."); });
 }
@@ -8399,6 +8455,7 @@ var veh = extractVehicle(segs);
 if (veh && veh.vin) {
 if (!veh.mileage) { try { veh.mileage = readVehMileage(document) || ""; } catch (e) {} }
 job.__vehicle = veh;   // accept + flag any blank fields in the bar
+resetVehAuto();
 vehNotice = "Vehicle loaded — Fluids & Capacities is now available.";
 } else {
 vehNotice = "Read the Vehicle Summary but couldn’t find a VIN — click SCAN again.";
@@ -8508,6 +8565,7 @@ clearJob();
 var job = emptyResults();
 if (v && v.vin) {
 job.__vehicle = v;
+resetVehAuto();
 vehNotice = "Switched to the new vehicle — previous job cleared.";
 }
 show(job);
