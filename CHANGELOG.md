@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.18-beta — in progress
+## v0.5.18-beta — 2026-10-05
 
 ### Changed
 - **Open PDF jumps to your vehicle.** When a vehicle is loaded, the **Open PDF** buttons in the
