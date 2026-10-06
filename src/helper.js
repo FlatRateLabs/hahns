@@ -4733,8 +4733,6 @@
     ".msctrl .sep{align-self:center;color:#9aa4b6;font-size:12px;font-weight:700;padding-bottom:8px}" +
     ".msreset{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:12px;padding:8px 13px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4;background:#f3f6fb;color:#1c2b3a;margin-left:auto}" +
     ".msreset:hover{background:#e7eefc;border-color:#185fa5}" +
-    ".mspdf{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:12px;padding:8px 13px;border-radius:8px;cursor:pointer;border:1px solid #2fb84d;background:#2fb84d;color:#0a0a0a}" +
-    ".mspdf:hover{background:#28a344}" +
     "@media print{.msctrl{display:none}}" +
     ".hero{background:#fff5e6;border:1px solid #f0d9a8;border-left:5px solid #e0910f;border-radius:12px;padding:12px 15px;margin:14px 0}" +
     ".hero h2{margin:0;font-size:18px;color:#7a4d00}" +
@@ -4769,7 +4767,7 @@
   // the Mileage + Time override dropdowns (issue #148). Default-select the scanned
   // mileage (rounded to 10K) and the delivery-date age (rounded to whole years); the
   // tech can override either for one-off cases. Wired from the opener in wireMsWindow.
-  function msControls(selMi, selYr, reg, pdfKey) {
+  function msControls(selMi, selYr, reg) {
     // The dropdown lists — and its VALUES are — the vehicle's own unit: km (in 15K
     // steps, VW's Canada milestone spacing) for a Canada car, else miles (10K steps).
     // msDueForVehicle converts the chosen value to schedule miles (#165 km).
@@ -4783,7 +4781,6 @@
       '<div class="sep">and&#47;or</div>' +
       '<div class="ctl"><label>Time in service</label><select id="ms_yr">' + yrOpts + "</select></div>" +
       '<button id="ms_reset" class="msreset" title="Back to what the scan pulled">Reset</button>' +
-      (pdfKey ? '<button id="hb_pdf" class="mspdf" data-pdfstore="ms_pdfs" data-pdfkey="' + esc(pdfKey) + '" title="Open the VW Maintenance Schedules PDF this came from">Open PDF</button>' : "") +
       "</div>";
   }
   // the hero + three item cards for a computed `due` — re-rendered in place whenever
@@ -4870,9 +4867,10 @@
       var step = reg === "canada" ? 15000 : 10000;
       var selMi = mileage ? Math.round(mileage / step) * step : 0;
       var selYr = due.actualAge != null ? Math.round(due.actualAge) : 0;
-      var mst = loadMs(), msFile = mst && mst.byYear && mst.byYear[veh.year] ? mst.byYear[veh.year].file : "";
-      body = msControls(selMi, selYr, reg, msFile) + '<div id="msbody">' + msWinBody(due, veh) + "</div>";
+      body = msControls(selMi, selYr, reg) + '<div id="msbody">' + msWinBody(due, veh) + "</div>";
     }
+    // Open PDF sits in the top bar beside Print, like the Fluids window (#212)
+    var mst = loadMs(), msFile = due && mst && mst.byYear && mst.byYear[veh.year] ? mst.byYear[veh.year].file : "";
     var vehGrid = [["Model Year", veh.year], ["Model", veh.model], ["Sales Code", v.sales],
       ["Mileage", mileage ? mileage.toLocaleString() + " " + msUnit(reg) : ""], ["Delivery Date", v.delivery],
       ["Country", v.country]]
@@ -4882,7 +4880,9 @@
       "<title>Maintenance Due" + (veh.model ? " — " + esc(veh.model) : "") + "</title>" +
       "<style>" + MS_WIN_CSS + "</style></head><body>" +
       '<button id="hb_close" class="xclose" onclick="window.close()" title="Close" aria-label="Close">&#10005;</button>' +
-      '<div class="bar"><button id="hb_print" onclick="window.print()">Print</button></div>' +
+      '<div class="bar"><button id="hb_print" onclick="window.print()">Print</button>' +
+        (msFile ? '<button data-pdfstore="ms_pdfs" data-pdfkey="' + esc(msFile) + '" title="Open the VW Maintenance Schedules PDF this came from">Open Maintenance PDF</button>' : "") +
+      "</div>" +
       "<h1>Maintenance — possible services due</h1>" +
       '<div class="meta">from the ' + esc(veh.year || "?") + " VW Maintenance Schedules on this computer" + (due && due.file ? " (" + esc(due.file) + ")" : "") + "</div>" +
       '<div class="veh"><div class="t">Vehicle</div><div class="grid">' + vehGrid + "</div></div>" +

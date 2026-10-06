@@ -24,6 +24,8 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
   is (Fluid Capacity Tables, Service Xpress or Maintenance Schedules), so you can tell at a glance
   it's the right one. When it jumped to your vehicle, the model it opened to (e.g. **Atlas (CA1)**)
   flashes yellow for a few seconds, with the page number. The ✕ hides the banner.
+- **Maintenance window: the Open PDF button moved up beside Print** (now "Open Maintenance PDF"),
+  the same spot as Open Fluid PDF / Open Service Xpress PDF in the Fluids window.
 
 ---
 
