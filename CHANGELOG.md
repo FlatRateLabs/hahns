@@ -20,6 +20,10 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
     2000–2009 schedules, the "Service at …" page for the mileage you picked.
   - Opening a PDF from **⚙ Settings** still starts at the top. If Hahns can't find the vehicle
     in the PDF, it opens at the top, the same as before.
+- **A Hahns banner across the top of every opened PDF** shows the model year and which PDF it
+  is (Fluid Capacity Tables, Service Xpress or Maintenance Schedules), so you can tell at a glance
+  it's the right one. When it jumped to your vehicle, the model it opened to (e.g. **Atlas (CA1)**)
+  flashes yellow for a few seconds, with the page number. The ✕ hides the banner.
 
 ---
 
