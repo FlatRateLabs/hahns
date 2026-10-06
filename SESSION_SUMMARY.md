@@ -5,6 +5,33 @@ permanent project reference.
 
 ---
 
+## Session close (2026-10-05) — v0.5.18-beta (#212) — merged + live
+
+One owner-filed feature request. PR **#213** (squash `--admin`, merged by the owner), #212 auto-closed.
+**App-only → no re-drag** (`LOADER_VER` 2); no parser touched (parser-test 75 files, 0 drift). Owner-tested
+on real ELSA (Edge) via 4 rounds of TEST bookmarks. Live-confirmed `version.json` = 0.5.18-beta.
+
+### What shipped (`src/helper.js`)
+- **Open PDF jumps to the vehicle** (Fluids / Service Xpress / Maintenance windows): `pdfSeekFor` →
+  `{page,label}`, `openStoredPdf(...,seek)` re-reads the Blob with `pdfPages` and opens at `#page=N`
+  (10 s timeout / no match → top). Fluids/SX = the model's section heading; MS 2010+ = first Additional Items
+  page naming the platform/model; MS 2000–2009 = the milestone page for the window's mileage.
+- **Banner** (owner ask, round 2): `pdfWinHTML` — year, PDF-type pill, "Opened to <mark>model</mark> · page N"
+  (CSS flash), ✕, and a "PDF not showing? Open it full-window" fallback; PDF in an `<iframe>` of the blob URL.
+  Precise highlighting INSIDE the PDF isn't possible (browser's own viewer) — the banner is the stand-in.
+- **Settings Open PDF = plain PDF, no banner** (owner round 4).
+- **Maintenance Open PDF moved to the top bar** beside Print ("Open Maintenance PDF") (owner round 3).
+
+### Verification
+Node harness on real 2019 Fluid/SX/MS + 2005 legacy MS PDFs (Atlas, Tiguan BW2, GTI, Jetta, e-Golf, Passat) —
+each landed on its own heading. The preview pane has no PDF viewer, so `#page=` + the iframe were proven only
+by the owner on real ELSA. Merged-tree + live `app.js` grep confirmed.
+
+### Carry-forward
+- No open issues. Bay tests + deferred maintenance gaps unchanged (see v0.5.13 entry).
+
+---
+
 ## Session close (2026-09-28) — v0.5.17-beta (#208/#209/#210) — merged + live
 
 Three owner-filed issues shipped as ONE release (owner's call). PR **#211** (squash `--admin`, merged by the
