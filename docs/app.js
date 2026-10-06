@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.18-beta · 2026-10-06 03:12 UTC";
+var BUILD = "v0.5.18-beta · 2026-10-06 03:14 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -7171,13 +7171,21 @@ if (!pdf || !pdf.blob) {
 fail("PDF not saved", "This year was loaded before Hahns kept the original PDF. Load the PDF again in Settings and it will open here next time.");
 return;
 }
-// #212 follow-up: the PDF sits in an <iframe> under a Hahns banner (year + which
-// PDF + what it opened to) so the tech can see it's the right file. ELSA's CSP
+// #212 follow-up: from the Fluids / Maintenance windows the PDF sits in an <iframe>
+// under a Hahns banner (year + which PDF + what it opened to) so the tech can see
+// it's the right file. Settings opens skip the banner (owner call). ELSA's CSP
 // allows `frame-src blob:`; the browser's own PDF viewer renders inside.
 var go = function (hit) {
 var page = (hit && hit.page) || 0;
 var url = URL.createObjectURL(new Blob([pdf.blob], { type: "application/pdf" }));
 var src = url + (page > 1 ? "#page=" + page : "");
+// Settings opens (no seek) get the plain PDF — the banner is for the vehicle jump
+if (typeof seek !== "function") {
+try { w.location.href = src; } catch (e) { fail("Couldn’t open PDF", "The PDF window couldn’t be opened."); return; }
+try { w.focus(); } catch (e) {}
+setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) {} }, 600000);
+return;
+}
 try {
 w.document.open();
 w.document.write(pdfWinHTML(pdfInfoFor(store, key), hit, typeof seek === "function", src));
