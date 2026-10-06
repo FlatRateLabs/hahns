@@ -7317,6 +7317,7 @@ var PDF_WIN_CSS =
 ".pb mark{background:#ffe14d;color:#1c1c1c;font-weight:800;border-radius:4px;padding:1px 6px;animation:pbflash .7s ease-in-out 0s 5 alternate}" +
 "@keyframes pbflash{from{background:#ffe14d;box-shadow:0 0 0 0 rgba(255,225,77,.9)}to{background:#fff6c2;box-shadow:0 0 0 6px rgba(255,225,77,0)}}" +
 ".pb .nf{color:#ffd28a}" +
+".pb small a{color:#9fc3ff}" +
 ".pb button{flex:0 0 auto;appearance:none;border:0;background:transparent;color:#b8c4d8;font-size:16px;cursor:pointer;padding:4px 6px}" +
 ".pb button:hover{color:#fff}" +
 "iframe{flex:1 1 auto;width:100%;border:0;background:#525659}";
@@ -7330,7 +7331,7 @@ return '<!doctype html><html><head><meta charset="utf-8"><title>' + esc((info.ye
 (hit && hit.label ? " — " + esc(hit.label) : "") + "</title><style>" + PDF_WIN_CSS + "</style></head><body>" +
 '<div class="pb" id="pb">' + (info.year ? '<span class="yr">' + esc(info.year) + "</span>" : "") +
 '<span class="ty">' + esc(info.type) + "</span>" +
-'<span class="at">' + at + "<small>" + esc(info.file) + " · opened by H.A.H.N.S</small></span>" +
+'<span class="at">' + at + "<small>" + esc(info.file) + ' · opened by H.A.H.N.S · <a href="' + esc(src) + '" target="_self">PDF not showing? Open it full-window</a></small></span>' +
 '<button id="pb_x" title="Hide this banner" aria-label="Hide this banner">&#10005;</button></div>' +
 '<iframe src="' + esc(src) + '" title="PDF"></iframe></body></html>';
 }
