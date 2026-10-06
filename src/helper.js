@@ -4695,14 +4695,19 @@
     return true;
   }
   // wire every [data-pdfstore] button in a pop-up window to open that saved PDF (#208)
-  function wirePdfButtons(win) {
+  // r (issue #212): the job — lets the PDF open at the loaded vehicle's page
+  function wirePdfButtons(win, r) {
     try {
       Array.prototype.forEach.call(win.document.querySelectorAll("[data-pdfstore]"), function (b) {
-        b.onclick = function () { openStoredPdf(b.getAttribute("data-pdfstore"), b.getAttribute("data-pdfkey"), null, win); };
+        b.onclick = function () {
+          var st = b.getAttribute("data-pdfstore"), k = b.getAttribute("data-pdfkey"), seek = null;
+          try { seek = r ? pdfSeekFor(st, k, r, win) : null; } catch (e2) {}
+          openStoredPdf(st, k, null, win, seek);
+        };
       });
     } catch (e) {}
   }
-  function openFluidsWindow(r) { return openDocWindow("hahns_fluids", 620, 820, buildFluidsWindowHTML(r), wirePdfButtons); }
+  function openFluidsWindow(r) { return openDocWindow("hahns_fluids", 620, 820, buildFluidsWindowHTML(r), function (win) { wirePdfButtons(win, r); }); }
 
   // ---- Maintenance "services due" window (v0.5.0) ----
   var MS_WIN_CSS =
@@ -4728,8 +4733,6 @@
     ".msctrl .sep{align-self:center;color:#9aa4b6;font-size:12px;font-weight:700;padding-bottom:8px}" +
     ".msreset{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:12px;padding:8px 13px;border-radius:8px;cursor:pointer;border:1px solid #cfd6e4;background:#f3f6fb;color:#1c2b3a;margin-left:auto}" +
     ".msreset:hover{background:#e7eefc;border-color:#185fa5}" +
-    ".mspdf{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:700;font-size:12px;padding:8px 13px;border-radius:8px;cursor:pointer;border:1px solid #2fb84d;background:#2fb84d;color:#0a0a0a}" +
-    ".mspdf:hover{background:#28a344}" +
     "@media print{.msctrl{display:none}}" +
     ".hero{background:#fff5e6;border:1px solid #f0d9a8;border-left:5px solid #e0910f;border-radius:12px;padding:12px 15px;margin:14px 0}" +
     ".hero h2{margin:0;font-size:18px;color:#7a4d00}" +
@@ -4764,7 +4767,7 @@
   // the Mileage + Time override dropdowns (issue #148). Default-select the scanned
   // mileage (rounded to 10K) and the delivery-date age (rounded to whole years); the
   // tech can override either for one-off cases. Wired from the opener in wireMsWindow.
-  function msControls(selMi, selYr, reg, pdfKey) {
+  function msControls(selMi, selYr, reg) {
     // The dropdown lists — and its VALUES are — the vehicle's own unit: km (in 15K
     // steps, VW's Canada milestone spacing) for a Canada car, else miles (10K steps).
     // msDueForVehicle converts the chosen value to schedule miles (#165 km).
@@ -4778,7 +4781,6 @@
       '<div class="sep">and&#47;or</div>' +
       '<div class="ctl"><label>Time in service</label><select id="ms_yr">' + yrOpts + "</select></div>" +
       '<button id="ms_reset" class="msreset" title="Back to what the scan pulled">Reset</button>' +
-      (pdfKey ? '<button id="hb_pdf" class="mspdf" data-pdfstore="ms_pdfs" data-pdfkey="' + esc(pdfKey) + '" title="Open the VW Maintenance Schedules PDF this came from">Open PDF</button>' : "") +
       "</div>";
   }
   // the hero + three item cards for a computed `due` — re-rendered in place whenever
@@ -4865,9 +4867,10 @@
       var step = reg === "canada" ? 15000 : 10000;
       var selMi = mileage ? Math.round(mileage / step) * step : 0;
       var selYr = due.actualAge != null ? Math.round(due.actualAge) : 0;
-      var mst = loadMs(), msFile = mst && mst.byYear && mst.byYear[veh.year] ? mst.byYear[veh.year].file : "";
-      body = msControls(selMi, selYr, reg, msFile) + '<div id="msbody">' + msWinBody(due, veh) + "</div>";
+      body = msControls(selMi, selYr, reg) + '<div id="msbody">' + msWinBody(due, veh) + "</div>";
     }
+    // Open PDF sits in the top bar beside Print, like the Fluids window (#212)
+    var mst = loadMs(), msFile = due && mst && mst.byYear && mst.byYear[veh.year] ? mst.byYear[veh.year].file : "";
     var vehGrid = [["Model Year", veh.year], ["Model", veh.model], ["Sales Code", v.sales],
       ["Mileage", mileage ? mileage.toLocaleString() + " " + msUnit(reg) : ""], ["Delivery Date", v.delivery],
       ["Country", v.country]]
@@ -4877,7 +4880,9 @@
       "<title>Maintenance Due" + (veh.model ? " — " + esc(veh.model) : "") + "</title>" +
       "<style>" + MS_WIN_CSS + "</style></head><body>" +
       '<button id="hb_close" class="xclose" onclick="window.close()" title="Close" aria-label="Close">&#10005;</button>' +
-      '<div class="bar"><button id="hb_print" onclick="window.print()">Print</button></div>' +
+      '<div class="bar"><button id="hb_print" onclick="window.print()">Print</button>' +
+        (msFile ? '<button data-pdfstore="ms_pdfs" data-pdfkey="' + esc(msFile) + '" title="Open the VW Maintenance Schedules PDF this came from">Open Maintenance PDF</button>' : "") +
+      "</div>" +
       "<h1>Maintenance — possible services due</h1>" +
       '<div class="meta">from the ' + esc(veh.year || "?") + " VW Maintenance Schedules on this computer" + (due && due.file ? " (" + esc(due.file) + ")" : "") + "</div>" +
       '<div class="veh"><div class="t">Vehicle</div><div class="grid">' + vehGrid + "</div></div>" +
@@ -4929,7 +4934,7 @@
       recompute();
     };
     wireTrash();
-    wirePdfButtons(win);
+    wirePdfButtons(win, r);
   }
   function openMsWindow(r) { return openDocWindow("hahns_maint", 620, 820, buildMsWindowHTML(r), function (win) { wireMsWindow(win, r); }); }
 
@@ -7466,7 +7471,10 @@
   // srcWin (issue #208): when the click came from one of Hahns's pop-up windows
   // (Fluids / Maintenance), open the PDF tab FROM that window — it holds the click's
   // user gesture — and report problems in the new tab itself (no panel modal there).
-  function openStoredPdf(store, key, root, srcWin) {
+  // seek (issue #212): optional fn(pages) → 1-based page of the loaded vehicle; the PDF
+  // then opens at "#page=N". Only the Fluids / Maintenance windows pass one — Settings
+  // (and any miss) opens at the top, same as before.
+  function openStoredPdf(store, key, root, srcWin, seek) {
     // its own WINDOW (not a tab) so the tech can flip between it and Hahns's window;
     // one window per PDF (named), parked on the right so it doesn't cover the Hahns window
     var w = null, feats = "";
@@ -7498,11 +7506,179 @@
         fail("PDF not saved", "This year was loaded before Hahns kept the original PDF. Load the PDF again in Settings and it will open here next time.");
         return;
       }
-      var url = URL.createObjectURL(new Blob([pdf.blob], { type: "application/pdf" }));
-      try { w.location.href = url; } catch (e) { fail("Couldn’t open PDF", "The PDF window couldn’t be opened."); return; }
-      try { w.focus(); } catch (e) {}
-      setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) {} }, 600000);
+      // #212 follow-up: from the Fluids / Maintenance windows the PDF sits in an <iframe>
+      // under a Hahns banner (year + which PDF + what it opened to) so the tech can see
+      // it's the right file. Settings opens skip the banner (owner call). ELSA's CSP
+      // allows `frame-src blob:`; the browser's own PDF viewer renders inside.
+      var go = function (hit) {
+        var page = (hit && hit.page) || 0;
+        var url = URL.createObjectURL(new Blob([pdf.blob], { type: "application/pdf" }));
+        var src = url + (page > 1 ? "#page=" + page : "");
+        // Settings opens (no seek) get the plain PDF — the banner is for the vehicle jump
+        if (typeof seek !== "function") {
+          try { w.location.href = src; } catch (e) { fail("Couldn’t open PDF", "The PDF window couldn’t be opened."); return; }
+          try { w.focus(); } catch (e) {}
+          setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) {} }, 600000);
+          return;
+        }
+        try {
+          w.document.open();
+          w.document.write(pdfWinHTML(pdfInfoFor(store, key), hit, typeof seek === "function", src));
+          w.document.close();
+          var x = w.document.getElementById("pb_x");
+          if (x) x.onclick = function () { try { var b = w.document.getElementById("pb"); if (b) b.style.display = "none"; } catch (e) {} };
+        } catch (e) {
+          try { w.location.href = src; } catch (e2) { fail("Couldn’t open PDF", "The PDF window couldn’t be opened."); return; }
+        }
+        try { w.focus(); } catch (e) {}
+        setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) {} }, 600000);
+      };
+      if (typeof seek !== "function") { go(null); return; }
+      try { w.document.body.innerHTML = '<p style="font:15px system-ui;padding:24px">Finding your vehicle in the PDF…</p>'; } catch (e) {}
+      // never leave the tech waiting: a slow/failed search just opens at the top
+      var done = false, finish = function (h) { if (done) return; done = true; go(h && h.page ? h : null); };
+      setTimeout(function () { finish(null); }, 10000);
+      pdf.blob.arrayBuffer().then(pdfPages).then(function (pages) {
+        var h = null; try { h = seek(pages); } catch (e) {}
+        finish(h);
+      }).catch(function () { finish(null); });
     }).catch(function () { fail("Couldn’t open PDF", "The saved PDF couldn’t be read."); });
+  }
+
+  // ---- open the source PDF at the loaded vehicle (issue #212) ----
+  // Each finder re-reads the saved PDF's pages (the same reader the parsers use) and
+  // returns the 1-based page where THIS vehicle's section starts, or 0 (→ top). Nothing
+  // is stored, so no parser bump. Headings are matched exactly as the parsers read them.
+  function pdfLineNorm(s) { return String(s || "").replace(/[‐-―−]/g, "-").replace(/\s+/g, " ").trim().toUpperCase(); }
+  function pdfIsToc(line) { return /\.{5,}|…{2,}/.test(line); }   // "1.1 Atlas (CA1) ........ 3"
+  // first page (from `from`, 0-based) with a line passing test → 1-based, or 0
+  function pdfPageWhere(pages, test, from) {
+    for (var p = from || 0; p < pages.length; p++) {
+      var ls = pages[p].lines || [];
+      for (var i = 0; i < ls.length; i++) if (!pdfIsToc(ls[i]) && test(ls[i])) return p + 1;
+    }
+    return 0;
+  }
+  function pdfWordRe(s) { return new RegExp("(^|[^A-Z0-9])" + String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![A-Z0-9])", "i"); }
+  function pdfSeekFor(store, key, r, win) {
+    var veh = fluidVeh(r); if (!veh.year) return null;
+    if (store === "pdfs") {
+      var st = loadFluids(), yd = st && st.years && st.years[key];
+      var m = yd && pickFluidModel(yd.models || [], veh); if (!m) return null;
+      var wantM = pdfLineNorm(m.model), wantC = pdfLineNorm(m.modelCode);
+      return function (pages) {
+        return { label: m.model + (m.modelCode ? " (" + m.modelCode + ")" : ""), page: pdfPageWhere(pages, function (ln) {
+          var h = MODEL_HDR.exec(String(ln).replace(/^\s+/, ""));
+          return !!h && pdfLineNorm(h[1]) === wantM && pdfLineNorm(h[2]) === wantC;
+        }) };
+      };
+    }
+    if (store === "sx_pdfs") {
+      var hit = sxForVehicle(r); if (!(hit && hit.entry && hit.entry.file === key)) return null;
+      var e = hit.entry, SEC = /^\s*\d+\.\d+\s+(.+?)\s*\(([^()]*)\)\s*$/, THDR = /^\s*(20\d\d)\b[^\n]*Torque Spec/i;
+      var sxLabel = e.model + (e.platform ? " (" + e.platform + ")" : "") + (e.year ? " · " + e.year + " table" : "");
+      var sxPage = function (pages) {
+        // one chart can hold the same model twice (two model years) — prefer the section
+        // whose torque table carries the matched entry's year
+        var first = 0, cur = 0;
+        for (var p = 0; p < pages.length; p++) {
+          var ls = pages[p].lines || [];
+          for (var i = 0; i < ls.length; i++) {
+            if (pdfIsToc(ls[i])) continue;
+            var s = SEC.exec(ls[i]);
+            if (s) { cur = (pdfLineNorm(s[1]) === pdfLineNorm(e.model) && pdfLineNorm(s[2]) === pdfLineNorm(e.platform)) ? p + 1 : 0; if (cur && !first) first = cur; continue; }
+            var t = cur && THDR.exec(ls[i]);
+            if (t) { if (t[1] === String(e.year)) return cur; cur = 0; }
+          }
+        }
+        return first;
+      };
+      return function (pages) { return { label: sxLabel, page: sxPage(pages) }; };
+    }
+    if (store === "ms_pdfs") {
+      var ms = loadMs(), myd = ms && ms.byYear && ms.byYear[veh.year];
+      if (!(myd && myd.schedules && myd.file === key)) return null;
+      if (myd.schedules.legacy) {
+        // 2000–2009: the vehicle's market schedule, then the milestone for its mileage
+        var sc = msPickLegacySched(myd.schedules.scheds || [], veh, msRegion(veh));
+        return function (pages) {
+          var start = sc && sc.title ? pdfPageWhere(pages, function (ln) { return pdfLineNorm(ln).indexOf(pdfLineNorm(sc.title)) >= 0; }) : 0;
+          var mi = 0;
+          try { var sel = win && win.document.getElementById("ms_mi"); mi = sel ? (parseInt(sel.value, 10) || 0) : msMileage((r && r.__vehicle) || {}); } catch (e2) {}
+          var due = mi ? msDueForVehicle(r, mi) : null;
+          if (due && due.milestone) {
+            var want = pdfLineNorm(due.milestone);
+            var mp = pdfPageWhere(pages, function (ln) { return pdfLineNorm(ln).indexOf(want) >= 0; }, start ? start - 1 : 0);
+            if (mp) return { page: mp, label: due.milestone };
+          }
+          return { page: start, label: sc && sc.title ? sc.title : "" };
+        };
+      }
+      // 2010+: the vehicle's first row in the Additional Items table (ICE or BEV schedule)
+      var isEV = msIsEV(veh) && !!myd.schedules.bev;
+      var startRe = isEV ? /1\.2\.\d+\s+Additional Maintenance/ : /1\.1\.\d+\s+Additional Maintenance/;
+      var endRe = isEV ? null : /1\.2\s+Maintenance Schedule/;
+      var keys = msVehModels(veh.model).map(function (n) { return { re: pdfWordRe(n), name: n.charAt(0) + n.slice(1).toLowerCase() }; });
+      if (veh.sales && veh.sales.length >= 3) keys.unshift({ re: pdfWordRe(veh.sales.slice(0, 3)), name: veh.sales.slice(0, 3) });
+      var addLbl = "Additional Maintenance Items" + (isEV ? " (electric)" : "");
+      return function (pages) {
+        var start = pdfPageWhere(pages, function (ln) { return startRe.test(ln); }); if (!start) return null;
+        var top = { page: start, label: addLbl };
+        for (var p = start - 1; p < pages.length; p++) {
+          var ls = pages[p].lines || [];
+          for (var i = 0; i < ls.length; i++) {
+            if (p > start - 1 && endRe && endRe.test(ls[i])) return top;
+            for (var k = 0; k < keys.length; k++) if (keys[k].re.test(ls[i])) return { page: p + 1, label: addLbl + " · first " + keys[k].name + " row" };
+          }
+        }
+        return top;
+      };
+    }
+    return null;
+  }
+
+  // banner facts for a stored PDF: which kind + its model year (#212 follow-up)
+  function pdfInfoFor(store, key) {
+    var type = store === "pdfs" ? "Fluid Capacity Tables" : store === "sx_pdfs" ? "Service Xpress" : store === "ms_pdfs" ? "Maintenance Schedules" : "PDF";
+    var year = "";
+    if (store === "pdfs") year = String(key);
+    else if (store === "ms_pdfs") {
+      var ms = loadMs();
+      if (ms && ms.byYear) Object.keys(ms.byYear).forEach(function (y) { if (ms.byYear[y] && ms.byYear[y].file === key) year = y; });
+    }
+    if (!year) { var ym = /(?:19|20)\d\d/.exec(String(key)); if (ym) year = ym[0]; }
+    var file = String(key);
+    if (store === "pdfs") { var fl = loadFluids(), fy = fl && fl.years && fl.years[key]; if (fy && fy.file) file = fy.file; }
+    return { type: type, year: year, file: file };
+  }
+  var PDF_WIN_CSS =
+    "html,body{margin:0;height:100%;background:#525659}" +
+    "body{display:flex;flex-direction:column;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif}" +
+    ".pb{flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:9px 14px;background:#001e50;color:#fff;font-size:14px;line-height:1.3}" +
+    ".pb .yr{font-size:22px;font-weight:800;letter-spacing:.5px}" +
+    ".pb .ty{font-weight:700;text-transform:uppercase;font-size:12px;letter-spacing:.8px;background:#2a5fae;border-radius:5px;padding:3px 8px}" +
+    ".pb .at{flex:1 1 auto;min-width:0}" +
+    ".pb .at small{display:block;color:#b8c4d8;font-size:11.5px}" +
+    ".pb mark{background:#ffe14d;color:#1c1c1c;font-weight:800;border-radius:4px;padding:1px 6px;animation:pbflash .7s ease-in-out 0s 5 alternate}" +
+    "@keyframes pbflash{from{background:#ffe14d;box-shadow:0 0 0 0 rgba(255,225,77,.9)}to{background:#fff6c2;box-shadow:0 0 0 6px rgba(255,225,77,0)}}" +
+    ".pb .nf{color:#ffd28a}" +
+    ".pb small a{color:#9fc3ff}" +
+    ".pb button{flex:0 0 auto;appearance:none;border:0;background:transparent;color:#b8c4d8;font-size:16px;cursor:pointer;padding:4px 6px}" +
+    ".pb button:hover{color:#fff}" +
+    "iframe{flex:1 1 auto;width:100%;border:0;background:#525659}";
+  // the PDF window: Hahns banner + the PDF (browser viewer) in an iframe
+  function pdfWinHTML(info, hit, sought, src) {
+    var at;
+    if (hit && hit.page) at = "Opened to " + (hit.label ? "<mark>" + esc(hit.label) + "</mark> · " : "") + "page " + hit.page;
+    else if (sought) at = '<span class="nf">Couldn’t find your vehicle in this PDF — opened at the top.</span>';
+    else at = "Opened at the top";
+    return '<!doctype html><html><head><meta charset="utf-8"><title>' + esc((info.year ? info.year + " " : "") + info.type) +
+      (hit && hit.label ? " — " + esc(hit.label) : "") + "</title><style>" + PDF_WIN_CSS + "</style></head><body>" +
+      '<div class="pb" id="pb">' + (info.year ? '<span class="yr">' + esc(info.year) + "</span>" : "") +
+        '<span class="ty">' + esc(info.type) + "</span>" +
+        '<span class="at">' + at + "<small>" + esc(info.file) + ' · opened by H.A.H.N.S · <a href="' + esc(src) + '" target="_self">PDF not showing? Open it full-window</a></small></span>' +
+        '<button id="pb_x" title="Hide this banner" aria-label="Hide this banner">&#10005;</button></div>' +
+      '<iframe src="' + esc(src) + '" title="PDF"></iframe></body></html>';
   }
 
   // the "Open PDF" year picker — same window/layout as the Update picker

@@ -9,6 +9,26 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.5.18-beta — 2026-10-05
+
+### Changed
+- **Open PDF jumps to your vehicle.** When a vehicle is loaded, the **Open PDF** buttons in the
+  Fluids & Capacities window and the Maintenance window now open the VW PDF at that vehicle's
+  page, so you don't have to scroll through the whole thing:
+  - **Fluid PDF / Service Xpress PDF:** the page where your model's section starts (e.g. "Atlas (CA1)").
+  - **Maintenance PDF:** the first Additional Items page that lists your vehicle — or, for
+    2000–2009 schedules, the "Service at …" page for the mileage you picked.
+  - Opening a PDF from **⚙ Settings** still starts at the top. If Hahns can't find the vehicle
+    in the PDF, it opens at the top, the same as before.
+- **A Hahns banner across the top of the PDF** (when opened from the Fluids or Maintenance window) shows the model year and which PDF it
+  is (Fluid Capacity Tables, Service Xpress or Maintenance Schedules), so you can tell at a glance
+  it's the right one. When it jumped to your vehicle, the model it opened to (e.g. **Atlas (CA1)**)
+  flashes yellow for a few seconds, with the page number. The ✕ hides the banner.
+- **Maintenance window: the Open PDF button moved up beside Print** (now "Open Maintenance PDF"),
+  the same spot as Open Fluid PDF / Open Service Xpress PDF in the Fluids window.
+
+---
+
 ## v0.5.17-beta — 2026-09-28
 
 ### Added
