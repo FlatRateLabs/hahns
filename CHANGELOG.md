@@ -9,6 +9,16 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.5.19-beta — in progress
+
+### Fixed
+- **Deleting one line now asks first.** Clicking the trash can on a single line (Torque,
+  Replace After Removal, Fluids, Special Tools, Critical Warnings), the ✕ on a tool chip, or
+  the ✕ on a diagram now shows a small **Remove? Yes / No** instead of deleting right away —
+  so a stray click can't throw away a spec. (The group **Clear** buttons already asked.)
+
+---
+
 ## v0.5.18-beta — 2026-10-05
 
 ### Changed

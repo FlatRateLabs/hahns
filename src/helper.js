@@ -6444,6 +6444,12 @@
     ".dgm{display:block;max-width:100%;height:auto;border:1px solid #e3e3e3;border-radius:6px;cursor:zoom-in;background:#fff}" +
     ".dgmdel{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}" +
     ".dgmdel:hover{background:#c0392b}" +
+    // per-item delete confirms (#214): small Yes/No in place of the trash / ✕
+    ".rowconfirm{margin-top:-2px}" +
+    ".rowconfirm button,.chipconfirm button,.dgmconfirm button{padding:3px 7px;font-size:11px}" +
+    ".chipconfirm{gap:4px;margin-left:2px}" +
+    ".chipconfirm .ctxt{color:#ffd0d0}" +
+    ".dgmconfirm{position:absolute;top:6px;right:6px;background:#fff;border:1px solid #e6b0b0;border-radius:8px;padding:4px 6px;box-shadow:0 2px 8px rgba(0,0,0,.2)}" +
     ".sec.warnings .item{border-left-width:3px;border-radius:0 6px 6px 0;padding-left:10px}" +
     // ELSA's four banner colours: DANGER red, WARNING orange, CAUTION yellow, NOTE light blue
     ".sec.warnings .item.sev-danger{border-left-color:#d11f2d;background:#fdecec;color:#7a1620}" +
@@ -8575,12 +8581,15 @@
 
     // generic inline Yes/No confirm: swap `btn` for a small confirm, run onYes on
     // Yes, just re-render on No. Used by the clear buttons (destructive actions).
-    function inlineConfirm(btn, msg, onYes) {
+    // `cls` adds a placement class (e.g. over a diagram); clicks don't bubble so
+    // a confirm sitting inside a clickable chip/image never triggers it.
+    function inlineConfirm(btn, msg, onYes, cls) {
       var cf = document.createElement("span");
-      cf.className = "confirm";
+      cf.className = "confirm" + (cls ? " " + cls : "");
       cf.innerHTML = '<span class="ctxt">' + esc(msg) + '</span>' +
         '<button class="cyes">Yes</button><button class="cno">No</button>';
       btn.replaceWith(cf);
+      cf.addEventListener("click", function (e) { e.stopPropagation(); });
       cf.querySelector(".cyes").addEventListener("click", onYes);
       cf.querySelector(".cno").addEventListener("click", function () { renderInto(host, r, options); });
     }
@@ -8728,9 +8737,11 @@
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
         var url = btn.getAttribute("data-imgdel");
-        r.__images = (r.__images || []).filter(function (im) { return im.url !== url; });
-        persist();
-        renderInto(host, r, options);
+        inlineConfirm(btn, "Remove image?", function () {
+          r.__images = (r.__images || []).filter(function (im) { return im.url !== url; });
+          persist();
+          renderInto(host, r, options);
+        }, "dgmconfirm");
       });
     });
 
@@ -8751,11 +8762,12 @@
       btn.addEventListener("click", function () {
         var k = btn.getAttribute("data-del");
         var i = +btn.getAttribute("data-i");
-        if (r[k] && i >= 0 && i < r[k].length) {
-          r[k].splice(i, 1);
+        if (!(r[k] && i >= 0 && i < r[k].length)) return;
+        inlineConfirm(btn, "Remove?", function () {
+          if (r[k] && i < r[k].length) r[k].splice(i, 1);
           persist();
           renderInto(host, r, options);
-        }
+        }, "rowconfirm");
       });
     });
 
@@ -8764,9 +8776,11 @@
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
         var num = (btn.getAttribute("data-chipdel") || "").toLowerCase();
-        r.tools = (r.tools || []).filter(function (it) { return (it.num || "").toLowerCase() !== num; });
-        persist();
-        renderInto(host, r, options);
+        inlineConfirm(btn, "Remove?", function () {
+          r.tools = (r.tools || []).filter(function (it) { return (it.num || "").toLowerCase() !== num; });
+          persist();
+          renderInto(host, r, options);
+        }, "chipconfirm");
       });
     });
 
