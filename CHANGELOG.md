@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.19-beta — in progress
+## v0.5.19-beta — 2026-10-18
 
 ### Fixed
 - **Deleting one line now asks first.** Clicking the trash can on a single line (Torque,
