@@ -9,6 +9,25 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.5.19-beta — 2026-10-18
+
+### Fixed
+- **Deleting one line now asks first.** Clicking the trash can on a single line (Torque,
+  Replace After Removal, Fluids, Special Tools, Critical Warnings), the ✕ on a tool chip, or
+  the ✕ on a diagram now pops up a small **Remove? Yes / No** bubble beside the button instead of
+  deleting right away — so a stray click can't throw away a spec. The line itself doesn't move;
+  click No, press Esc, or click anywhere else to cancel.
+
+### Changed
+- **Each group's Clear button is now a trash can** (Torque, Replace After Removal, Fluids,
+  Special Tools, Critical Warnings, Diagram), matching the trash cans on each line, and it uses
+  the same **Clear all? Yes / No** pop-up.
+- **Group headers have a light colour band** in each group's own colour (blue Torque, green
+  Replace After Removal, purple Special Tools, red Critical Warnings, grey Diagram), so they
+  stand out and it's clear the trash can on the band clears that whole group.
+
+---
+
 ## v0.5.18-beta — 2026-10-05
 
 ### Changed

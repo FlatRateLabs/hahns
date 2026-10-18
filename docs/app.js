@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.18-beta · 2026-10-06 03:16 UTC";
+var BUILD = "v0.5.19-beta · 2026-10-18 20:36 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -6038,9 +6038,18 @@ var CSS = "" +
 ".st{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;margin-bottom:7px}" +
 ".st svg{width:15px;height:15px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
 ".st .ct{margin-left:auto;background:#eef1f6;color:#5a6b8c;border-radius:9px;padding:1px 8px;font-size:11px;font-weight:600}" +
+// (#214) tinted header strip in each group's own colour, so the group trash
+// can reads as part of the header (it clears that whole group)
+".st{padding:5px 6px 5px 8px;border-radius:7px}" +
+".st.c-torque,.st.c-fluids{background:#e8f0fa}.st.c-replace{background:#e4f2ec}.st.c-tools{background:#eeedfa}" +
+".st.c-warnings{background:#fbeaea}.st.c-diagram{background:#efefec}" +
+".st .ct{background:#fff}" +
+".st .clrsec{color:currentColor;opacity:.55}.st .clrsec:hover,.st .clrsec.armed{opacity:1;color:#c0392b}" +
 // per-group clear button in each section header
-".clrsec{appearance:none;-webkit-appearance:none;background:transparent;border:0;cursor:pointer;font-family:inherit;font-weight:600;font-size:10px;letter-spacing:.03em;color:#aab0bb;padding:2px 6px;margin-left:7px;border-radius:5px}" +
-".clrsec:hover{color:#c0392b;background:#fdecec}" +
+// (#214) a trash can, matching the per-line trash, so the panel reads the same
+".clrsec{appearance:none;-webkit-appearance:none;background:transparent;border:0;cursor:pointer;color:#aab0bb;padding:1px;margin-left:7px;border-radius:5px;display:flex;align-items:center}" +
+".st .clrsec svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}" +
+".clrsec:hover,.clrsec.armed{color:#c0392b}" +
 ".st .confirm{text-transform:none;margin-left:7px}" +
 ".item{display:flex;gap:7px;align-items:flex-start;font-size:13px;line-height:1.45;padding:5px 0 5px 10px;border-left:2px solid #e3e3e3;margin:3px 0;color:#222}" +
 ".txt{flex:1;min-width:0}" +
@@ -6141,6 +6150,10 @@ var CSS = "" +
 ".dgm{display:block;max-width:100%;height:auto;border:1px solid #e3e3e3;border-radius:6px;cursor:zoom-in;background:#fff}" +
 ".dgmdel{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}" +
 ".dgmdel:hover{background:#c0392b}" +
+// per-item delete confirm bubble (#214) — floats beside the trash / ✕
+".popc{position:absolute;z-index:7;display:flex;align-items:center;gap:5px;background:#fff;border:1px solid #e6b0b0;border-radius:9px;padding:5px 6px 5px 9px;box-shadow:0 6px 18px rgba(0,0,0,.22)}" +
+".popc button{appearance:none;-webkit-appearance:none;border:1px solid #cfd6e4;background:#fff;font-family:inherit;font-weight:600;font-size:11.5px;padding:4px 9px;border-radius:7px;cursor:pointer}" +
+".del.armed{color:#c0392b}.chipx.armed{color:#fff;background:#c0392b}.dgmdel.armed{background:#c0392b}" +
 ".sec.warnings .item{border-left-width:3px;border-radius:0 6px 6px 0;padding-left:10px}" +
 // ELSA's four banner colours: DANGER red, WARNING orange, CAUTION yellow, NOTE light blue
 ".sec.warnings .item.sev-danger{border-left-color:#d11f2d;background:#fdecec;color:#7a1620}" +
@@ -6685,7 +6698,7 @@ var items = r[s.key] || [];
 if (s.linkOnly) return;
 html += '<div class="sec ' + s.key + '"><div class="st c-' + s.key + '">' +
 svg(s.icon) + s.title + '<span class="ct">' + items.length + "</span>" +
-(items.length ? '<button class="clrsec" data-clear="' + s.key + '" data-tip="Clear all ' + esc(s.title) + '">Clear</button>' : "") +
+(items.length ? '<button class="clrsec" data-clear="' + s.key + '" data-tip="Clear all ' + esc(s.title) + '" aria-label="Clear all ' + esc(s.title) + '">' + svg(TRASH) + '</button>' : "") +
 "</div>";
 // blue tool-number chips for a quick glance — each one removable
 if (s.key === "tools") {
@@ -6734,7 +6747,7 @@ return '<div class="dgmwrap"><img class="dgm" src="' + esc(u) + '" data-full="' 
 };
 html += '<div class="sec diagram"><div class="st c-diagram">' + svg(IMG_ICON) + "Diagram" +
 '<span class="ct">' + imgs.length + "</span>" +
-'<button class="clrsec" data-clear="__images" data-tip="Clear all diagrams">Clear</button>' +
+'<button class="clrsec" data-clear="__images" data-tip="Clear all diagrams" aria-label="Clear all diagrams">' + svg(TRASH) + '</button>' +
 "</div>";
 if (multiSrc) {
 groupImagesBySource(imgs).forEach(function (g) {
@@ -8216,12 +8229,55 @@ btn.replaceWith(cf);
 cf.querySelector(".cyes").addEventListener("click", onYes);
 cf.querySelector(".cno").addEventListener("click", function () { renderInto(host, r, options); });
 }
+// floating Yes/No bubble beside `btn` (#214) — used by the per-item delete
+// buttons so the line itself never shifts. Positioned like the tooltips (on
+// the panel, not the scrolling body); closes on No, Esc, a click elsewhere, or
+// a scroll (it would otherwise drift off its button).
+function popConfirm(btn, msg, onYes) {
+var wrap = root.querySelector(".wrap");
+if (!wrap) { onYes(); return; }
+var old = wrap.querySelector(".popc");
+if (old && old.__close) old.__close();
+var pc = document.createElement("div");
+pc.className = "popc";
+pc.innerHTML = '<span class="ctxt">' + esc(msg) + '</span>' +
+'<button class="cyes">Yes</button><button class="cno">No</button>';
+wrap.appendChild(pc);
+btn.classList.add("armed");
+var er = btn.getBoundingClientRect(), wr = wrap.getBoundingClientRect(), pr = pc.getBoundingClientRect();
+var left = (er.right - wr.left) - pr.width;               // right edges line up
+left = Math.max(6, Math.min(left, wr.width - pr.width - 6));
+var top = (er.top - wr.top) - pr.height - 6;              // prefer above
+if (top < 4) top = (er.bottom - wr.top) + 6;              // no room → below
+pc.style.left = Math.round(left) + "px";
+pc.style.top = Math.round(top) + "px";
+var body = root.querySelector(".body");
+function close() {
+pc.remove();
+btn.classList.remove("armed");
+root.removeEventListener("mousedown", outside, true);
+document.removeEventListener("keydown", onKey, true);
+if (body) body.removeEventListener("scroll", close);
+}
+function outside(e) { if (!pc.contains(e.target)) close(); }
+function onKey(e) { if (e.key === "Escape") { e.stopPropagation(); close(); } }
+pc.__close = close;
+pc.addEventListener("click", function (e) { e.stopPropagation(); });
+pc.querySelector(".cyes").addEventListener("click", function () { close(); onYes(); });
+pc.querySelector(".cno").addEventListener("click", close);
+setTimeout(function () {
+root.addEventListener("mousedown", outside, true);
+document.addEventListener("keydown", onKey, true);
+if (body) body.addEventListener("scroll", close);
+}, 0);
+try { pc.querySelector(".cno").focus(); } catch (e) {}
+}
 // per-group "Clear" — empties just that section (or the diagrams), keeping the
 // rest of the job and the vehicle. Confirmed inline so a stray click is safe.
 root.querySelectorAll("[data-clear]").forEach(function (btn) {
 btn.addEventListener("click", function () {
 var key = btn.getAttribute("data-clear");
-inlineConfirm(btn, "Clear all?", function () {
+popConfirm(btn, "Clear all?", function () {
 if (key === "__images") r.__images = [];
 else if (r[key]) r[key] = [];
 persist();
@@ -8353,9 +8409,11 @@ root.querySelectorAll(".dgmdel").forEach(function (btn) {
 btn.addEventListener("click", function (e) {
 e.stopPropagation();
 var url = btn.getAttribute("data-imgdel");
+popConfirm(btn, "Remove image?", function () {
 r.__images = (r.__images || []).filter(function (im) { return im.url !== url; });
 persist();
 renderInto(host, r, options);
+});
 });
 });
 // locate-on-page magnifier — scroll ELSA to where this item was found and
@@ -8374,11 +8432,12 @@ root.querySelectorAll(".del").forEach(function (btn) {
 btn.addEventListener("click", function () {
 var k = btn.getAttribute("data-del");
 var i = +btn.getAttribute("data-i");
-if (r[k] && i >= 0 && i < r[k].length) {
-r[k].splice(i, 1);
+if (!(r[k] && i >= 0 && i < r[k].length)) return;
+popConfirm(btn, "Remove?", function () {
+if (r[k] && i < r[k].length) r[k].splice(i, 1);
 persist();
 renderInto(host, r, options);
-}
+});
 });
 });
 // ✕ on a tool chip — removes that tool (chip + its list row are the same tool)
@@ -8386,9 +8445,11 @@ root.querySelectorAll("[data-chipdel]").forEach(function (btn) {
 btn.addEventListener("click", function (e) {
 e.stopPropagation();
 var num = (btn.getAttribute("data-chipdel") || "").toLowerCase();
+popConfirm(btn, "Remove?", function () {
 r.tools = (r.tools || []).filter(function (it) { return (it.num || "").toLowerCase() !== num; });
 persist();
 renderInto(host, r, options);
+});
 });
 });
 // "not in list" badge on a scanned tool → add it to the shop list (#201)
