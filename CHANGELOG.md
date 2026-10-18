@@ -22,6 +22,9 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 - **Each group's Clear button is now a trash can** (Torque, Replace After Removal, Fluids,
   Special Tools, Critical Warnings, Diagram), matching the trash cans on each line, and it uses
   the same **Clear all? Yes / No** pop-up.
+- **Group headers have a light colour band** in each group's own colour (blue Torque, green
+  Replace After Removal, purple Special Tools, red Critical Warnings, grey Diagram), so they
+  stand out and it's clear the trash can on the band clears that whole group.
 
 ---
 

@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.19-beta · 2026-10-18 20:29 UTC";
+var BUILD = "v0.5.19-beta · 2026-10-18 20:33 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -6038,6 +6038,13 @@ var CSS = "" +
 ".st{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;margin-bottom:7px}" +
 ".st svg{width:15px;height:15px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
 ".st .ct{margin-left:auto;background:#eef1f6;color:#5a6b8c;border-radius:9px;padding:1px 8px;font-size:11px;font-weight:600}" +
+// (#214) tinted header strip in each group's own colour, so the group trash
+// can reads as part of the header (it clears that whole group)
+".st{padding:5px 6px 5px 8px;border-radius:7px}" +
+".st.c-torque,.st.c-fluids{background:#e8f0fa}.st.c-replace{background:#e4f2ec}.st.c-tools{background:#eeedfa}" +
+".st.c-warnings{background:#fbeaea}.st.c-diagram{background:#efefec}" +
+".st .ct{background:#fff}" +
+".st .clrsec{color:currentColor;opacity:.55}.st .clrsec:hover,.st .clrsec.armed{opacity:1;color:#c0392b}" +
 // per-group clear button in each section header
 // (#214) a trash can, matching the per-line trash, so the panel reads the same
 ".clrsec{appearance:none;-webkit-appearance:none;background:transparent;border:0;cursor:pointer;color:#aab0bb;padding:1px;margin-left:7px;border-radius:5px;display:flex;align-items:center}" +
