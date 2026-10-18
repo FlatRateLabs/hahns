@@ -16,7 +16,12 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
   Replace After Removal, Fluids, Special Tools, Critical Warnings), the ✕ on a tool chip, or
   the ✕ on a diagram now pops up a small **Remove? Yes / No** bubble beside the button instead of
   deleting right away — so a stray click can't throw away a spec. The line itself doesn't move;
-  click No, press Esc, or click anywhere else to cancel. (The group **Clear** buttons already asked.)
+  click No, press Esc, or click anywhere else to cancel.
+
+### Changed
+- **Each group's Clear button is now a trash can** (Torque, Replace After Removal, Fluids,
+  Special Tools, Critical Warnings, Diagram), matching the trash cans on each line, and it uses
+  the same **Clear all? Yes / No** pop-up.
 
 ---
 

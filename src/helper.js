@@ -6342,8 +6342,10 @@
     ".st svg{width:15px;height:15px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".st .ct{margin-left:auto;background:#eef1f6;color:#5a6b8c;border-radius:9px;padding:1px 8px;font-size:11px;font-weight:600}" +
     // per-group clear button in each section header
-    ".clrsec{appearance:none;-webkit-appearance:none;background:transparent;border:0;cursor:pointer;font-family:inherit;font-weight:600;font-size:10px;letter-spacing:.03em;color:#aab0bb;padding:2px 6px;margin-left:7px;border-radius:5px}" +
-    ".clrsec:hover{color:#c0392b;background:#fdecec}" +
+    // (#214) a trash can, matching the per-line trash, so the panel reads the same
+    ".clrsec{appearance:none;-webkit-appearance:none;background:transparent;border:0;cursor:pointer;color:#aab0bb;padding:1px;margin-left:7px;border-radius:5px;display:flex;align-items:center}" +
+    ".st .clrsec svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}" +
+    ".clrsec:hover,.clrsec.armed{color:#c0392b}" +
     ".st .confirm{text-transform:none;margin-left:7px}" +
     ".item{display:flex;gap:7px;align-items:flex-start;font-size:13px;line-height:1.45;padding:5px 0 5px 10px;border-left:2px solid #e3e3e3;margin:3px 0;color:#222}" +
     ".txt{flex:1;min-width:0}" +
@@ -7008,7 +7010,7 @@
 
       html += '<div class="sec ' + s.key + '"><div class="st c-' + s.key + '">' +
         svg(s.icon) + s.title + '<span class="ct">' + items.length + "</span>" +
-        (items.length ? '<button class="clrsec" data-clear="' + s.key + '" data-tip="Clear all ' + esc(s.title) + '">Clear</button>' : "") +
+        (items.length ? '<button class="clrsec" data-clear="' + s.key + '" data-tip="Clear all ' + esc(s.title) + '" aria-label="Clear all ' + esc(s.title) + '">' + svg(TRASH) + '</button>' : "") +
         "</div>";
 
       // blue tool-number chips for a quick glance — each one removable
@@ -7060,7 +7062,7 @@
       };
       html += '<div class="sec diagram"><div class="st c-diagram">' + svg(IMG_ICON) + "Diagram" +
         '<span class="ct">' + imgs.length + "</span>" +
-        '<button class="clrsec" data-clear="__images" data-tip="Clear all diagrams">Clear</button>' +
+        '<button class="clrsec" data-clear="__images" data-tip="Clear all diagrams" aria-label="Clear all diagrams">' + svg(TRASH) + '</button>' +
         "</div>";
       if (multiSrc) {
         groupImagesBySource(imgs).forEach(function (g) {
@@ -8638,7 +8640,7 @@
     root.querySelectorAll("[data-clear]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var key = btn.getAttribute("data-clear");
-        inlineConfirm(btn, "Clear all?", function () {
+        popConfirm(btn, "Clear all?", function () {
           if (key === "__images") r.__images = [];
           else if (r[key]) r[key] = [];
           persist();
