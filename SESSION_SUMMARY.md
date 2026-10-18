@@ -5,6 +5,35 @@ permanent project reference.
 
 ---
 
+## Session close (2026-10-18) — v0.5.19-beta (#214) — merged + live
+
+One owner-filed bug. PR **#215** (squash, merged by the owner), #214 auto-closed. **App-only → no re-drag**
+(`LOADER_VER` 2); no parser touched. Owner-tested via TEST bookmarks (214 → 214d). Live `version.json` =
+0.5.19-beta, live `app.js` grep confirmed.
+
+### What shipped (`src/helper.js`)
+- **`popConfirm(btn,msg,onYes)`** in `renderInto` — a floating Yes/No bubble (`.popc`, appended to `.wrap`,
+  positioned like the fast tooltips: right-aligned to the button, above, else below). Closes on No, Esc, a
+  mousedown outside, or `.body` scroll (listeners attach on a `setTimeout(0)` so the opening click doesn't
+  close it). The pressed button gets `.armed` (red). Owner asked for a pop-up so the line text never shifts
+  (first cut was an inline replace-the-button confirm).
+- Used by the row trash (`.del`, "Remove?"), tool-chip ✕ (`[data-chipdel]`), diagram ✕ (`.dgmdel`,
+  "Remove image?") AND the per-group Clear (`[data-clear]`, "Clear all?"). `inlineConfirm` unchanged — still
+  used by Clear All Info / New Vehicle.
+- **Group Clear is now a trash-can icon** (`.clrsec` = `svg(TRASH)`, `aria-label` kept, `data-tip` unchanged).
+- **Tinted group header strips** (`.st` padding + radius; `.st.c-<key>` pale tint of each group's colour;
+  `.ct` white; group trash `currentColor` @ .55 → red on hover/armed).
+
+### Session note
+- The repo sits in iCloud-synced `~/Documents`; at session start ~189 files (incl. `.git` objects) were
+  **dataless** (offloaded) — reads returned 0 bytes. Reading them OUTSIDE the sandbox faulted them back in.
+  Suggested the owner set the folder to **Keep Downloaded**.
+
+### Carry-forward
+- No open issues. Bay tests + deferred maintenance gaps unchanged (see v0.5.13 entry).
+
+---
+
 ## Session close (2026-10-05) — v0.5.18-beta (#212) — merged + live
 
 One owner-filed feature request. PR **#213** (squash `--admin`, merged by the owner), #212 auto-closed.
