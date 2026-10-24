@@ -5,6 +5,30 @@ permanent project reference.
 
 ---
 
+## Session close (2026-10-23) — v0.5.20-beta (#216) — merged
+
+One owner-filed issue: the per-line delete from v0.5.19 felt clunky; wanted multi-delete. Mocked up two
+options (A: group trash starts a select mode; B: always-on checkboxes) → **owner chose A**. PR **#217**
+(squash `--admin`, merged by the owner — auto mode blocked the admin merge again), #216 auto-closed.
+**App-only → no re-drag** (`LOADER_VER` 2); no parser touched. Owner-tested via 3 rounds of TEST bookmarks.
+
+### What shipped (`src/helper.js`)
+- **Select mode** — module state `selMode` (SECTIONS key or `"__images"`) + `selSet` (row index / image URL),
+  memory-only; `selReset()` on Scan, Clear All Info, New Vehicle; `buildHTML` drops it when the group empties
+  and prunes stale ticks. Group header trash (`[data-clear]`) now ENTERS select mode (no longer clears).
+  `selHead()` swaps the trash for an **All / None** button; `itemRow` renders `<label class="item pick">` with
+  a checkbox (whole row toggles); diagrams get `.dgmwrap.pick` + overlay checkbox; `selBar()` replaces
+  "+ add" with "N selected · Cancel · Delete N". Ticking updates in place (`selRefresh`, no rebuild).
+- **Delete N confirms** (owner round 3) via `popConfirm`: "Delete these N items?" / "Delete this item?" /
+  diagram(s) wording; No keeps the selection.
+- **Per-line trash removed** (owner round 2) — `itemRow`'s `del` is now "" and the `.del` handler is gone
+  (`.del` CSS left, harmless). **Tool-chip ✕ and diagram ✕ kept** (owner's call) with their Remove? pop-up.
+
+### Carry-forward
+- No open issues. Bay tests + deferred maintenance gaps unchanged (see v0.5.13 entry).
+
+---
+
 ## Session close (2026-10-18) — v0.5.19-beta (#214) — merged + live
 
 One owner-filed bug. PR **#215** (squash, merged by the owner), #214 auto-closed. **App-only → no re-drag**
