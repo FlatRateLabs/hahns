@@ -6474,6 +6474,7 @@
     ".selbar .selct{flex:1;color:#5a6b8c;font-weight:600}" +
     ".selbar button{appearance:none;-webkit-appearance:none;border:1px solid #cfd6e4;background:#fff;font-family:inherit;font-weight:600;font-size:11.5px;padding:4px 10px;border-radius:7px;cursor:pointer}" +
     ".selbar .seldel{border-color:#e6b0b0;color:#c0392b}.selbar .seldel[data-none]{opacity:.5;cursor:default}" +
+    ".selbar .seldel.armed{background:#c0392b;color:#fff;border-color:#c0392b}" +
     ".del.armed{color:#c0392b}.chipx.armed{color:#fff;background:#c0392b}.dgmdel.armed{background:#c0392b}" +
     ".sec.warnings .item{border-left-width:3px;border-radius:0 6px 6px 0;padding-left:10px}" +
     // ELSA's four banner colours: DANGER red, WARNING orange, CAUTION yellow, NOTE light blue
@@ -8748,15 +8749,20 @@
     });
     root.querySelectorAll(".seldel").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        if (!selCount()) return;
-        if (selMode === "__images") {
-          r.__images = (r.__images || []).filter(function (im) { return !selSet[im.url]; });
-        } else if (r[selMode]) {
-          r[selMode] = r[selMode].filter(function (_, i) { return !selSet[i]; });
-        }
-        selReset();
-        persist();
-        renderInto(host, r, options);
+        var c = selCount();
+        if (!c) return;
+        // one last check before anything goes (owner ask) — same pop-up as the ✕s
+        var what = selMode === "__images" ? (c === 1 ? "diagram" : "diagrams") : (c === 1 ? "item" : "items");
+        popConfirm(btn, c === 1 ? "Delete this " + what + "?" : "Delete these " + c + " " + what + "?", function () {
+          if (selMode === "__images") {
+            r.__images = (r.__images || []).filter(function (im) { return !selSet[im.url]; });
+          } else if (r[selMode]) {
+            r[selMode] = r[selMode].filter(function (_, i) { return !selSet[i]; });
+          }
+          selReset();
+          persist();
+          renderInto(host, r, options);
+        });
       });
     });
 
