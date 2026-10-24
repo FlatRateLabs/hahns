@@ -9,7 +9,7 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
-## v0.5.20-beta — in progress
+## v0.5.20-beta — 2026-10-23
 
 ### Changed
 - **Delete several lines at once.** The trash can on a group's header (Torque, Replace After
