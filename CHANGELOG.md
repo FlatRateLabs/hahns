@@ -9,6 +9,18 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.5.20-beta — in progress
+
+### Changed
+- **Delete several lines at once.** The trash can on a group's header (Torque, Replace After
+  Removal, Fluids, Special Tools, Critical Warnings, Diagram) no longer wipes the whole group —
+  it now lets you **pick** what to delete: each line (or diagram) gets a check box, tap the lines
+  you don't need (or **All** in the header), then **Delete N**. **Cancel** leaves everything as
+  it was. The trash can on a single line still deletes just that line, with the same
+  **Remove? Yes / No** pop-up.
+
+---
+
 ## v0.5.19-beta — 2026-10-18
 
 ### Fixed
