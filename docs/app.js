@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.20-beta · 2026-10-24 04:30 UTC";
+var BUILD = "v0.5.20-beta · 2026-10-24 04:34 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -6707,7 +6707,9 @@ var body = s.key === "tools" && it.num
 return '<label class="item pick' + (on ? " on" : "") + '" data-pick="' + idx + '">' +
 '<input type="checkbox" class="pickbox"' + (on ? " checked" : "") + '><span class="txt">' + body + "</span></label>";
 }
-var del = '<button class="del" data-del="' + s.key + '" data-i="' + idx + '" title="Remove this line" aria-label="Remove this line">' + svg(TRASH) + "</button>";
+// (#216) no per-line trash any more — the group header's trash can starts
+// select mode, which deletes one line or many
+var del = "";
 // the locate-on-page magnifier (left side). Only items with a source
 // element get one; if that element is from an earlier page (not on screen
 // now) the button is greyed with an explanatory tooltip.
@@ -8527,19 +8529,6 @@ if (e && e.stopPropagation) e.stopPropagation();
 if (btn.className.indexOf("off") !== -1) return;
 var el = locEl(btn.getAttribute("data-loc"));
 if (el) highlightOnPage(el);
-});
-});
-// trash icon — drop a line the job doesn't need
-root.querySelectorAll(".del").forEach(function (btn) {
-btn.addEventListener("click", function () {
-var k = btn.getAttribute("data-del");
-var i = +btn.getAttribute("data-i");
-if (!(r[k] && i >= 0 && i < r[k].length)) return;
-popConfirm(btn, "Remove?", function () {
-if (r[k] && i < r[k].length) r[k].splice(i, 1);
-persist();
-renderInto(host, r, options);
-});
 });
 });
 // ✕ on a tool chip — removes that tool (chip + its list row are the same tool)

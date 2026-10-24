@@ -16,8 +16,12 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
   Removal, Fluids, Special Tools, Critical Warnings, Diagram) no longer wipes the whole group —
   it now lets you **pick** what to delete: each line (or diagram) gets a check box, tap the lines
   you don't need (or **All** in the header), then **Delete N**. **Cancel** leaves everything as
-  it was. The trash can on a single line still deletes just that line, with the same
-  **Remove? Yes / No** pop-up.
+  it was. To remove just one line, tick only that line.
+
+### Removed
+- **The trash can at the end of each line** — the group's trash can does the same job now and
+  keeps the lines uncluttered. (The ✕ on a tool chip and on a diagram still remove that one item,
+  with the **Remove? Yes / No** pop-up.)
 
 ---
 
