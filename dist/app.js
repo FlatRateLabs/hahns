@@ -1,7 +1,7 @@
 (function(){(function () {
 "use strict";
 // build id, stamped in by tools/build.js so you can confirm which version is live
-var BUILD = "v0.5.19-beta · 2026-10-18 20:36 UTC";
+var BUILD = "v0.5.20-beta · 2026-10-24 04:38 UTC";
 // the H.A.H.N.S setup page. Reserved for the upcoming Settings "check for
 // updates" button (v0.4.1+); the old panel "check for latest" link was removed.
 var SITE_URL = "https://flatratelabs.github.io/hahns/";
@@ -21,6 +21,12 @@ var vehNotice = "";
 // a DIFFERENT vehicle read off the Vehicle Summary while one is loaded (#204):
 // held in memory only until the tech answers the "switch vehicle?" box.
 var vehSwitch = null;
+// multi-delete "select mode" (#216): the group the tech is picking lines from
+// (a SECTIONS key, or "__images" for diagrams) + what's ticked (row index, or
+// image URL). Memory only — a rebuild keeps it, a scan / clear / new vehicle drops it.
+var selMode = null, selSet = {};
+function selReset() { selMode = null; selSet = {}; }
+function selCount() { var c = 0; for (var k in selSet) if (selSet[k]) c++; return c; }
 function vehSwitchBox() {
 if (!vehSwitch) return "";
 var desc = [vehSwitch.year, vehSwitch.model].filter(Boolean).join(" ");
@@ -6153,6 +6159,19 @@ var CSS = "" +
 // per-item delete confirm bubble (#214) — floats beside the trash / ✕
 ".popc{position:absolute;z-index:7;display:flex;align-items:center;gap:5px;background:#fff;border:1px solid #e6b0b0;border-radius:9px;padding:5px 6px 5px 9px;box-shadow:0 6px 18px rgba(0,0,0,.22)}" +
 ".popc button{appearance:none;-webkit-appearance:none;border:1px solid #cfd6e4;background:#fff;font-family:inherit;font-weight:600;font-size:11.5px;padding:4px 9px;border-radius:7px;cursor:pointer}" +
+// multi-delete select mode (#216): checkbox rows, All/None in the header, and a
+// Delete N / Cancel bar at the foot of the group
+".item.pick{cursor:pointer;align-items:center;border-left-color:#e3e3e3}.item.pick.on{background:#fdecec;border-left-color:#c0392b}" +
+".pickbox{margin:0;width:15px;height:15px;flex-shrink:0;accent-color:#c0392b;cursor:pointer}" +
+".item.pick .lbl{cursor:pointer}" +
+".dgmwrap.pick{display:block;cursor:pointer}.dgmwrap.pick .dgm{cursor:pointer}.dgmwrap.pick.on .dgm{outline:3px solid #c0392b;outline-offset:-3px;opacity:.75}" +
+".dgmpick{position:absolute;top:8px;right:8px;width:20px;height:20px}" +
+".selall{appearance:none;-webkit-appearance:none;margin-left:7px;background:#fff;border:1px solid #cfd6e4;border-radius:6px;font-family:inherit;font-size:11px;font-weight:600;text-transform:none;letter-spacing:0;color:#001e50;padding:2px 8px;cursor:pointer}" +
+".selbar{display:flex;align-items:center;gap:6px;margin-top:6px;padding:6px 6px 6px 9px;background:#f4f5f8;border-radius:7px;font-size:12px}" +
+".selbar .selct{flex:1;color:#5a6b8c;font-weight:600}" +
+".selbar button{appearance:none;-webkit-appearance:none;border:1px solid #cfd6e4;background:#fff;font-family:inherit;font-weight:600;font-size:11.5px;padding:4px 10px;border-radius:7px;cursor:pointer}" +
+".selbar .seldel{border-color:#e6b0b0;color:#c0392b}.selbar .seldel[data-none]{opacity:.5;cursor:default}" +
+".selbar .seldel.armed{background:#c0392b;color:#fff;border-color:#c0392b}" +
 ".del.armed{color:#c0392b}.chipx.armed{color:#fff;background:#c0392b}.dgmdel.armed{background:#c0392b}" +
 ".sec.warnings .item{border-left-width:3px;border-radius:0 6px 6px 0;padding-left:10px}" +
 // ELSA's four banner colours: DANGER red, WARNING orange, CAUTION yellow, NOTE light blue
@@ -6598,6 +6617,13 @@ return h;
 // written locally, buttons wired from the opener, false if pop-ups blocked)
 function openToolWindow(r) { return openDocWindow("hahns_tools", 640, 760, buildToolsWindowHTML(r)); }
 function buildHTML(r, embed) {
+if (selMode) {
+var selList = selMode === "__images" ? (r.__images || []).map(function (im) { return im.url; }) : (r[selMode] || []);
+if (!selList.length) selReset();
+else for (var sk in selSet) {
+if (selMode === "__images" ? selList.indexOf(sk) < 0 : !(+sk >= 0 && +sk < selList.length)) delete selSet[sk];
+}
+}
 var mini = !embed && isMin();
 // compact top area (issue #149): vehicle loaded + collapse state "0" → one icon row
 // (Fluids, Maintenance, New Vehicle, Vehicle toggle) instead of the full stack.
@@ -6655,13 +6681,36 @@ var multiSrc = srcCount(r) >= 2;
 // A line the tech typed is their own text, so let them correct a typo in place
 // instead of deleting and retyping it. Scanned rows stay read-only — that text
 // is ELSA's, and the part label (.lbl) is the editable bit there.
+// group header control (#216): the trash can starts select mode for that
+// group; while selecting, it's replaced by an All / None toggle.
+function selHead(key, n, title) {
+if (selMode === key) {
+return '<button class="selall" data-selall="' + key + '">' + (selCount() === n ? "None" : "All") + "</button>";
+}
+return '<button class="clrsec" data-clear="' + key + '" data-tip="Select ' + esc(String(title).toLowerCase()) + ' to delete" aria-label="Select ' + esc(String(title).toLowerCase()) + ' to delete">' + svg(TRASH) + "</button>";
+}
+function selBar() {
+var c = selCount();
+return '<div class="selbar"><span class="selct">' + c + " selected</span>" +
+'<button class="selcan">Cancel</button><button class="seldel"' + (c ? "" : " data-none") + ">Delete " + c + "</button></div>";
+}
 function txtOpen(s, it, idx) {
 return byHand(it)
 ? '<span class="txt edit" data-tk="' + s.key + '" data-ti="' + idx + '" title="Click to edit this line">'
 : '<span class="txt">';
 }
 function itemRow(s, it, idx) {
-var del = '<button class="del" data-del="' + s.key + '" data-i="' + idx + '" title="Remove this line" aria-label="Remove this line">' + svg(TRASH) + "</button>";
+if (selMode === s.key) {
+var on = !!selSet[idx];
+var body = s.key === "tools" && it.num
+? "<b>" + esc(it.num) + "</b>" + (it.desc ? " — " + esc(it.desc) : "")
+: (it.part ? '<span class="lbl set">' + esc(it.part) + "</span> " : "") + esc(it.text);
+return '<label class="item pick' + (on ? " on" : "") + '" data-pick="' + idx + '">' +
+'<input type="checkbox" class="pickbox"' + (on ? " checked" : "") + '><span class="txt">' + body + "</span></label>";
+}
+// (#216) no per-line trash any more — the group header's trash can starts
+// select mode, which deletes one line or many
+var del = "";
 // the locate-on-page magnifier (left side). Only items with a source
 // element get one; if that element is from an earlier page (not on screen
 // now) the button is greyed with an explanatory tooltip.
@@ -6698,7 +6747,7 @@ var items = r[s.key] || [];
 if (s.linkOnly) return;
 html += '<div class="sec ' + s.key + '"><div class="st c-' + s.key + '">' +
 svg(s.icon) + s.title + '<span class="ct">' + items.length + "</span>" +
-(items.length ? '<button class="clrsec" data-clear="' + s.key + '" data-tip="Clear all ' + esc(s.title) + '" aria-label="Clear all ' + esc(s.title) + '">' + svg(TRASH) + '</button>' : "") +
+(items.length ? selHead(s.key, items.length, s.title) : "") +
 "</div>";
 // blue tool-number chips for a quick glance — each one removable
 if (s.key === "tools") {
@@ -6734,20 +6783,25 @@ items.forEach(function (it, idx) { html += itemRow(s, it, idx); });
 } else {
 html += '<div class="empty">None yet.</div>';
 }
-html += '<button class="addrow" data-add="' + s.key + '" title="Add a line by hand">+ add</button>';
+html += selMode === s.key ? selBar() : '<button class="addrow" data-add="' + s.key + '" title="Add a line by hand">+ add</button>';
 html += "</div>";
 });
 // diagram(s) captured from the page(s), so the tech can match the numbers
 var imgs = r.__images || [];
 if (imgs.length) {
 var imgTag = function (u) {
+if (selMode === "__images") {
+var on = !!selSet[u];
+return '<label class="dgmwrap pick' + (on ? " on" : "") + '" data-pick="' + esc(u) + '"><img class="dgm" src="' + esc(u) + '" loading="lazy">' +
+'<input type="checkbox" class="pickbox dgmpick"' + (on ? " checked" : "") + "></label>";
+}
 return '<div class="dgmwrap"><img class="dgm" src="' + esc(u) + '" data-full="' + esc(u) +
 '" title="Click to open full size" loading="lazy">' +
 '<button class="dgmdel" data-imgdel="' + esc(u) + '" title="Remove image" aria-label="Remove image">&#10005;</button></div>';
 };
 html += '<div class="sec diagram"><div class="st c-diagram">' + svg(IMG_ICON) + "Diagram" +
 '<span class="ct">' + imgs.length + "</span>" +
-'<button class="clrsec" data-clear="__images" data-tip="Clear all diagrams" aria-label="Clear all diagrams">' + svg(TRASH) + '</button>' +
+selHead("__images", imgs.length, "diagrams") +
 "</div>";
 if (multiSrc) {
 groupImagesBySource(imgs).forEach(function (g) {
@@ -6757,6 +6811,7 @@ g.urls.forEach(function (u) { html += imgTag(u); });
 } else {
 imgs.forEach(function (im) { html += imgTag(im.url); });
 }
+if (selMode === "__images") html += selBar();
 html += "</div>";
 }
 html += "</div>" +
@@ -8274,12 +8329,67 @@ try { pc.querySelector(".cno").focus(); } catch (e) {}
 }
 // per-group "Clear" — empties just that section (or the diagrams), keeping the
 // rest of the job and the vehicle. Confirmed inline so a stray click is safe.
+// (#216) the group trash now starts SELECT MODE for that group: tick the
+// lines to drop (or All), then "Delete N" — Cancel leaves everything as is.
+// One group at a time; the per-line trash still deletes a single line.
 root.querySelectorAll("[data-clear]").forEach(function (btn) {
 btn.addEventListener("click", function () {
-var key = btn.getAttribute("data-clear");
-popConfirm(btn, "Clear all?", function () {
-if (key === "__images") r.__images = [];
-else if (r[key]) r[key] = [];
+selMode = btn.getAttribute("data-clear");
+selSet = {};
+renderInto(host, r, options);
+});
+});
+function selKeys() {
+return selMode === "__images" ? (r.__images || []).map(function (im) { return im.url; })
+: (r[selMode] || []).map(function (_, i) { return String(i); });
+}
+// ticking updates in place (no rebuild), so the list never jumps
+function selRefresh() {
+var c = selCount(), n = selKeys().length;
+root.querySelectorAll(".selct").forEach(function (el) { el.textContent = c + " selected"; });
+root.querySelectorAll(".seldel").forEach(function (el) {
+el.textContent = "Delete " + c;
+if (c) el.removeAttribute("data-none"); else el.setAttribute("data-none", "");
+});
+root.querySelectorAll(".selall").forEach(function (el) { el.textContent = c === n ? "None" : "All"; });
+root.querySelectorAll("[data-pick]").forEach(function (el) {
+var on = !!selSet[el.getAttribute("data-pick")];
+el.classList.toggle("on", on);
+var cb = el.querySelector(".pickbox");
+if (cb) cb.checked = on;
+});
+}
+root.querySelectorAll("[data-pick]").forEach(function (el) {
+var cb = el.querySelector(".pickbox");
+if (cb) cb.addEventListener("change", function () {
+selSet[el.getAttribute("data-pick")] = cb.checked;
+selRefresh();
+});
+});
+root.querySelectorAll("[data-selall]").forEach(function (btn) {
+btn.addEventListener("click", function () {
+var keys = selKeys(), all = selCount() === keys.length;
+selSet = {};
+if (!all) keys.forEach(function (k) { selSet[k] = true; });
+selRefresh();
+});
+});
+root.querySelectorAll(".selcan").forEach(function (btn) {
+btn.addEventListener("click", function () { selReset(); renderInto(host, r, options); });
+});
+root.querySelectorAll(".seldel").forEach(function (btn) {
+btn.addEventListener("click", function () {
+var c = selCount();
+if (!c) return;
+// one last check before anything goes (owner ask) — same pop-up as the ✕s
+var what = selMode === "__images" ? (c === 1 ? "diagram" : "diagrams") : (c === 1 ? "item" : "items");
+popConfirm(btn, c === 1 ? "Delete this " + what + "?" : "Delete these " + c + " " + what + "?", function () {
+if (selMode === "__images") {
+r.__images = (r.__images || []).filter(function (im) { return !selSet[im.url]; });
+} else if (r[selMode]) {
+r[selMode] = r[selMode].filter(function (_, i) { return !selSet[i]; });
+}
+selReset();
 persist();
 renderInto(host, r, options);
 });
@@ -8427,19 +8537,6 @@ var el = locEl(btn.getAttribute("data-loc"));
 if (el) highlightOnPage(el);
 });
 });
-// trash icon — drop a line the job doesn't need
-root.querySelectorAll(".del").forEach(function (btn) {
-btn.addEventListener("click", function () {
-var k = btn.getAttribute("data-del");
-var i = +btn.getAttribute("data-i");
-if (!(r[k] && i >= 0 && i < r[k].length)) return;
-popConfirm(btn, "Remove?", function () {
-if (r[k] && i < r[k].length) r[k].splice(i, 1);
-persist();
-renderInto(host, r, options);
-});
-});
-});
 // ✕ on a tool chip — removes that tool (chip + its list row are the same tool)
 root.querySelectorAll("[data-chipdel]").forEach(function (btn) {
 btn.addEventListener("click", function (e) {
@@ -8518,6 +8615,7 @@ options.onVehSwitch();
 vehSwitch = null;
 renderInto(host, r, options);
 } else if (act === "rescan" && typeof onRescan === "function") {
+selReset();
 onRescan();
 } else if (act === "newjob" && typeof options.onNewJob === "function") {
 // New Vehicle wipes EVERYTHING (vehicle + all collected info) — confirm first.
@@ -8534,15 +8632,16 @@ cf.innerHTML = '<span class="ctxt">New vehicle? Clears all.</span>' +
 '<span class="confirm"><button class="cyes">Yes</button><button class="cno">No</button></span>';
 qrow.appendChild(cf);
 btn.classList.add("armed");
-cf.querySelector(".cyes").addEventListener("click", function () { options.onNewJob(); });
+cf.querySelector(".cyes").addEventListener("click", function () { selReset(); options.onNewJob(); });
 cf.querySelector(".cno").addEventListener("click", function () { cf.remove(); btn.classList.remove("armed"); });
 } else {
-inlineConfirm(btn, "New vehicle? Clears all.", function () { options.onNewJob(); });
+inlineConfirm(btn, "New vehicle? Clears all.", function () { selReset(); options.onNewJob(); });
 }
 } else if (act === "clearinfo") {
 // clear the COLLECTED info (specs, tools, warnings, diagrams, title) but
 // keep the loaded vehicle — confirmed inline so a stray click is safe
 inlineConfirm(btn, "Clear all info?", function () {
+selReset();
 SECTIONS.forEach(function (s) { r[s.key] = []; });
 r.__images = [];
 r.__title = "";
