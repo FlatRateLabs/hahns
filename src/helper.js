@@ -2547,7 +2547,8 @@
   // model year: the file name carries it ("2022 VW Fluid Capacity Tables.pdf");
   // fall back to the first plausible year near the top of the text
   function fluidYearOf(name, text) {
-    var m = /\b(20\d\d)\b/.exec(String(name || ""));
+    // not \b — "MY2027 VW USA Service Xpress Chart.pdf" glues letters to the year
+    var m = /(?:^|[^0-9])(20\d\d)(?![0-9])/.exec(String(name || ""));
     if (m) return m[1];
     m = /\b(20\d\d)\b/.exec(String(text || "").split("\n").slice(0, 40).join(" "));
     return m ? m[1] : "";
@@ -2677,6 +2678,23 @@
           ee.file = p.fileName || "";
           pick[k] = { e: ee, prefer: !!prefer };
         }
+      });
+    });
+    // A chart is the FILE-NAME year's chart (#218 follow-up): VW reprints an
+    // EARLIER year on carried-over models (the 2027 chart's Jetta/GTI/Taos/Tiguan/
+    // ID.Buzz tables say 2026), so file those under the chart's year too, so a 2027
+    // car matches them. A LATER printed year is a next-generation preview (the 2017
+    // chart's BW2 Tiguan = 2019) and is NOT moved — older years' matching unchanged.
+    (parsedRecs || []).forEach(function (p) {
+      var fy = fluidYearOf(p.fileName || "");
+      if (!fy) return;
+      (p.entries || []).forEach(function (e) {
+        if (!e || !e.year || !(+e.year < +fy)) return;
+        var k = fy + "|" + modelNorm(e.model) + "|" + e.platform;
+        if (pick[k]) return;
+        var ee = {}; for (var kk in e) if (Object.prototype.hasOwnProperty.call(e, kk)) ee[kk] = e[kk];
+        ee.year = fy; ee.tableYear = e.year; ee.file = p.fileName || "";
+        pick[k] = { e: ee, prefer: false };
       });
     });
     var byYear = {};
@@ -4127,7 +4145,7 @@
       var flp = loadFluids(), sxp = loadSx(), tl = loadShopTools(), msp = loadMs();
       return {
         fluidYears: (flp && flp.years) ? Object.keys(flp.years).length : 0,
-        sxYears: (sxp && sxp.years) ? sxp.years.length : 0,
+        sxYears: (sxp && sxp.files) ? sxp.files.length : 0,
         msYears: (msp && msp.years) ? msp.years.length : 0,
         tools: tl ? (tl.count || 0) : 0
       };
@@ -4148,7 +4166,7 @@
       setTimeout(function () { try { a.remove(); URL.revokeObjectURL(url); } catch (e) {} }, 4000);
       var fl = loadFluids(), sx = loadSx(), tl = loadShopTools();
       var ms = loadMs();
-      var flN = (fl && fl.years) ? Object.keys(fl.years).length : 0, sxN = (sx && sx.years) ? sx.years.length : 0, msN = (ms && ms.years) ? ms.years.length : 0;
+      var flN = (fl && fl.years) ? Object.keys(fl.years).length : 0, sxN = (sx && sx.files) ? sx.files.length : 0, msN = (ms && ms.years) ? ms.years.length : 0;
       okModal(root, "✓ Setup saved", "Saved your setup — " + flN + " fluid, " + sxN + " torque, " + msN + " maintenance year" + (msN === 1 ? "" : "s") + (tl ? ", tool list" : "") + ". Copy it to the other computer and use Load setup there.");
     }).catch(function (e) { okModal(root, "Couldn’t save setup", "Something went wrong: " + ((e && e.message) || "error")); });
   }
@@ -5273,8 +5291,9 @@
     var upd = target ? updLabel(ok, sxFileYear) : "";
     var rows = results.map(function (o) {
       if (o.err) return '<div class="flrow bad"><b>' + esc(o.name) + "</b><span>" + esc(o.err) + "</span></div>";
-      var yrs = (o.years || []).join(", ");
-      return '<div class="flrow"><b>' + esc(yrs || "?") + " — " + o.entries.length + " model tables</b><span>" + esc(o.name) + "</span></div>";
+      // shown as the chart's FILE-NAME year (the year it applies to), not every
+      // year printed on its tables
+      return '<div class="flrow"><b>' + esc(sxFileYear({ fileName: o.name, years: o.years })) + " — " + o.entries.length + " model tables</b><span>" + esc(o.name) + "</span></div>";
     }).join("");
     var ov = document.createElement("div");
     ov.className = "setc";
@@ -5303,7 +5322,7 @@
         renderInto(host, r, options);
         // refresh Settings in place if it's still open behind this dialog
         if (root.querySelector(".setc-settings")) openSettings(host, r, options, root);
-        var allYears = {}; ok.forEach(function (o) { (o.years || []).forEach(function (y) { allYears[y] = 1; }); });
+        var allYears = {}; ok.forEach(function (o) { allYears[sxFileYear({ fileName: o.name, years: o.years })] = 1; });
         var sxY = Object.keys(allYears).sort();
         okModal(root, "✓ Torque charts saved", "Saved to this computer: " + sxY.join(", ") + " (" + sxY.length + " year" + (sxY.length === 1 ? "" : "s") + ").");
       }).catch(function (e) {
