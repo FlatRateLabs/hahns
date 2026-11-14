@@ -2547,7 +2547,8 @@
   // model year: the file name carries it ("2022 VW Fluid Capacity Tables.pdf");
   // fall back to the first plausible year near the top of the text
   function fluidYearOf(name, text) {
-    var m = /\b(20\d\d)\b/.exec(String(name || ""));
+    // not \b — "MY2027 VW USA Service Xpress Chart.pdf" glues letters to the year
+    var m = /(?:^|[^0-9])(20\d\d)(?![0-9])/.exec(String(name || ""));
     if (m) return m[1];
     m = /\b(20\d\d)\b/.exec(String(text || "").split("\n").slice(0, 40).join(" "));
     return m ? m[1] : "";
@@ -2572,7 +2573,7 @@
    * bundles several model years). Everything except the two torques is ignored.
    * ================================================================== */
   var SX_PARSER_VER = "1.0.0";               // bump → stored Service Xpress PDFs auto-re-parse
-  var SX_YEAR_MIN = 2008, SX_YEAR_MAX = 2026;   // 2007 and earlier never had these charts
+  var SX_YEAR_MIN = 2008, SX_YEAR_MAX = 2027;   // 2007 and earlier never had these charts
   var SX_KEY = "vwjb_sx_v1";                 // localStorage fallback (IDB-unavailable) — projection only, no blobs
   var sxData = null;      // sync projection: null=unread, false=none, obj={byYear,files,years,count,updated}
   var sxMetaList = [];    // sync mirror of sx_meta (info panel + reconcile)
@@ -2677,6 +2678,23 @@
           ee.file = p.fileName || "";
           pick[k] = { e: ee, prefer: !!prefer };
         }
+      });
+    });
+    // A chart is the FILE-NAME year's chart (#218 follow-up): VW reprints an
+    // EARLIER year on carried-over models (the 2027 chart's Jetta/GTI/Taos/Tiguan/
+    // ID.Buzz tables say 2026), so file those under the chart's year too, so a 2027
+    // car matches them. A LATER printed year is a next-generation preview (the 2017
+    // chart's BW2 Tiguan = 2019) and is NOT moved — older years' matching unchanged.
+    (parsedRecs || []).forEach(function (p) {
+      var fy = fluidYearOf(p.fileName || "");
+      if (!fy) return;
+      (p.entries || []).forEach(function (e) {
+        if (!e || !e.year || !(+e.year < +fy)) return;
+        var k = fy + "|" + modelNorm(e.model) + "|" + e.platform;
+        if (pick[k]) return;
+        var ee = {}; for (var kk in e) if (Object.prototype.hasOwnProperty.call(e, kk)) ee[kk] = e[kk];
+        ee.year = fy; ee.tableYear = e.year; ee.file = p.fileName || "";
+        pick[k] = { e: ee, prefer: false };
       });
     });
     var byYear = {};
@@ -4127,7 +4145,7 @@
       var flp = loadFluids(), sxp = loadSx(), tl = loadShopTools(), msp = loadMs();
       return {
         fluidYears: (flp && flp.years) ? Object.keys(flp.years).length : 0,
-        sxYears: (sxp && sxp.years) ? sxp.years.length : 0,
+        sxYears: (sxp && sxp.files) ? sxp.files.length : 0,
         msYears: (msp && msp.years) ? msp.years.length : 0,
         tools: tl ? (tl.count || 0) : 0
       };
@@ -4148,7 +4166,7 @@
       setTimeout(function () { try { a.remove(); URL.revokeObjectURL(url); } catch (e) {} }, 4000);
       var fl = loadFluids(), sx = loadSx(), tl = loadShopTools();
       var ms = loadMs();
-      var flN = (fl && fl.years) ? Object.keys(fl.years).length : 0, sxN = (sx && sx.years) ? sx.years.length : 0, msN = (ms && ms.years) ? ms.years.length : 0;
+      var flN = (fl && fl.years) ? Object.keys(fl.years).length : 0, sxN = (sx && sx.files) ? sx.files.length : 0, msN = (ms && ms.years) ? ms.years.length : 0;
       okModal(root, "✓ Setup saved", "Saved your setup — " + flN + " fluid, " + sxN + " torque, " + msN + " maintenance year" + (msN === 1 ? "" : "s") + (tl ? ", tool list" : "") + ". Copy it to the other computer and use Load setup there.");
     }).catch(function (e) { okModal(root, "Couldn’t save setup", "Something went wrong: " + ((e && e.message) || "error")); });
   }
@@ -4950,11 +4968,11 @@
   // `target` (a year) is set when REPLACING one existing table via the Update flow:
   // the picker goes single-file and the save is scoped to that year (see
   // openFluidsConfirm). Left undefined for the normal multi-file "Add" flow.
-  function pickFluidFiles(host, r, options, root, target) {
+  function pickFluidFiles(host, r, options, root, targets) {
     var inp = document.createElement("input");
     inp.type = "file";
     inp.accept = ".pdf,application/pdf";
-    inp.multiple = !target;
+    inp.multiple = !targets || targets.length > 1;
     inp.style.display = "none";
     inp.addEventListener("change", function () {
       var files = Array.prototype.slice.call(inp.files || []);
@@ -4987,7 +5005,7 @@
       });
       chain.then(function () {
         // Update flow: validate the picked file is the right TYPE + YEAR before saving.
-        if (target) { validateFluidUpdate(host, r, options, root, results[0], target); return; }
+        if (targets) { validateUpdates("fl", host, r, options, root, results, targets); return; }
         openFluidsConfirm(host, r, options, root, results);
       });
     });
@@ -4995,35 +5013,137 @@
     inp.click();
   }
 
-  // Update flow: pick WHICH loaded year to replace, then choose its new PDF. One
-  // year → straight to the picker; several → a small chooser first. (0 → add.)
+  // Update flow (#219): tick ONE OR MORE loaded years, then pick their new PDFs
+  // in one go. One year loaded → straight to the file picker. (0 → add.)
   function openFluidUpdate(host, r, options, root) {
     var fl = loadFluids();
     var years = fl && fl.years ? Object.keys(fl.years).sort(function (a, b) { return a < b ? 1 : a > b ? -1 : 0; }) : [];
     if (!years.length) { pickFluidFiles(host, r, options, root); return; }
-    if (years.length === 1) { pickFluidFiles(host, r, options, root, years[0]); return; }
-    // show only the year (the tech asked not to see file names here — the file
-    // name only matters at the OS picker when choosing the replacement)
-    var list = years.map(function (y) {
-      return '<button class="updpick" data-y="' + esc(y) + '"><b>' + esc(y) + "</b></button>";
+    var items = years.map(function (y) { return { key: y, year: y }; });
+    openUpdatePicker(root, "Update fluid tables", items, function (sel) { pickFluidFiles(host, r, options, root, sel); });
+  }
+
+  // shared Update chooser (#219): one toggle per loaded year (shown by year only —
+  // the tech asked not to see file names here), All / Cancel, then "Choose PDFs".
+  // A single loaded year skips the chooser.
+  function openUpdatePicker(root, title, items, onGo) {
+    if (items.length === 1) { onGo(items.slice()); return; }
+    var list = items.map(function (o, i) {
+      return '<button class="updpick multi" data-i="' + i + '" aria-pressed="false"><span class="updchk"></span><b>' + esc(o.year) + "</b></button>";
     }).join("");
     var ov = document.createElement("div");
     ov.className = "setc";
     ov.innerHTML = '<div class="setbox">' +
       '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
-      '<p class="settl">Update a fluid table</p>' +
-      '<p class="setsub">Pick the year you want to replace, then choose the new PDF. The other years stay as they are.</p>' +
+      '<p class="settl">' + esc(title) + "</p>" +
+      '<p class="setsub">Tick the year(s) you want to replace, then choose their new PDFs — you can pick several files at once. Each file is checked for the right type and year before anything is saved. The other years stay as they are.</p>' +
       '<div class="updlist">' + list + "</div>" +
-      '<div class="setbtns"><button class="cancel">Cancel</button></div>' +
+      '<div class="setbtns"><button class="cancel">Cancel</button><button class="selall">Select all</button><button class="primary go" disabled>Choose PDFs</button></div>' +
       "</div>";
     root.appendChild(ov);
     var close = function () { try { ov.remove(); } catch (e) {} };
     ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
     ov.querySelector(".cancel").addEventListener("click", close);
     ov.querySelector(".xclose").addEventListener("click", close);
-    Array.prototype.forEach.call(ov.querySelectorAll(".updpick"), function (b) {
-      b.addEventListener("click", function () { var y = b.getAttribute("data-y"); close(); pickFluidFiles(host, r, options, root, y); });
+    var picks = Array.prototype.slice.call(ov.querySelectorAll(".updpick"));
+    var go = ov.querySelector(".go"), all = ov.querySelector(".selall");
+    function sync() {
+      var n = picks.filter(function (b) { return b.classList.contains("on"); }).length;
+      go.disabled = !n;
+      go.textContent = n > 1 ? "Choose " + n + " PDFs" : "Choose PDF";
+      all.textContent = n === picks.length ? "Select none" : "Select all";
+    }
+    picks.forEach(function (b) {
+      b.addEventListener("click", function () {
+        var on = !b.classList.contains("on");
+        b.classList.toggle("on", on); b.setAttribute("aria-pressed", on ? "true" : "false"); sync();
+      });
     });
+    all.addEventListener("click", function () {
+      var on = !picks.every(function (b) { return b.classList.contains("on"); });
+      picks.forEach(function (b) { b.classList.toggle("on", on); b.setAttribute("aria-pressed", on ? "true" : "false"); });
+      sync();
+    });
+    go.addEventListener("click", function () {
+      var sel = picks.filter(function (b) { return b.classList.contains("on"); })
+        .map(function (b) { return items[+b.getAttribute("data-i")]; });
+      if (!sel.length) return;
+      close(); onGo(sel);
+    });
+    sync();
+  }
+
+  // Update sanity check (#219, all three PDF types): every picked file must be
+  // the RIGHT TYPE and match one of the years being replaced (each year once).
+  // Good files go to the usual confirm step (bad ones listed there with the
+  // reason, never saved); if NONE are usable, the "Wrong file" box offers a retry.
+  function validateUpdates(kind, host, r, options, root, results, targets) {
+    if (!results || !results.length) return;
+    var K = {
+      fl: { label: "Fluid Capacities", pick: pickFluidFiles, confirm: openFluidsConfirm,
+            yearOf: function (o) { return o.year; } },
+      sx: { label: "Service Xpress", pick: pickSxFiles, confirm: openSxConfirm,
+            yearOf: function (o) { return fluidYearOf(o.name) || ((o.years || []).slice().sort()[0]) || ""; } },
+      ms: { label: "Maintenance Schedules", pick: pickMsFiles, confirm: openMsConfirm,
+            yearOf: function (o) { return o.year || fluidYearOf(o.name) || ""; } }
+    }[kind];
+    var yrs = targets.map(function (t) { return t.year; });
+    var want = yrs.length === 1 ? "the " + yrs[0] + " " + K.label + " PDF" : "the " + K.label + " PDFs for " + yrs.join(", ");
+    // 1) TYPE — the fluid parser is lenient (reads an SX chart as junk models), so
+    //    rule out an SX chart first; an SX/MS failure says if it's a fluid table.
+    var chain = Promise.resolve();
+    results.forEach(function (o) {
+      chain = chain.then(function () {
+        if (kind === "fl") {
+          return looksSx(o.buf, o.name).then(function (isSx) {
+            if (isSx) o.err = "That looks like a Service Xpress chart, not a Fluid Capacities table.";
+            else if (o.err) o.err = "This doesn’t look like a Fluid Capacities PDF.";
+          });
+        }
+        if (!o.err) return;
+        if (kind === "sx") {
+          var other = o.buf ? fluidsFromPdf(o.buf, o.name) : Promise.reject();
+          return other.then(function () { o.err = "That looks like a Fluid Capacities table, not a Service Xpress chart."; },
+                            function () { o.err = "This doesn’t look like a Service Xpress PDF."; });
+        }
+        o.err = "This doesn’t look like a VW Maintenance Schedules PDF.";
+      });
+    });
+    chain.then(function () {
+      // 2) YEAR — pair each good file with a ticked year, each year at most once
+      var taken = {};
+      results.forEach(function (o) {
+        if (o.err) return;
+        var y = String(K.yearOf(o) || "");
+        var t = null;
+        targets.forEach(function (x) { if (!t && String(x.year) === y && !taken[x.key]) t = x; });
+        if (t) { taken[t.key] = 1; o.replaceKey = t.key; return; }
+        if (targets.some(function (x) { return String(x.year) === y; })) o.err = "A second " + y + " file — only one file per year is used.";
+        else o.err = "This is a " + (y || "different-year") + " file, but you’re updating " + yrs.join(", ") + ".";
+      });
+      var good = results.filter(function (o) { return !o.err; });
+      var retry = function () { K.pick(host, r, options, root, targets); };
+      if (!good.length) {
+        var msg = results.length === 1 ? results[0].err
+          : results.map(function (o) { return o.name + " — " + o.err; }).join("\n");
+        updateFileError(host, r, options, root, msg + "\n\nPlease select " + want + ".", retry);
+        return;
+      }
+      var missing = targets.filter(function (t) { return !taken[t.key]; }).map(function (t) { return t.year; });
+      K.confirm(host, r, options, root, results, targets, missing);
+    });
+  }
+
+  // confirm-step rows for ticked years that got no usable file (they're left alone)
+  function updMissingRows(missing) {
+    return (missing || []).map(function (y) {
+      return '<div class="flrow"><b>' + esc(y) + " — not updated</b><span>No matching file picked for this year — it stays as it is.</span></div>";
+    }).join("");
+  }
+  // "Update 2019" / "Update 3 years" — the confirm title + save-button label
+  function updLabel(ok, yearOf) {
+    var ys = ok.map(yearOf).filter(Boolean);
+    return ys.length === 1 ? "Update " + ys[0] : "Update " + ok.length + " years";
   }
 
   // a small "wrong file" overlay for the Update flow: says what's wrong and offers
@@ -5035,7 +5155,7 @@
     ov.innerHTML = '<div class="setbox">' +
       '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
       '<p class="settl">Wrong file</p>' +
-      '<p class="setsub uperr">' + esc(msg) + "</p>" +
+      '<p class="setsub uperr" style="white-space:pre-line">' + esc(msg) + "</p>" +
       '<div class="setbtns"><button class="cancel">Cancel</button>' +
       (retry ? '<button class="primary retry">Choose another file</button>' : "") +
       "</div></div>";
@@ -5056,35 +5176,13 @@
     if (!buf) return Promise.resolve(false);
     return sxFromPdf(buf, name).then(function () { return true; }, function () { return false; });
   }
-  // Update sanity check (fluids): the replacement must be a Fluid Capacities PDF
-  // (not a Service Xpress chart or junk) AND the year the tech is replacing.
-  function validateFluidUpdate(host, r, options, root, only, targetYear) {
-    if (!only) return;
-    var retry = function () { pickFluidFiles(host, r, options, root, targetYear); };
-    // FIRST rule out a Service Xpress chart (the fluid parser can't be trusted to).
-    looksSx(only.buf, only.name).then(function (isSx) {
-      if (isSx) {
-        updateFileError(host, r, options, root, "That looks like a Service Xpress chart, not a Fluid Capacities table. Please select the " + targetYear + " Fluid Capacities PDF.", retry);
-        return;
-      }
-      if (only.err) {
-        updateFileError(host, r, options, root, "This doesn’t look like a Fluid Capacities PDF. Please select the " + targetYear + " Fluid Capacities PDF.", retry);
-        return;
-      }
-      if (String(only.year) !== String(targetYear)) {
-        updateFileError(host, r, options, root, "You picked a " + only.year + " file, but you’re updating " + targetYear + ". Please select the " + targetYear + " Fluid Capacities PDF.", retry);
-        return;
-      }
-      openFluidsConfirm(host, r, options, root, [only], targetYear);
-    });
-  }
-
   // the eyeball step before saving: per file, the model year + the models the
   // converter found (or a plain-language error). Save merges into the store.
   // `target` (a year) is set on the Update flow (the year is already validated to
   // match, so the save just overwrites that year in place) — used here for labels.
-  function openFluidsConfirm(host, r, options, root, results, target) {
+  function openFluidsConfirm(host, r, options, root, results, target, missing) {
     var ok = results.filter(function (o) { return !o.err; });
+    var upd = target ? updLabel(ok, function (o) { return o.year; }) : "";
     var rows = results.map(function (o) {
       if (o.err) return '<div class="flrow bad"><b>' + esc(o.name) + "</b><span>" + esc(o.err) + "</span></div>";
       var names = (o.models || []).map(function (m) { return m.model; }).join(", ");
@@ -5095,12 +5193,12 @@
     ov.className = "setc";
     ov.innerHTML = '<div class="setbox">' +
       '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
-      '<p class="settl">' + (target ? "Update " + esc(target) : "Load fluid capacity tables") + "</p>" +
+      '<p class="settl">' + (target ? esc(upd) : "Load fluid capacity tables") + "</p>" +
       '<p class="setsub">Check each year’s models below against your PDFs, then save. Converted on this computer and kept only in this browser (so future parser fixes apply automatically) — nothing is uploaded.</p>' +
-      rows +
+      rows + updMissingRows(missing) +
       '<div class="maperr" style="display:none"></div>' +
       '<div class="setbtns"><button class="cancel">Cancel</button>' +
-      (ok.length ? '<button class="primary save">' + (target ? "Update " + esc(target) : "Save " + ok.length + " year" + (ok.length > 1 ? "s" : "")) + "</button>" : "") +
+      (ok.length ? '<button class="primary save">' + (target ? esc(upd) : "Save " + ok.length + " year" + (ok.length > 1 ? "s" : "")) + "</button>" : "") +
       "</div></div>";
     root.appendChild(ov);
     var close = function () { try { ov.remove(); } catch (e) {} };
@@ -5130,13 +5228,11 @@
 
   // pick the yearly VW Service Xpress PDFs (multi-select), read them LOCALLY (a
   // FileReader read — NO network), parse the two torque specs, then preview/confirm.
-  // `target` (a stored file key) is set when REPLACING one chart via the Update
-  // flow: single-file picker, save scoped to that file (see openSxConfirm).
-  // `target` (a stored file key) + `targetYear` (the year shown for that chart) are
-  // set on the Update flow: single-file picker + type/year validation before save.
-  function pickSxFiles(host, r, options, root, target, targetYear) {
+  // `targets` ([{key, year}], the charts ticked in the Update chooser) is set on
+  // the Update flow → type/year validation (validateUpdates) before save.
+  function pickSxFiles(host, r, options, root, targets) {
     var inp = document.createElement("input");
-    inp.type = "file"; inp.accept = ".pdf,application/pdf"; inp.multiple = !target; inp.style.display = "none";
+    inp.type = "file"; inp.accept = ".pdf,application/pdf"; inp.multiple = !targets || targets.length > 1; inp.style.display = "none";
     inp.addEventListener("change", function () {
       var files = Array.prototype.slice.call(inp.files || []);
       try { inp.remove(); } catch (e) {}
@@ -5162,7 +5258,7 @@
         });
       });
       chain.then(function () {
-        if (target) { validateSxUpdate(host, r, options, root, results[0], target, targetYear); return; }
+        if (targets) { validateUpdates("sx", host, r, options, root, results, targets); return; }
         openSxConfirm(host, r, options, root, results);
       });
     });
@@ -5175,80 +5271,40 @@
   function sxFileYear(f) {
     return fluidYearOf(f.fileName || f.key) || ((f.years || []).slice().sort()[0]) || "?";
   }
-  // Update flow: pick WHICH loaded chart (shown by year) to replace, then choose
-  // its new PDF. One chart → straight to the picker; several → a small chooser.
+  // Update flow (#219): tick one or more loaded charts (shown by year), then
+  // pick their new PDFs together. One chart → straight to the file picker.
   function openSxUpdate(host, r, options, root) {
     var sx = loadSx();
     var files = sx && sx.files ? sx.files : [];
     if (!files.length) { pickSxFiles(host, r, options, root); return; }
     var items = files.map(function (f) { return { key: f.key, year: sxFileYear(f) }; })
       .sort(function (a, b) { return a.year < b.year ? 1 : a.year > b.year ? -1 : 0; });
-    if (items.length === 1) { pickSxFiles(host, r, options, root, items[0].key, items[0].year); return; }
-    var list = items.map(function (o) {
-      return '<button class="updpick" data-k="' + esc(o.key) + '" data-y="' + esc(o.year) + '"><b>' + esc(o.year) + "</b></button>";
-    }).join("");
-    var ov = document.createElement("div");
-    ov.className = "setc";
-    ov.innerHTML = '<div class="setbox">' +
-      '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
-      '<p class="settl">Update a torque chart</p>' +
-      '<p class="setsub">Pick the year you want to replace, then choose the new PDF. The others stay as they are.</p>' +
-      '<div class="updlist">' + list + "</div>" +
-      '<div class="setbtns"><button class="cancel">Cancel</button></div>' +
-      "</div>";
-    root.appendChild(ov);
-    var close = function () { try { ov.remove(); } catch (e) {} };
-    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
-    ov.querySelector(".cancel").addEventListener("click", close);
-    ov.querySelector(".xclose").addEventListener("click", close);
-    Array.prototype.forEach.call(ov.querySelectorAll(".updpick"), function (b) {
-      b.addEventListener("click", function () { var k = b.getAttribute("data-k"), y = b.getAttribute("data-y"); close(); pickSxFiles(host, r, options, root, k, y); });
-    });
-  }
-
-  // Update sanity check (Service Xpress): the replacement must be a Service Xpress
-  // PDF (not a fluid table or junk) AND the year the tech is replacing.
-  function validateSxUpdate(host, r, options, root, only, targetKey, targetYear) {
-    if (!only) return;
-    var retry = function () { pickSxFiles(host, r, options, root, targetKey, targetYear); };
-    if (only.err) {
-      var other = only.buf ? fluidsFromPdf(only.buf, only.name) : Promise.reject();
-      other.then(function () {
-        updateFileError(host, r, options, root, "That looks like a Fluid Capacities table, not a Service Xpress chart. Please select the " + targetYear + " Service Xpress PDF.", retry);
-      }, function () {
-        updateFileError(host, r, options, root, "This doesn’t look like a Service Xpress PDF. Please select the " + targetYear + " Service Xpress PDF.", retry);
-      });
-      return;
-    }
-    var gotYear = fluidYearOf(only.name) || ((only.years || []).slice().sort()[0]) || "";
-    if (targetYear && String(gotYear) !== String(targetYear)) {
-      updateFileError(host, r, options, root, "You picked a " + (gotYear || "different-year") + " chart, but you’re updating " + targetYear + ". Please select the " + targetYear + " Service Xpress PDF.", retry);
-      return;
-    }
-    openSxConfirm(host, r, options, root, [only], targetKey);
+    openUpdatePicker(root, "Update torque charts", items, function (sel) { pickSxFiles(host, r, options, root, sel); });
   }
 
   // preview per file: the model years + how many model tables were found (or a
   // plain error). Save writes them to IndexedDB, keeping the PDF for auto-reparse.
   // `target` (a stored file key) means REPLACE: after saving, if the new PDF has a
   // different file name than the one being updated, the old file is dropped.
-  function openSxConfirm(host, r, options, root, results, target) {
+  function openSxConfirm(host, r, options, root, results, target, missing) {
     var ok = results.filter(function (o) { return !o.err; });
+    var upd = target ? updLabel(ok, sxFileYear) : "";
     var rows = results.map(function (o) {
       if (o.err) return '<div class="flrow bad"><b>' + esc(o.name) + "</b><span>" + esc(o.err) + "</span></div>";
-      var yrs = (o.years || []).join(", ");
-      return '<div class="flrow"><b>' + esc(yrs || "?") + " — " + o.entries.length + " model tables</b><span>" + esc(o.name) + "</span></div>";
+      // shown as the chart's FILE-NAME year (the year it applies to), not every
+      // year printed on its tables
+      return '<div class="flrow"><b>' + esc(sxFileYear({ fileName: o.name, years: o.years })) + " — " + o.entries.length + " model tables</b><span>" + esc(o.name) + "</span></div>";
     }).join("");
     var ov = document.createElement("div");
     ov.className = "setc";
     ov.innerHTML = '<div class="setbox">' +
       '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
-      '<p class="settl">' + (target ? "Update chart" : "Load Service Xpress charts") + "</p>" +
+      '<p class="settl">' + (target ? esc(upd) : "Load Service Xpress charts") + "</p>" +
       '<p class="setsub">Check the model years below, then save. Read on this computer and kept only in this browser (so future parser fixes apply automatically) — nothing is uploaded.</p>' +
-      rows +
+      rows + updMissingRows(missing) +
       '<div class="maperr" style="display:none"></div>' +
       '<div class="setbtns"><button class="cancel">Cancel</button>' +
-      (ok.length ? '<button class="primary save">' + (target ? "Update chart" : "Save " + ok.length + " file" + (ok.length > 1 ? "s" : "")) + "</button>" : "") +
+      (ok.length ? '<button class="primary save">' + (target ? esc(upd) : "Save " + ok.length + " file" + (ok.length > 1 ? "s" : "")) + "</button>" : "") +
       "</div></div>";
     root.appendChild(ov);
     var close = function () { try { ov.remove(); } catch (e) {} };
@@ -5259,14 +5315,14 @@
     if (sv) sv.addEventListener("click", function () {
       sv.disabled = true;
       sxSaveFiles(ok).then(function () {
-        // REPLACE: if the new chart has a different file name, drop the old one.
-        if (target && !ok.some(function (o) { return o.name === target; })) return removeSxFile(target);
+        // REPLACE: a new chart with a different file name drops the one it replaces.
+        return dropReplaced(ok, removeSxFile);
       }).then(function () {
         close();
         renderInto(host, r, options);
         // refresh Settings in place if it's still open behind this dialog
         if (root.querySelector(".setc-settings")) openSettings(host, r, options, root);
-        var allYears = {}; ok.forEach(function (o) { (o.years || []).forEach(function (y) { allYears[y] = 1; }); });
+        var allYears = {}; ok.forEach(function (o) { allYears[sxFileYear({ fileName: o.name, years: o.years })] = 1; });
         var sxY = Object.keys(allYears).sort();
         okModal(root, "✓ Torque charts saved", "Saved to this computer: " + sxY.join(", ") + " (" + sxY.length + " year" + (sxY.length === 1 ? "" : "s") + ").");
       }).catch(function (e) {
@@ -5280,9 +5336,9 @@
   /* ---- Maintenance schedules Settings flow (v0.5.0) — mirrors Service Xpress.
    * Load the yearly "VW Maintenance Schedules" PDF; Hahns reads it on this
    * computer and shows the services that may be due for the loaded vehicle. */
-  function pickMsFiles(host, r, options, root, target, targetYear) {
+  function pickMsFiles(host, r, options, root, targets) {
     var inp = document.createElement("input");
-    inp.type = "file"; inp.accept = ".pdf,application/pdf"; inp.multiple = !target; inp.style.display = "none";
+    inp.type = "file"; inp.accept = ".pdf,application/pdf"; inp.multiple = !targets || targets.length > 1; inp.style.display = "none";
     inp.addEventListener("change", function () {
       var files = Array.prototype.slice.call(inp.files || []);
       try { inp.remove(); } catch (e) {}
@@ -5308,7 +5364,7 @@
         });
       });
       chain.then(function () {
-        if (target) { validateMsUpdate(host, r, options, root, results[0], target, targetYear); return; }
+        if (targets) { validateUpdates("ms", host, r, options, root, results, targets); return; }
         openMsConfirm(host, r, options, root, results);
       });
     });
@@ -5316,50 +5372,24 @@
     inp.click();
   }
   function msFileYear(f) { return (f && f.year) || fluidYearOf(f.fileName || f.key) || "?"; }
-  // Update flow: pick WHICH loaded schedule (by year) to replace, then its new PDF.
+  // Update flow (#219): tick one or more loaded schedules (by year), then pick
+  // their new PDFs together. One schedule → straight to the file picker.
   function openMsUpdate(host, r, options, root) {
     var ms = loadMs();
     var files = ms && ms.files ? ms.files : [];
     if (!files.length) { pickMsFiles(host, r, options, root); return; }
     var items = files.map(function (f) { return { key: f.key, year: msFileYear(f) }; })
       .sort(function (a, b) { return a.year < b.year ? 1 : a.year > b.year ? -1 : 0; });
-    if (items.length === 1) { pickMsFiles(host, r, options, root, items[0].key, items[0].year); return; }
-    var list = items.map(function (o) {
-      return '<button class="updpick" data-k="' + esc(o.key) + '" data-y="' + esc(o.year) + '"><b>' + esc(o.year) + "</b></button>";
-    }).join("");
-    var ov = document.createElement("div");
-    ov.className = "setc";
-    ov.innerHTML = '<div class="setbox">' +
-      '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
-      '<p class="settl">Update a maintenance schedule</p>' +
-      '<p class="setsub">Pick the year you want to replace, then choose the new PDF. The others stay as they are.</p>' +
-      '<div class="updlist">' + list + "</div>" +
-      '<div class="setbtns"><button class="cancel">Cancel</button></div>' +
-      "</div>";
-    root.appendChild(ov);
-    var close = function () { try { ov.remove(); } catch (e) {} };
-    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
-    ov.querySelector(".cancel").addEventListener("click", close);
-    ov.querySelector(".xclose").addEventListener("click", close);
-    Array.prototype.forEach.call(ov.querySelectorAll(".updpick"), function (b) {
-      b.addEventListener("click", function () { var k = b.getAttribute("data-k"), y = b.getAttribute("data-y"); close(); pickMsFiles(host, r, options, root, k, y); });
-    });
+    openUpdatePicker(root, "Update maintenance schedules", items, function (sel) { pickMsFiles(host, r, options, root, sel); });
   }
-  // Update sanity check: the replacement must parse as a Maintenance Schedules PDF
-  // (not a fluid/SX chart or junk) AND be the year the tech is replacing.
-  function validateMsUpdate(host, r, options, root, only, targetKey, targetYear) {
-    if (!only) return;
-    var retry = function () { pickMsFiles(host, r, options, root, targetKey, targetYear); };
-    if (only.err) {
-      updateFileError(host, r, options, root, "This doesn’t look like a VW Maintenance Schedules PDF. Please select the " + targetYear + " Maintenance Schedules PDF.", retry);
-      return;
-    }
-    var gotYear = only.year || fluidYearOf(only.name) || "";
-    if (targetYear && String(gotYear) !== String(targetYear)) {
-      updateFileError(host, r, options, root, "You picked a " + (gotYear || "different-year") + " schedule, but you’re updating " + targetYear + ". Please select the " + targetYear + " Maintenance Schedules PDF.", retry);
-      return;
-    }
-    openMsConfirm(host, r, options, root, [only], targetKey);
+  // after an Update save (SX/MS are keyed by FILE NAME): drop each old file whose
+  // replacement came in under a different name, one at a time
+  function dropReplaced(ok, removeFn) {
+    var chain = Promise.resolve();
+    ok.forEach(function (o) {
+      if (o.replaceKey && o.replaceKey !== o.name) chain = chain.then(function () { return removeFn(o.replaceKey); });
+    });
+    return chain;
   }
   function msSchedSummary(sch) {
     function items(s) { return s ? (s.minor.length + s.standard.length + s.extended.length) : 0; }
@@ -5369,8 +5399,9 @@
     if (sch.bev) parts.push("Electric: " + items(sch.bev) + " items, " + add(sch.bev) + " additional");
     return parts.join(" · ");
   }
-  function openMsConfirm(host, r, options, root, results, target) {
+  function openMsConfirm(host, r, options, root, results, target, missing) {
     var ok = results.filter(function (o) { return !o.err; });
+    var upd = target ? updLabel(ok, function (o) { return o.year; }) : "";
     var rows = results.map(function (o) {
       if (o.err) return '<div class="flrow bad"><b>' + esc(o.name) + "</b><span>" + esc(o.err) + "</span></div>";
       return '<div class="flrow"><b>' + esc(o.year || "?") + " — " + esc(msSchedSummary(o.schedules)) + "</b><span>" + esc(o.name) + "</span></div>";
@@ -5379,12 +5410,12 @@
     ov.className = "setc";
     ov.innerHTML = '<div class="setbox">' +
       '<button class="xclose" title="Close" aria-label="Close">&#10005;</button>' +
-      '<p class="settl">' + (target ? "Update schedule" : "Load Maintenance schedules") + "</p>" +
+      '<p class="settl">' + (target ? esc(upd) : "Load Maintenance schedules") + "</p>" +
       '<p class="setsub">Check the model year below, then save. Read on this computer and kept only in this browser (so future parser fixes apply automatically) — nothing is uploaded.</p>' +
-      rows +
+      rows + updMissingRows(missing) +
       '<div class="maperr" style="display:none"></div>' +
       '<div class="setbtns"><button class="cancel">Cancel</button>' +
-      (ok.length ? '<button class="primary save">' + (target ? "Update schedule" : "Save " + ok.length + " file" + (ok.length > 1 ? "s" : "")) + "</button>" : "") +
+      (ok.length ? '<button class="primary save">' + (target ? esc(upd) : "Save " + ok.length + " file" + (ok.length > 1 ? "s" : "")) + "</button>" : "") +
       "</div></div>";
     root.appendChild(ov);
     var close = function () { try { ov.remove(); } catch (e) {} };
@@ -5395,7 +5426,7 @@
     if (sv) sv.addEventListener("click", function () {
       sv.disabled = true;
       msSaveFiles(ok).then(function () {
-        if (target && !ok.some(function (o) { return o.name === target; })) return removeMsFile(target);
+        return dropReplaced(ok, removeMsFile);
       }).then(function () {
         close();
         renderInto(host, r, options);
@@ -6514,6 +6545,11 @@
     ".updpick{display:flex;align-items:baseline;gap:9px;text-align:left;width:100%;appearance:none;-webkit-appearance:none;font-family:inherit;font-size:13px;padding:10px 12px;border:1px solid #cce6cf;border-radius:8px;background:#fff;color:#13502a;cursor:pointer}" +
     ".updpick:hover{background:#edf7ee;border-color:#2fb84d}" +
     ".updpick b{color:#13502a}" +
+    ".updpick.multi{align-items:center}" +
+    ".updchk{flex:none;width:16px;height:16px;border:1.5px solid #2fb84d;border-radius:4px;background:#fff;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;font-size:12px;line-height:1;color:#fff}" +
+    ".updpick.on{background:#edf7ee;border-color:#2fb84d}" +
+    ".updpick.on .updchk{background:#2fb84d}" +
+    ".updpick.on .updchk:after{content:'\\2713'}" +
     ".updfile{font-weight:400;color:#3f7a52;font-size:12px;word-break:break-all}" +
     ".setsub.uperr{color:#a32d2d;font-weight:600}" +
     ".setmeta{margin-top:2px;font-size:11.5px;color:#3f7a52}" +
