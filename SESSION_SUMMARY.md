@@ -5,6 +5,41 @@ permanent project reference.
 
 ---
 
+## Session close (2026-11-14) — v0.5.21-beta (#218 + #219) — merged + live
+
+Two owner-filed feature requests shipped as ONE release (owner's call). PR **#220** (squash, merged by the
+owner), both issues auto-closed. **App-only → no re-drag** (`LOADER_VER` 2). No parser logic changed
+(`SX_PARSER_VER` still 1.0.0); `parser-test.js` 76 files (2027 SX chart added to the baseline), 0 drift.
+Owner-tested via 2 rounds of TEST bookmarks. Live `version.json` = 0.5.21-beta.
+
+### What shipped (`src/helper.js`)
+- **#218 2027 Service Xpress:** `SX_YEAR_MAX` 2026→2027; the chart already parsed (6 models). ID.Buzz
+  `160 Nm (EEWB)` / `(EFRB)` is a LINE BREAK — owner-confirmed both 160 N·m (I briefly built per-engine-code
+  values reading it as a blank cell; reverted on the owner's correction — don't redo it).
+- **File-name year = the PDF's identity** (owner rule, found in their round-1 test): `fluidYearOf` used `\b`, so
+  "MY2027 VW USA Service Xpress Chart.pdf" fell back to the earliest table year (2026) → Settings showed two
+  2026 charts. Now `(?:^|[^0-9])(20\d\d)(?![0-9])`. SX confirm row/saved message use `sxFileYear`; setup-copy
+  counts count `sx.files`. `buildSxProjection` also files tables printed with an EARLIER year than the file
+  year under the file year (`tableYear` keeps the printed one) — the 2027 chart reprints 2026 on carry-overs.
+  LATER printed years (next-gen previews) are NOT moved; in the 2008–2026 corpus every off-year table is
+  later, so only 2027 is affected.
+- **#219 multi-year Update** (Fluids / SX / Maintenance): shared `openUpdatePicker` (tick years, Select all,
+  "Choose N PDFs") → `pick*Files(…, targets)` → `validateUpdates` (type check, then each ticked year takes
+  one file; wrong/extra files listed with reasons, never saved; ticked years with no file → "not updated"
+  row; all-wrong → "Wrong file" box with retry). `dropReplaced` removes renamed SX/MS files. Replaced the
+  per-type `validate*Update` functions.
+
+### Verification
+Preview harness with real PDFs (file-input `click` stubbed with `DataTransfer` to feed files): multi-file
+update for all three types, the MY2027 file name, and 2027 Jetta/GTI/Tiguan/Atlas/ID.Buzz + 2026 matching;
+no console errors; preview IDB cleared after. Merged-tree grep + live `version.json` confirmed.
+
+### Carry-forward
+- No open issues. Bay tests + deferred maintenance gaps unchanged (see v0.5.13 entry).
+- The 2027 SX chart is at the repo root as `sx-2027.pdf` (gitignored), now part of the parser-test corpus.
+
+---
+
 ## Session close (2026-10-23) — v0.5.20-beta (#216) — merged
 
 One owner-filed issue: the per-line delete from v0.5.19 felt clunky; wanted multi-delete. Mocked up two
