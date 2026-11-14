@@ -9,6 +9,12 @@ Categories: **Added** (new), **Changed** (different behavior), **Fixed** (bugs),
 
 ---
 
+## v0.5.21-beta — in progress
+
+### Added
+- **2027 Service Xpress chart.** Settings now accepts the 2027 Service Xpress PDF, so the oil drain plug and wheel bolt torque for the newest models (2027 Atlas, ID. Buzz, Jetta, GTI / Golf R, Taos, Tiguan) show in the Fluids & Capacities window.
+- **Update several PDFs at once.** The **Update** button for Fluid tables, Service Xpress and Maintenance schedules now lets you tick more than one year and pick all their new PDFs in one go (**Select all** ticks every year). Each file is still checked: a wrong kind of PDF, or a year you didn't tick, is listed with the reason and never saved, and a ticked year with no matching file is left as it was.
+
 ## v0.5.20-beta — 2026-10-23
 
 ### Changed
